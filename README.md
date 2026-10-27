@@ -14,3 +14,5 @@ Source for **app.rivaleclipse.dev** (Cloudflare Pages, git-connected to this rep
 - `_redirects` — lowercase → capitalized path redirects
   (/market-tracker → /Market-Tracker, /gif-2-qr → /GIF-2-QR) and the
   converter's root /terms + /privacy links.
+
+<!-- deploy trigger: project created 2026-10-27 -->
