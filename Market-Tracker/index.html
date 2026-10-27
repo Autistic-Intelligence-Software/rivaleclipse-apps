@@ -257,7 +257,7 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
   </div>
 </main>
 <footer>
-  Predictions are probabilities built from pattern statistics — barrier distance to your line, volatility, momentum, and each coin's 6-month base rates. They are not guarantees, and short-horizon crypto direction is close to a coin flip: the base models' held-out record is printed on every card, and the scoreboard above shows this page's real record, wins and losses alike. The snipe badge uses the hourly setup only, read on a ~4-hour window: on held-out data across all 20 coins, flagged setups produced the big move 23.1% of the time against a 14.4% unflagged base rate (1.61x lift). The 15-minute snipe tested as noise (lift under 1x) and is not used. The forecast chart beside each live chart is an estimate cone — the mean path and bands show where the price could plausibly wander given current volatility and drift, not a promised path; the tick marks are the times swings have typically arrived, not appointments. The page also audits its own flaws, live: every scored close retunes separate weights for momentum, regime, and rise/fall asymmetry; confidence buckets that run hot get shrunk toward 50; a coin whose call keeps flip-flopping gets a wider no-call band and a steadier, dwell-held call; and the volatility inside every probability follows the last few hours of live market, blended with the 6-month base. The current state of all of it is printed on each card's Learning line. The Trend read on each call is a plain-language summary of those same pattern signals — trend state, how rises have been running against falls, swing timing, forecast slope, and this coin's hour-of-day habits over the 6-month history — read off the numbers at that moment, not a separate prediction and not a guarantee. The 30-day forecast graph freezes when you open it: the actual price then draws over the frozen forecast, and the running miss between the two feeds back into the forecast's drift correction, with the measured error printed on the graph. Data: Coinbase Exchange public feed. Not financial advice.
+  Predictions are probabilities built from pattern statistics — barrier distance to your line, volatility, momentum, and each coin's 6-month base rates. They are not guarantees, and short-horizon crypto direction is close to a coin flip: the base models' held-out record is printed on every card, and the scoreboard above shows this page's real record, wins and losses alike. The snipe badge uses the hourly setup only, read on a ~4-hour window: on held-out data across all 20 coins, flagged setups produced the big move 23.1% of the time against a 14.4% unflagged base rate (1.61x lift). The 15-minute snipe tested as noise (lift under 1x) and is not used. The forecast chart beside each live chart is an estimate cone — the mean path and bands show where the price could plausibly wander given current volatility and drift, not a promised path; the tick marks are the times swings have typically arrived, not appointments. The page also audits its own flaws, live: every scored close retunes separate weights for momentum, regime, and rise/fall asymmetry; confidence buckets that run hot get shrunk toward 50; a coin whose call keeps flip-flopping gets a wider no-call band and a steadier, dwell-held call; and the volatility inside every probability follows the last few hours of live market, blended with the 6-month base. The current state of all of it is printed on each card's Learning line. The Trend read on each call is a plain-language summary of those same pattern signals — trend state, how rises have been running against falls, swing timing, forecast slope, and this coin's hour-of-day habits over the 6-month history — read off the numbers at that moment, not a separate prediction and not a guarantee. The forecast-check graph freezes when you open it and zooms into the forecast's first 5, 10, 15 or 30 minutes: the actual price then draws over the frozen forecast minute by minute, and the running miss between the two feeds back into the forecast's drift correction, with the measured error printed on the graph — so you can see exactly how close the prediction is tracking, and whether it is catching the trend shifts as they happen. Data: Coinbase Exchange public feed. Not financial advice.
 </footer>
 <script>
 "use strict";
@@ -314,6 +314,10 @@ const S = {
 
 const LS_ZOOM = "ph.zoom.v1", LS_FC30 = "ph.fc30.v1";
 const LS_DET = "ph.det.v1", LS_FCZ = "ph.fczoom.v1";
+/* WEB6 (Shane 2026-10-27): the frozen forecast graph's zooms are
+   minute windows only — 5 / 10 / 15 / 30 minutes over the snapshot's
+   opening minutes. Any stored WEB5 value (24H/7D/30D) falls back. */
+const FCZ_MIN = {"5": 5, "10": 10, "15": 15, "30": 30};
 function coinState(sym){
   if (!S.coins[sym]) S.coins[sym] = {
     price: null, closesH: [], volsH: [], closes15: [], closes1: [], ticks: [],
@@ -323,7 +327,7 @@ function coinState(sym){
     flips: 0, dispSide: null, dispP: null, dwellSide: null, dwellCount: 0, dragging: false,
     zoom: lsGet(LS_ZOOM, {})[sym] || "live",
     fc30on: !!lsGet(LS_FC30, {})[sym],
-    fcSnap: null, fcZoom: lsGet(LS_FCZ, {})[sym] || "30D", fcErrLast: 0,
+    fcSnap: null, fcZoom: FCZ_MIN[lsGet(LS_FCZ, {})[sym]] ? lsGet(LS_FCZ, {})[sym] : "30", fcErrLast: 0,
     detailsOpen: !!lsGet(LS_DET, {})[sym],
     lastCall: null, lastPred: null, els: {},
     snap: null, lastPredAt: 0
@@ -380,7 +384,7 @@ function applyFC30(sym){
   if (!cs.els.fc30wrap) return;
   cs.els.fc30wrap.hidden = !cs.fc30on;
   cs.els.charts.classList.toggle("single", !cs.fc30on);
-  cs.els.fc30btn.textContent = "30-day forecast: " + (cs.fc30on ? "on" : "off");
+  cs.els.fc30btn.textContent = "Forecast check: " + (cs.fc30on ? "on" : "off");
   if (cs.els.fc30zoombtns) cs.els.fc30zoombtns.forEach(b => b.classList.toggle("on", b.dataset.fczoom === cs.fcZoom));
   if (cs.els.fc30age) cs.els.fc30age.textContent = cs.fc30on && cs.fcSnap
     ? "snapshot " + new Date(cs.fcSnap.t0).toLocaleTimeString() + " — frozen until closed"
@@ -444,10 +448,10 @@ function addCard(sym){
     '<button type="button" data-zoom="live">Live</button><button type="button" data-zoom="5">5M</button><button type="button" data-zoom="15">15M</button><button type="button" data-zoom="30">30M</button>' +
     '</div><div class="past"></div></div>' +
     '<div class="charts single"><div><div class="chartlbl">Estimate — forecast</div><canvas class="fc" width="520" height="220"></canvas></div>' +
-    '<div class="fc30wrap" hidden><div class="chartlbl">Estimate — 30-day forecast (frozen while open)</div><canvas class="fc30" width="520" height="220"></canvas>' +
-    '<div class="zoomrow"><div class="zoomseg fczoomseg"><button type="button" data-fczoom="24H">24H</button><button type="button" data-fczoom="7D">7D</button><button type="button" data-fczoom="30D">30D</button></div><span class="note fc30age"></span></div>' +
+    '<div class="fc30wrap" hidden><div class="chartlbl">Estimate — forecast check (frozen while open)</div><canvas class="fc30" width="520" height="220"></canvas>' +
+    '<div class="zoomrow"><div class="zoomseg fczoomseg"><button type="button" data-fczoom="5">5 Min</button><button type="button" data-fczoom="10">10 Min</button><button type="button" data-fczoom="15">15 Min</button><button type="button" data-fczoom="30">30 Min</button></div><span class="note fc30age"></span></div>' +
     '<div class="fc30stat"></div></div></div>' +
-    '<div class="row" style="margin-top:6px"><button class="fc30btn snap" type="button">30-day forecast: off</button></div>' +
+    '<div class="row" style="margin-top:6px"><button class="fc30btn snap" type="button">Forecast check: off</button></div>' +
     '<div class="regime">Loading 6 months of pattern stats…</div>' +
     '<div class="trend"></div>' +
     '<div class="swline"></div>' +
@@ -953,17 +957,21 @@ function forecast30(sym){
   return {pts: pts, anchor: anchor, muDay: muDay, dailyVol: dailyVol, bias: bias,
           medDurMin: (cs.swings && cs.swings.medDurMin) || null};
 }
-/* ---------- WEB5: forecast snapshot, actual overlay, learning ----
-   Opening the 30-day forecast captures a snapshot — anchor, drift,
+/* ---------- WEB5/WEB6: forecast snapshot, actual overlay, learning ----
+   Opening the forecast check captures a snapshot — anchor, drift,
    vol, bias as of that moment — and FREEZES it. While open, the
    graph renders only the snapshot (the zooms re-slice it; nothing
-   recomputes it). The real price draws over the frozen forecast in
-   a left-to-right sweep that loops, from the prices recorded since
-   the snapshot (live ticks + 1m candles). Matched-time samples of
-   actual vs the frozen mean accumulate into the learning store and
-   feed its drift correction (fc.biasFine), so leaving a forecast
-   open literally trains the next one. */
-const FCZ_DAYS = {"24H": 1, "7D": 7, "30D": 30};
+   recomputes it). WEB6 (Shane 2026-10-27): the zooms are minute
+   windows ONLY — 5 / 10 / 15 / 30 minutes over the snapshot's
+   opening minutes — so the user watches the frozen prediction
+   against the real price minute by minute and can see exactly how
+   close it tracks the trend shifts. The real price draws over the
+   frozen forecast in a left-to-right sweep that loops, from the
+   prices recorded since the snapshot (live ticks + 1m candles).
+   Matched-time samples of actual vs the frozen mean accumulate
+   into the learning store and feed its drift correction
+   (fc.biasFine), so leaving a forecast open literally trains the
+   next one. */
 function captureFC30(sym){
   const cs = coinState(sym);
   const f = forecast30(sym);
@@ -996,18 +1004,20 @@ function fcActualSeries(sym, sn){
 }
 function fcOverlaySample(sym, now){
   // One matched-time error sample: the actual price vs the FROZEN
-  // forecast's mean at the same elapsed time. Throttled to one per
-  // 5 minutes per snapshot so a long-open graph yields a spread of
-  // independent-ish samples, not thousands of correlated ones. The
-  // log-error nudges fc.biasFine — the fine-grain sibling of the
-  // daily checkpoint's bias — and forecast30() adds it into the
-  // next forecast's drift, so the misses genuinely retrain it.
+  // forecast's mean at the same elapsed time. WEB6: throttled to one
+  // per minute per snapshot (the graph's zooms are minute windows
+  // now, so the learning samples land on the same scale), with a
+  // smaller per-sample step so the effective learning rate per hour
+  // matches the old 5-minute cadence. The log-error nudges
+  // fc.biasFine — the fine-grain sibling of the daily checkpoint's
+  // bias — and forecast30() adds it into the next forecast's drift,
+  // so the misses genuinely retrain it.
   const cs = coinState(sym), sn = cs.fcSnap;
   if (!sn || !cs.price) return false;
   now = now || Date.now();
   const elapsed = now - sn.t0;
   if (elapsed < 60000) return false;
-  if (now - (cs.fcErrLast || 0) < 300000) return false;
+  if (now - (cs.fcErrLast || 0) < 60000) return false;
   cs.fcErrLast = now;
   const meanAt = sn.anchor * Math.exp(sn.muDay * (elapsed / 86400000));
   if (!(meanAt > 0)) return false;
@@ -1016,7 +1026,7 @@ function fcOverlaySample(sym, now){
   F.errN = (F.errN || 0) + 1;
   F.errSum = (F.errSum || 0) + err;
   F.errAbs = (F.errAbs || 0) + Math.abs(err);
-  F.biasFine = clamp((F.biasFine || 0) + 0.05 * err, -0.01, 0.01);
+  F.biasFine = clamp((F.biasFine || 0) + 0.01 * err, -0.01, 0.01);
   saveLearn();
   renderFC30Stat(sym);
   return true;
@@ -1030,11 +1040,11 @@ function drawFC30(sym){
   ctx.clearRect(0, 0, Wd, H);
   ctx.fillStyle = "#9a96ad"; ctx.font = "17px system-ui";
   if (!sn){ ctx.fillText("Not enough data yet.", 8, 24); return; }
-  const winD = FCZ_DAYS[cs.fcZoom] || 30, winMs = winD * 86400000;
+  const winMin = FCZ_MIN[cs.fcZoom] || 30, winMs = winMin * 60000;
   const N = 64, pts = [];
   for (let k = 0; k <= N; k++){
-    const d = winD * k / N, m = sn.muDay * d, sd = sn.dailyVol * Math.sqrt(d);
-    pts.push({d: d, mean: sn.anchor * Math.exp(m), u68: sn.anchor * Math.exp(m + sd),
+    const min = winMin * k / N, d = min / 1440, m = sn.muDay * d, sd = sn.dailyVol * Math.sqrt(d);
+    pts.push({min: min, mean: sn.anchor * Math.exp(m), u68: sn.anchor * Math.exp(m + sd),
               l68: sn.anchor * Math.exp(m - sd), u95: sn.anchor * Math.exp(m + 1.96 * sd),
               l95: sn.anchor * Math.exp(m - 1.96 * sd)});
   }
@@ -1045,18 +1055,18 @@ function drawFC30(sym){
   if (cs.line){ lo = Math.min(lo, cs.line); hi = Math.max(hi, cs.line); }
   if (!isFinite(lo) || hi <= lo){ lo = sn.anchor * 0.99; hi = sn.anchor * 1.01; }
   const pad = (hi - lo) * 0.05 || hi * 0.01; lo -= pad; hi += pad;
-  const X = d => 4 + (Wd - 8) * d / winD;
+  const X = min => 4 + (Wd - 8) * min / winMin;
   const Y = p => H - 14 - (p - lo) / (hi - lo) * (H - 26);
   const band = (up, dn, fill) => {
     ctx.beginPath();
-    pts.forEach((q, i) => i ? ctx.lineTo(X(q.d), Y(q[up])) : ctx.moveTo(X(q.d), Y(q[up])));
-    for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(X(pts[i].d), Y(pts[i][dn]));
+    pts.forEach((q, i) => i ? ctx.lineTo(X(q.min), Y(q[up])) : ctx.moveTo(X(q.min), Y(q[up])));
+    for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(X(pts[i].min), Y(pts[i][dn]));
     ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
   };
   band("u95", "l95", "rgba(124,92,255,0.10)");
   band("u68", "l68", "rgba(201,162,39,0.13)");
   ctx.beginPath();
-  pts.forEach((q, i) => i ? ctx.lineTo(X(q.d), Y(q.mean)) : ctx.moveTo(X(q.d), Y(q.mean)));
+  pts.forEach((q, i) => i ? ctx.lineTo(X(q.min), Y(q.mean)) : ctx.moveTo(X(q.min), Y(q.mean)));
   ctx.strokeStyle = "#f3d27a"; ctx.lineWidth = 2; ctx.stroke();
   if (cs.line){
     const yy = Y(cs.line);
@@ -1066,12 +1076,12 @@ function drawFC30(sym){
     }
   }
   const med = sn.medDurMin;
-  if (med && med > 0 && winD * 1440 / med <= 240){
+  if (med && med > 0 && winMin / med <= 240){
     ctx.fillStyle = "#7c5cff"; ctx.strokeStyle = "#7c5cff";
-    for (let tt = med; tt < winD * 1440; tt += med){
-      const d = tt / 1440, x = X(d);
+    for (let tt = med; tt < winMin; tt += med){
+      const x = X(tt);
       ctx.beginPath(); ctx.moveTo(x, H - 14); ctx.lineTo(x, H - 6); ctx.lineWidth = 2; ctx.stroke();
-      const q = pts[Math.round(d / winD * N)];
+      const q = pts[Math.round(tt / winMin * N)];
       if (q){ ctx.beginPath(); ctx.arc(x, Y(q.mean), 3, 0, 7); ctx.fill(); }
     }
   }
@@ -1087,7 +1097,7 @@ function drawFC30(sym){
     for (const a of acts){
       const off = a.t - sn.t0;
       if (off > winMs || off > head) break;
-      const x = X(off / 86400000), y = Y(a.p);
+      const x = X(off / 60000), y = Y(a.p);
       if (!started){ ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
       hx = x; hy = y;
     }
@@ -1102,9 +1112,9 @@ function drawFC30(sym){
     }
   }
   ctx.fillStyle = "#9a96ad"; ctx.font = "bold 15px system-ui";
-  ctx.fillText("ESTIMATE — 30-day forecast · frozen snapshot", 8, 20);
+  ctx.fillText("ESTIMATE — frozen forecast · minute check", 8, 20);
   ctx.font = "15px system-ui";
-  ctx.fillText(cs.fcZoom === "24H" ? "+24h" : cs.fcZoom === "7D" ? "+7d" : "+30d", Wd - 44, H - 18);
+  ctx.fillText("+" + winMin + "m", Wd - 44, H - 18);
   ctx.fillText(fmtPrice(hi), 5, 38);
   ctx.fillText(fmtPrice(lo), 5, H - 18);
   const F = learnState(sym).fc;
@@ -1131,7 +1141,7 @@ function renderFC30Stat(sym){
       " · signed " + (F.errSum / F.errN * 100).toFixed(2) + "%" +
       (Math.abs(F.biasFine) > 0.00005 ? " · fine drift " + (F.biasFine * 100).toFixed(2) + "%/day now fed into new forecasts from those misses" : "");
   } else if (cs.fcSnap) {
-    txt += " · Overlay vs actual: sampling — the first error sample lands a few minutes after the snapshot, then one every ~5 min while this stays open.";
+    txt += " · Overlay vs actual: sampling — the first error sample lands about a minute after the snapshot, then one every minute while this stays open.";
   }
   if (cs.els.fc30stat.textContent !== txt) cs.els.fc30stat.textContent = txt;
 }
