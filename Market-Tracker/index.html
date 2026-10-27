@@ -102,6 +102,8 @@ canvas.spark{width:100%;height:150px;display:block}
 .swline,.learnline{color:var(--mut);font-size:12px;margin-top:5px;line-height:1.55}
 .learnline{color:#b9b4d6}
 .pooline{color:var(--mut);font-size:12px;margin-top:3px;line-height:1.55}
+.srcline{color:var(--mut);font-size:12px;margin-top:3px;line-height:1.55}
+.srcline .down{color:#ff7a7a}
 #oddsCoin{background:#0c0c18;border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:8px 10px;font-size:14px}
 #oddsGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(196px,1fr));gap:10px;margin-top:14px}
 .ocard{background:#0c0c18;border:1px solid var(--line);border-radius:14px;padding:12px}
@@ -383,6 +385,7 @@ function addCard(sym){
     '<div class="rec"></div>' +
     '<div class="learnline"></div>' +
     '<div class="pooline"></div>' +
+    '<div class="srcline" hidden></div>' +
     '<div class="gateline"></div>';
   $("#cards").appendChild(el);
   cs.els = {
@@ -395,7 +398,7 @@ function addCard(sym){
     slider: el.querySelector(".line-slider"), flash: el.querySelector(".flashmsg"),
     sval: el.querySelector(".slider-val"), lmoved: el.querySelector(".linemoved"),
     rec: el.querySelector(".rec"), learn: el.querySelector(".learnline"),
-    pool: el.querySelector(".pooline"), gate: el.querySelector(".gateline"),
+    pool: el.querySelector(".pooline"), src: el.querySelector(".srcline"), gate: el.querySelector(".gateline"),
     roLine: el.querySelector(".ro-line"), roCur: el.querySelector(".ro-cur"),
     roDist: el.querySelector(".ro-dist"), pill: el.querySelector(".pill"),
     past: el.querySelector(".past"), charts: el.querySelector(".charts"),
@@ -1234,6 +1237,40 @@ async function loadGlobal(){
   GLOBAL_POOL = j.coins; GLOBAL_TOTALS = j.totals || null;
   S.selected.forEach(sym => { renderLearn(sym); if (S.cycle.active) predict(sym); });
 }
+/* Multi-source view (MULTISOURCE): one server call covers every
+   watched coin. Pure enhancement layer — if the endpoint is
+   unreachable the line simply stays hidden and the page behaves
+   exactly as it did before (direct Coinbase). Predictions keep
+   using the Coinbase reference either way. */
+let SRC_VIEW = null;
+const SRC_NAMES = { coinbase: "Coinbase", kraken: "Kraken", bitstamp: "Bitstamp", gemini: "Gemini" };
+async function loadSources(){
+  if (!S.selected.length) return;
+  const j = await fetchJSON(AUTH + "/api/perp/prices?coins=" + S.selected.join(","));
+  if (!j || !j.ok || !j.coins) return;
+  SRC_VIEW = j.coins;
+  S.selected.forEach(renderSources);
+}
+function renderSources(sym){
+  const cs = coinState(sym);
+  if (!cs.els.src) return;
+  const v = SRC_VIEW && SRC_VIEW[sym];
+  if (!v || !v.sources){ cs.els.src.hidden = true; return; }
+  const parts = [];
+  for (const k of ["coinbase", "kraken", "bitstamp", "gemini"]){
+    const s = v.sources[k];
+    if (!s || !s.listed) continue;
+    parts.push(SRC_NAMES[k] + " " + (s.ok && s.price != null ? fmtPrice(s.price) : "✕ down"));
+  }
+  if (!parts.length){ cs.els.src.hidden = true; return; }
+  let txt = "Sources: " + parts.join(" · ");
+  if (v.consensus != null) txt += " · consensus " + fmtPrice(v.consensus);
+  if (v.spread_pct != null) txt += " · spread " + v.spread_pct.toFixed(2) + "%";
+  if (v.price_source && v.price_source !== "coinbase") txt += " · priced by " + SRC_NAMES[v.price_source];
+  if (v.disagree) txt += " · ⚠ sources disagree — server holds calls at NO EDGE";
+  cs.els.src.hidden = false;
+  if (cs.els.src.textContent !== txt) cs.els.src.textContent = txt;
+}
 function globalCoin(sym){
   const g = GLOBAL_POOL && GLOBAL_POOL[sym];
   return g && g.evidence === "live" ? g : null;
@@ -1742,6 +1779,7 @@ setInterval(() => {
   }
   if (S.loopN % 3 === 0 && S.selected.length) priceTick();
   if (S.loopN % 60 === 0) S.selected.forEach(loadCoin);
+  if (S.loopN % 15 === 0 && S.selected.length) loadSources();
   if (S.loopN % 900 === 0) loadGlobal();
 }, 1000);
 
@@ -1874,6 +1912,7 @@ buildCoinGrid();
   });
   renderScore();
   loadGlobal();
+  loadSources();
   flushContrib(false);
 })();
 </script>
