@@ -1,0 +1,1881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Perpetual Helper — Rival Eclipse</title>
+<style id="mainCss">
+:root{
+  --bg:#050510; --bg2:#0a0a12; --card:#14141f; --card2:#10101a;
+  --gold:#c9a227; --gold2:#f3d27a; --violet:#7c5cff;
+  --txt:#eceaf4; --mut:#9a96ad; --line:#26263a;
+  --up:#3ddc84; --down:#ff5e7a; --edge:#ffd257;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:radial-gradient(1200px 600px at 70% -10%, #1a1440 0%, transparent 60%),
+             radial-gradient(900px 500px at 10% 0%, #14202e 0%, transparent 55%),
+             linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%);
+  color:var(--txt); font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  min-height:100vh;
+}
+a{color:var(--gold2)}
+header{max-width:1180px;margin:0 auto;padding:28px 18px 6px}
+.wordmark{font-size:15px;letter-spacing:.35em;text-transform:uppercase;color:var(--mut)}
+.wordmark b{color:#fff;font-weight:700}
+.wordmark i{color:var(--gold);font-style:normal;font-weight:700}
+h1{margin:6px 0 4px;font-size:34px;line-height:1.1;background:linear-gradient(90deg,var(--gold2),var(--gold) 55%,var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--mut);max-width:760px;font-size:15px;line-height:1.5}
+main{max-width:1180px;margin:0 auto;padding:14px 18px 30px;display:grid;gap:16px}
+.card{
+  background:linear-gradient(180deg,var(--card) 0%,var(--card2) 100%);
+  border:1px solid var(--line);border-radius:20px;padding:18px;position:relative;overflow:hidden;
+}
+.card::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--gold),var(--violet))}
+.card h2{margin:2px 0 12px;font-size:17px;letter-spacing:.04em}
+.lbl{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut);margin:14px 0 8px}
+.lbl:first-of-type{margin-top:0}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{
+  border:1px solid var(--line);background:#0c0c18;color:var(--txt);border-radius:999px;
+  padding:7px 14px;font-size:14px;cursor:pointer;
+}
+.chip.on{border-color:var(--gold);color:var(--gold2);background:#1c1808}
+input[type=number]{background:#0c0c18;border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:8px 10px;font-size:14px;width:110px}
+.coins{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
+.coin{
+  display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:12px;
+  padding:8px 10px;font-size:14px;cursor:pointer;background:#0c0c18;user-select:none;
+}
+.coin.on{border-color:var(--gold);background:#1c1808}
+.coin input{accent-color:var(--gold)}
+.count{color:var(--mut);font-size:13px;margin-top:8px}
+.btn{
+  border:1px solid var(--gold);background:linear-gradient(90deg,#2a2208,#1c1808);color:var(--gold2);
+  border-radius:12px;padding:11px 18px;font-size:15px;cursor:pointer;font-weight:600;
+}
+.btn.primary{background:linear-gradient(90deg,var(--gold),#a8841c);color:#14100a;border-color:var(--gold)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.ghost{border-color:var(--line);background:#0c0c18;color:var(--txt)}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:14px}
+.note{color:var(--mut);font-size:13px}
+#watchHead{display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;justify-content:space-between}
+#countdown{font-size:26px;font-weight:700;color:var(--gold2);font-variant-numeric:tabular-nums}
+#cycleStatus{color:var(--mut);font-size:14px}
+#cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;margin-top:6px}
+.wcard{background:#0c0c18;border:1px solid var(--line);border-radius:16px;padding:14px;position:relative}
+.wcard.flash-right{border-color:var(--up);box-shadow:0 0 0 1px var(--up)}
+.wcard.flash-wrong{border-color:var(--down);box-shadow:0 0 0 1px var(--down)}
+.wtop{display:flex;justify-content:space-between;align-items:baseline}
+.wtop h3{margin:0;font-size:19px}
+.chg{font-size:13px;font-variant-numeric:tabular-nums}
+.price{font-size:27px;font-weight:700;margin:4px 0 2px;font-variant-numeric:tabular-nums}
+canvas.spark{width:100%;height:150px;display:block}
+.readouts{display:flex;flex-wrap:wrap;gap:14px;align-items:baseline;margin-top:2px}
+.readouts .ro{font-size:12px;color:var(--mut);letter-spacing:.08em;text-transform:uppercase}
+.readouts .ro b{font-size:16px;color:var(--txt);letter-spacing:0;text-transform:none;font-variant-numeric:tabular-nums}
+.ro-dist{font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums}
+.ro-dist.up{color:var(--up)} .ro-dist.down{color:var(--down)}
+.livewrap{position:relative}
+.pill{position:absolute;top:8px;right:8px;background:rgba(20,16,10,.92);border:1px solid var(--gold);color:var(--gold2);border-radius:999px;padding:3px 11px;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
+.zoomrow{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap}
+.zoomseg{display:flex;gap:4px}
+.zoomseg button{border:1px solid var(--line);background:#0c0c18;color:var(--mut);border-radius:999px;padding:4px 11px;font-size:12px;cursor:pointer;font-weight:700}
+.zoomseg button.on{border-color:var(--gold);color:var(--gold2);background:#1c1808}
+.past{font-size:14px;letter-spacing:3px}
+.past .up{color:var(--up)} .past .down{color:var(--down)}
+.pastlbl{font-size:11px;color:var(--mut);letter-spacing:.12em;text-transform:uppercase;margin-right:2px}
+.fc30stat{color:var(--mut);font-size:12px;margin-top:4px;line-height:1.5}
+.gateline{color:#b9b4d6;font-size:12px;margin-top:3px;line-height:1.55}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:2px}
+.charts.single{grid-template-columns:1fr}
+.charts canvas{width:100%;height:110px;display:block}
+.chartlbl{font-size:11px;color:var(--mut);letter-spacing:.1em;text-transform:uppercase;margin-bottom:2px}
+.trend{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;min-height:22px}
+.tchip{font-size:12px;font-weight:800;letter-spacing:.05em;padding:3px 9px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
+.tchip.jump{color:var(--up);border-color:var(--up)}
+.tchip.drop{color:var(--down);border-color:var(--down)}
+.tchip.level{color:var(--mut)}
+.tchip.ride{color:var(--gold2);border-color:var(--gold)}
+.tothers{color:var(--mut);font-size:12px}
+.swline,.learnline{color:var(--mut);font-size:12px;margin-top:5px;line-height:1.55}
+.learnline{color:#b9b4d6}
+.pooline{color:var(--mut);font-size:12px;margin-top:3px;line-height:1.55}
+#oddsCoin{background:#0c0c18;border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:8px 10px;font-size:14px}
+#oddsGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(196px,1fr));gap:10px;margin-top:14px}
+.ocard{background:#0c0c18;border:1px solid var(--line);border-radius:14px;padding:12px}
+.ocard .oh{font-size:12px;color:var(--mut);letter-spacing:.1em;text-transform:uppercase;display:flex;justify-content:space-between;gap:6px}
+.ocard .ocall{font-size:19px;font-weight:800;margin-top:6px}
+.ocard .ocall.over{color:var(--up)} .ocard .ocall.under{color:var(--down)} .ocard .ocall.noedge{color:var(--mut)}
+.ocard .opct{font-size:13.5px;color:var(--txt);margin-top:2px;font-variant-numeric:tabular-nums}
+.ocard .ostat{font-size:11.5px;color:var(--mut);margin-top:6px;line-height:1.5}
+.weak{color:var(--edge);font-weight:700}
+@media (max-width:460px){.charts{grid-template-columns:1fr}}
+.regime{color:var(--mut);font-size:12px;line-height:1.5;margin-top:4px}
+.snipe{
+  margin-top:9px;border:1px solid var(--edge);color:#14100a;font-weight:700;font-size:14px;
+  background:linear-gradient(90deg,var(--edge),var(--gold));border-radius:10px;padding:7px 10px;
+}
+.pred{margin-top:10px;border-top:1px solid var(--line);padding-top:10px;min-height:64px}
+.pred .call{font-size:21px;font-weight:800;letter-spacing:.02em}
+.pred .call.over{color:var(--up)} .pred .call.under{color:var(--down)} .pred .call.noedge{color:var(--mut)}
+.pred .conf{color:var(--mut);font-size:13px;margin-top:2px}
+.pbar{height:8px;border-radius:99px;background:#1b1b2c;margin-top:8px;overflow:hidden}
+.pbar>div{height:100%;background:linear-gradient(90deg,var(--violet),var(--gold))}
+.line-ctl{margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
+.line-ctl label{font-size:12px;color:var(--mut);letter-spacing:.1em;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.line-ctl input[type=range]{width:100%;accent-color:var(--gold);margin:8px 0 2px}
+.line-ctl input[type=number]{width:150px}
+.line-ctl input[type=range].pinned{opacity:.45}
+.stops{display:flex;justify-content:space-between;font-size:11px;color:var(--mut);margin-top:1px;font-variant-numeric:tabular-nums}
+.stops b{color:var(--gold2);font-weight:600}
+.slider-val{font-size:13px;color:var(--txt);font-variant-numeric:tabular-nums;white-space:nowrap}
+.slider-val .off{color:var(--gold2);font-weight:700}
+.linemoved{color:var(--edge);font-size:12px;margin-top:5px}
+.legend{color:var(--mut);font-size:11px;margin-top:5px;line-height:1.5}
+.snap{background:none;border:none;color:var(--gold2);cursor:pointer;font-size:12px;padding:0}
+.rec{color:var(--mut);font-size:12px;margin-top:9px}
+.flashmsg{font-size:13px;font-weight:700;margin-top:7px;min-height:16px}
+.flashmsg.right{color:var(--up)} .flashmsg.wrong{color:var(--down)}
+#scoreTable{width:100%;border-collapse:collapse;font-size:14px}
+#scoreTable th,#scoreTable td{border-bottom:1px solid var(--line);padding:7px 6px;text-align:left}
+#scoreTable th{color:var(--mut);font-weight:600;font-size:12px;letter-spacing:.1em;text-transform:uppercase}
+footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-size:13px;line-height:1.6}
+.err{color:var(--down);font-size:12px}
+@media (max-width:640px){h1{font-size:27px}.price{font-size:23px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wordmark"><b>Rıval</b> <i>Eclıpse</i></div>
+  <h1>Perpetual Helper</h1>
+  <p class="sub">Live prices for the cryptos you pick, a cycle timer synced to the market clock, and an over/under call for the close — recomputed every 3 seconds from 6 months of pattern stats per coin. It scores itself at every close, in the open.</p>
+</header>
+<main>
+  <section class="card" id="setupCard">
+    <h2>Setup</h2>
+    <div class="lbl">Length of perpetuals</div>
+    <div class="chips" id="lenChips">
+      <button class="chip" data-min="1">1m</button>
+      <button class="chip" data-min="5">5m</button>
+      <button class="chip on" data-min="15">15m</button>
+      <button class="chip" data-min="30">30m</button>
+      <button class="chip" data-min="60">1h</button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label class="note" for="lenCustom">Custom minutes</label>
+      <input type="number" id="lenCustom" min="1" max="240" step="1" placeholder="15">
+    </div>
+    <div class="lbl">Which cryptos to watch (up to 6)</div>
+    <div class="coins" id="coinGrid"></div>
+    <div class="count" id="selCount">0 / 6 selected</div>
+    <div class="row">
+      <button class="btn primary" id="startBtn">Start cycle</button>
+      <button class="btn ghost" id="stopBtn" disabled>Stop</button>
+      <a class="btn" id="apkBtn" href="perpetual-helper.apk" download title="Download the Perpetual Helper Android app (stage 1, 1.4 MB)">Download the Android app (APK) — stage-1 preview</a>
+      <button class="btn ghost" id="pipBtn">Pop out panel</button>
+    </div>
+    <div class="note" id="pipNote" style="margin-top:8px"></div>
+    <div class="note">The floating panel in this browser edition uses Chrome's picture-in-picture. The Android app floats over any app instead — its download button activates when the build lands.</div>
+  </section>
+
+  <section class="card" id="oddsCard">
+    <h2>Odds — the system's own calls</h2>
+    <p class="note" style="margin-top:0">Pick any crypto and a value. The system — the same global brain the watch panel learns into — returns its OVER / UNDER odds for the close at each horizon, computed server-side. It scores only its own predictions: every card shows that horizon's real global record, and a horizon running at coin-flip gets flagged weak instead of hiding behind the average.</p>
+    <div class="row" style="margin-top:10px">
+      <label class="note" for="oddsCoin">Crypto</label>
+      <select id="oddsCoin"></select>
+      <label class="note" for="oddsLine">Value (line)</label>
+      <input type="number" id="oddsLine" step="any" placeholder="Current price">
+      <span class="note" id="oddsPrice"></span>
+    </div>
+    <div class="line-ctl" style="border-top:none;padding-top:2px;margin-top:8px">
+      <label>Quick offset <span class="slider-val" id="oddsOffVal"></span></label>
+      <input type="range" id="oddsSlider" min="-10" max="10" step="0.1" value="0">
+      <div class="stops"><span>-10%</span><span>-5%</span><span><b>0%</b></span><span>+5%</span><span>+10%</span></div>
+    </div>
+    <div id="oddsGrid"></div>
+    <div class="note" id="oddsMeta" style="margin-top:10px"></div>
+    <div class="note" id="oddsSnipe"></div>
+  </section>
+
+  <div id="panelSlot">
+    <section class="card" id="watchPanel">
+      <div id="watchHead">
+        <h2 style="margin:0">Watch panel</h2>
+        <div id="countdown">—</div>
+      </div>
+      <div id="cycleStatus">Pick up to 6 cryptos, set each line, then press Start. Prices go live as soon as a coin is picked.</div>
+      <div id="cards"></div>
+      <div class="lbl" style="margin-top:18px">Session scoreboard (saved on this device)</div>
+      <table id="scoreTable">
+        <thead><tr><th>Coin</th><th>Right</th><th>Wrong</th><th>No call</th><th>Hit rate</th></tr></thead>
+        <tbody id="scoreBody"><tr><td colspan="5" class="note">No closes scored yet.</td></tr></tbody>
+      </table>
+      <div class="row"><button class="btn ghost" id="resetScore">Reset scoreboard</button></div>
+    </section>
+  </div>
+</main>
+<footer>
+  Predictions are probabilities built from pattern statistics — barrier distance to your line, volatility, momentum, and each coin's 6-month base rates. They are not guarantees, and short-horizon crypto direction is close to a coin flip: the base models' held-out record is printed on every card, and the scoreboard above shows this page's real record, wins and losses alike. The snipe badge uses the hourly setup only, read on a ~4-hour window: on held-out data across all 20 coins, flagged setups produced the big move 23.1% of the time against a 14.4% unflagged base rate (1.61x lift). The 15-minute snipe tested as noise (lift under 1x) and is not used. The forecast chart beside each live chart is an estimate cone — the mean path and bands show where the price could plausibly wander given current volatility and drift, not a promised path; the tick marks are the times swings have typically arrived, not appointments. The page also audits its own flaws, live: every scored close retunes separate weights for momentum, regime, and rise/fall asymmetry; confidence buckets that run hot get shrunk toward 50; a coin whose call keeps flip-flopping gets a wider no-call band and a steadier, dwell-held call; and the volatility inside every probability follows the last few hours of live market, blended with the 6-month base. The current state of all of it is printed on each card's Learning line. Data: Coinbase Exchange public feed. Not financial advice.
+</footer>
+<script>
+"use strict";
+const MODELS = {"ADA":{"vol":0.005383,"slope":0.000381,"pos":0.4306,"buckets":{"down_t0":0.4921,"down_t1":0.4769,"down_t2":0.5011,"up_t0":0.4176,"up_t1":0.4843,"up_t2":0.4824},"bt":0.5458,"btN":240,"sn4":{"hit":0.0909,"base":0.1441,"lift":0.631,"n":11}},"ATOM":{"vol":0.004703,"slope":-0.000894,"pos":0.382,"buckets":{"down_t0":0.4612,"down_t1":0.4752,"down_t2":0.5057,"up_t0":0.4152,"up_t1":0.4924,"up_t2":0.4727},"bt":0.5083,"btN":240,"sn4":{"hit":0.0,"base":0.1602,"lift":0.0,"n":9}},"AVAX":{"vol":0.00541,"slope":0.000914,"pos":0.5035,"buckets":{"down_t0":0.4921,"down_t1":0.5076,"down_t2":0.479,"up_t0":0.4286,"up_t1":0.4489,"up_t2":0.4455},"bt":0.4958,"btN":240,"sn4":{"hit":0.2727,"base":0.1266,"lift":2.154,"n":11}},"BCH":{"vol":0.00525,"slope":-0.001109,"pos":0.3246,"buckets":{"down_t0":0.5098,"down_t1":0.5275,"down_t2":0.5377,"up_t0":0.4561,"up_t1":0.4854,"up_t2":0.5068},"bt":0.5,"btN":240,"sn4":{"hit":0.2727,"base":0.1266,"lift":2.154,"n":11}},"BTC":{"vol":0.003131,"slope":0.000963,"pos":0.7558,"buckets":{"down_t0":0.514,"down_t1":0.4964,"down_t2":0.5212,"up_t0":0.5064,"up_t1":0.4715,"up_t2":0.4891},"bt":0.5042,"btN":240,"sn4":{"hit":0.2308,"base":0.1189,"lift":1.94,"n":13}},"DOGE":{"vol":0.004305,"slope":-0.000973,"pos":0.1746,"buckets":{"down_t0":0.5442,"down_t1":0.4915,"down_t2":0.5088,"up_t0":0.4587,"up_t1":0.47,"up_t2":0.5065},"bt":0.4625,"btN":240,"sn4":{"hit":0.1667,"base":0.1453,"lift":1.147,"n":6}},"DOT":{"vol":0.006082,"slope":-0.00033,"pos":0.3748,"buckets":{"down_t0":0.4773,"down_t1":0.5025,"down_t2":0.5,"up_t0":0.4439,"up_t1":0.4526,"up_t2":0.4559},"bt":0.5125,"btN":240,"sn4":{"hit":0.1111,"base":0.1299,"lift":0.856,"n":9}},"ETC":{"vol":0.004447,"slope":-0.000138,"pos":0.3614,"buckets":{"down_t0":0.4461,"down_t1":0.4657,"down_t2":0.5288,"up_t0":0.3976,"up_t1":0.4094,"up_t2":0.4585},"bt":0.4875,"btN":240,"sn4":{"hit":0.35,"base":0.1227,"lift":2.852,"n":20}},"ETH":{"vol":0.003925,"slope":0.001825,"pos":0.616,"buckets":{"down_t0":0.5281,"down_t1":0.4994,"down_t2":0.5307,"up_t0":0.4785,"up_t1":0.4772,"up_t2":0.5057},"bt":0.4833,"btN":240,"sn4":{"hit":0.125,"base":0.1466,"lift":0.853,"n":8}},"FIL":{"vol":0.00677,"slope":0.000357,"pos":0.3976,"buckets":{"down_t0":0.4503,"down_t1":0.5061,"down_t2":0.5032,"up_t0":0.4363,"up_t1":0.4619,"up_t2":0.4412},"bt":0.4792,"btN":240,"sn4":{"hit":0.1,"base":0.1478,"lift":0.676,"n":10}},"HBAR":{"vol":0.004261,"slope":-4e-05,"pos":0.1938,"buckets":{"down_t0":0.4885,"down_t1":0.4898,"down_t2":0.493,"up_t0":0.4463,"up_t1":0.4781,"up_t2":0.4791},"bt":0.4375,"btN":240,"sn4":{"hit":0.2857,"base":0.133,"lift":2.147,"n":7}},"LINK":{"vol":0.005127,"slope":0.002677,"pos":0.5039,"buckets":{"down_t0":0.5207,"down_t1":0.5037,"down_t2":0.5,"up_t0":0.476,"up_t1":0.4734,"up_t2":0.4975},"bt":0.5083,"btN":240,"sn4":{"hit":0.3333,"base":0.1579,"lift":2.111,"n":12}},"LTC":{"vol":0.00472,"slope":0.001285,"pos":0.485,"buckets":{"down_t0":0.5217,"down_t1":0.5033,"down_t2":0.512,"up_t0":0.5087,"up_t1":0.5031,"up_t2":0.4909},"bt":0.4875,"btN":240,"sn4":{"hit":0.1,"base":0.1652,"lift":0.605,"n":10}},"NEAR":{"vol":0.009307,"slope":0.005776,"pos":0.6957,"buckets":{"down_t0":0.4957,"down_t1":0.4837,"down_t2":0.5395,"up_t0":0.4823,"up_t1":0.4602,"up_t2":0.4955},"bt":0.475,"btN":240,"sn4":{"hit":0.1429,"base":0.1588,"lift":0.9,"n":7}},"PEPE":{"vol":0.005579,"slope":0.001355,"pos":0.7368,"buckets":{"down_t0":0.3683,"down_t1":0.4095,"down_t2":0.4098,"up_t0":0.3651,"up_t1":0.3485,"up_t2":0.4129},"bt":0.4833,"btN":240,"sn4":{"hit":0.6667,"base":0.141,"lift":4.727,"n":6}},"SOL":{"vol":0.004303,"slope":0.0023,"pos":0.63,"buckets":{"down_t0":0.5238,"down_t1":0.4879,"down_t2":0.5038,"up_t0":0.4587,"up_t1":0.5145,"up_t2":0.4965},"bt":0.4792,"btN":240,"sn4":{"hit":0.1429,"base":0.1504,"lift":0.95,"n":14}},"SUI":{"vol":0.005508,"slope":0.000323,"pos":0.3803,"buckets":{"down_t0":0.5561,"down_t1":0.473,"down_t2":0.5148,"up_t0":0.4444,"up_t1":0.4628,"up_t2":0.4988},"bt":0.5208,"btN":240,"sn4":{"hit":0.4,"base":0.1478,"lift":2.706,"n":10}},"UNI":{"vol":0.00678,"slope":0.006519,"pos":0.5911,"buckets":{"down_t0":0.5191,"down_t1":0.4782,"down_t2":0.5315,"up_t0":0.4846,"up_t1":0.4576,"up_t2":0.4964},"bt":0.525,"btN":240,"sn4":{"hit":0.2667,"base":0.1467,"lift":1.818,"n":15}},"XLM":{"vol":0.004153,"slope":0.000587,"pos":0.2097,"buckets":{"down_t0":0.4939,"down_t1":0.4771,"down_t2":0.4791,"up_t0":0.4697,"up_t1":0.495,"up_t2":0.4901},"bt":0.5458,"btN":240,"sn4":{"hit":0.2857,"base":0.1372,"lift":2.083,"n":14}},"XRP":{"vol":0.005107,"slope":0.000593,"pos":0.5334,"buckets":{"down_t0":0.5087,"down_t1":0.4901,"down_t2":0.5118,"up_t0":0.4369,"up_t1":0.501,"up_t2":0.4895},"bt":0.5083,"btN":240,"sn4":{"hit":0.2308,"base":0.1674,"lift":1.379,"n":13}}};
+const SNIPE_PARAMS = {"squeeze_window_bars":6,"squeeze_pct_max":0.2,"pressure_min_z":1.0,"shock_mult":2.5,"vol_z_min":1.5,"move_multiple":1.5,"adverse_multiple":0.75};
+const ORDER = ["BTC","ETH","SOL","XRP","DOGE","ADA","LINK","AVAX","DOT","LTC","BCH","NEAR","UNI","ATOM","XLM","ETC","FIL","HBAR","SUI","PEPE"];
+const CB = "https://api.exchange.coinbase.com";
+const AUTH = "https://auth.rivaleclipse.dev";
+const LS_SEL = "ph.sel.v1", LS_LEN = "ph.len.v1", LS_SCORE = "ph.score.v1", LS_LEARN = "ph.learn.v1";
+const $ = s => document.querySelector(s);
+
+function clamp(x, a, b){ return Math.min(b, Math.max(a, x)); }
+function mean(a){ return a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0; }
+function stdev(a){ if (a.length < 2) return 0; const m = mean(a); return Math.sqrt(a.reduce((s, v) => s + (v - m) * (v - m), 0) / (a.length - 1)); }
+function normCdf(z){
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const poly = t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+  const p = 1 - Math.exp(-z * z / 2) / Math.sqrt(2 * Math.PI) * poly;
+  return z >= 0 ? p : 1 - p;
+}
+function dp(p){ return p >= 100 ? 2 : p >= 1 ? 3 : p >= 0.01 ? 5 : 7; }
+function fmtPrice(p){
+  if (p == null || !isFinite(p)) return "—";
+  const v = p >= 1000 ? p.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2}) : p.toFixed(dp(p));
+  return "$" + v;
+}
+function fmtPct(x, signed){
+  if (x == null || !isFinite(x)) return "—";
+  const s = (x * 100).toFixed(2) + "%";
+  return signed && x > 0 ? "+" + s : s;
+}
+function fmtClock(ms){
+  if (ms < 0) ms = 0;
+  const s = Math.ceil(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+  const mm = String(m).padStart(2, "0"), sss = String(ss).padStart(2, "0");
+  return h > 0 ? h + ":" + mm + ":" + sss : mm + ":" + sss;
+}
+async function fetchJSON(url){
+  try { const r = await fetch(url, {cache: "no-store"}); if (!r.ok) return null; return await r.json(); }
+  catch (e) { return null; }
+}
+function lsGet(k, dflt){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : dflt; } catch (e) { return dflt; } }
+function lsSet(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+
+const S = {
+  lenMin: lsGet(LS_LEN, 15),
+  selected: [],
+  coins: {},
+  cycle: {active: false, closeAt: 0},
+  score: lsGet(LS_SCORE, {}),
+  learn: lsGet(LS_LEARN, {}),
+  loopN: 0
+};
+
+const LS_ZOOM = "ph.zoom.v1", LS_FC30 = "ph.fc30.v1";
+function coinState(sym){
+  if (!S.coins[sym]) S.coins[sym] = {
+    price: null, closesH: [], volsH: [], closes15: [], closes1: [], ticks: [],
+    feat: {volH: null, ret24: null, ret7d: null},
+    trend: null, swings: null, fcMu: 0, fcHorizonH: 0.5,
+    snipe: null, line: null, lineSet: false, lineMode: "abs", lineOff: 0, lineMoved: false,
+    flips: 0, dispSide: null, dispP: null, dwellSide: null, dwellCount: 0, dragging: false,
+    zoom: lsGet(LS_ZOOM, {})[sym] || "live",
+    fc30on: !!lsGet(LS_FC30, {})[sym],
+    lastCall: null, lastPred: null, els: {}
+  };
+  return S.coins[sym];
+}
+function setZoom(sym, z){
+  const cs = coinState(sym);
+  cs.zoom = z;
+  const m = lsGet(LS_ZOOM, {}); m[sym] = z; lsSet(LS_ZOOM, m);
+  if (cs.els.zoombtns) cs.els.zoombtns.forEach(b => b.classList.toggle("on", b.dataset.zoom === z));
+  drawSpark(sym);
+}
+function setFC30(sym, on){
+  const cs = coinState(sym);
+  cs.fc30on = on;
+  const m = lsGet(LS_FC30, {}); m[sym] = on; lsSet(LS_FC30, m);
+  applyFC30(sym);
+  drawSpark(sym);
+}
+function applyFC30(sym){
+  const cs = coinState(sym);
+  if (!cs.els.fc30wrap) return;
+  cs.els.fc30wrap.hidden = !cs.fc30on;
+  cs.els.charts.classList.toggle("single", !cs.fc30on);
+  cs.els.fc30btn.textContent = "30-day forecast: " + (cs.fc30on ? "on" : "off");
+  if (cs.fc30on) renderFC30Stat(sym);
+}
+
+/* ---------- setup UI ---------- */
+function buildCoinGrid(){
+  const grid = $("#coinGrid");
+  ORDER.forEach(sym => {
+    const lab = document.createElement("label");
+    lab.className = "coin"; lab.id = "coin-" + sym;
+    lab.innerHTML = '<input type="checkbox" value="' + sym + '"><span>' + sym + "</span>";
+    lab.querySelector("input").addEventListener("change", ev => toggleCoin(sym, ev.target.checked, ev.target));
+    grid.appendChild(lab);
+  });
+}
+function toggleCoin(sym, on, box){
+  const idx = S.selected.indexOf(sym);
+  if (on && idx < 0){
+    if (S.selected.length >= 6){
+      if (box) box.checked = false;
+      $("#selCount").textContent = "Max 6 — uncheck one first.";
+      return;
+    }
+    S.selected.push(sym);
+  }
+  if (!on && idx >= 0) S.selected.splice(idx, 1);
+  document.getElementById("coin-" + sym).classList.toggle("on", on);
+  $("#selCount").textContent = S.selected.length + " / 6 selected";
+  lsSet(LS_SEL, S.selected);
+  if (on){ addCard(sym); loadCoin(sym); }
+  else { removeCard(sym); }
+}
+function setLen(min, fromCustom){
+  S.lenMin = clamp(Math.round(min) || 15, 1, 240);
+  lsSet(LS_LEN, S.lenMin);
+  document.querySelectorAll("#lenChips .chip").forEach(c => c.classList.toggle("on", +c.dataset.min === S.lenMin));
+  if (!fromCustom) $("#lenCustom").value = "";
+  S.selected.forEach(sym => {
+    const c = S.coins[sym];
+    if (c && c.els.trend){ computeTrend(sym); computeForecast(sym); renderTrend(sym); drawSpark(sym); }
+  });
+  if (S.cycle.active) startCycle();
+}
+document.querySelectorAll("#lenChips .chip").forEach(c => c.addEventListener("click", () => setLen(+c.dataset.min, false)));
+$("#lenCustom").addEventListener("change", ev => { const v = parseInt(ev.target.value, 10); if (v >= 1) setLen(v, true); });
+
+/* ---------- cards ---------- */
+function addCard(sym){
+  const cs = coinState(sym);
+  const el = document.createElement("article");
+  el.className = "wcard"; el.id = "card-" + sym;
+  el.innerHTML =
+    '<div class="wtop"><h3>' + sym + '</h3><span class="chg">24h —</span></div>' +
+    '<div class="price">—</div>' +
+    '<div class="readouts"><span class="ro">Line <b class="ro-line">—</b></span><span class="ro">Current <b class="ro-cur">—</b></span><span class="ro-dist">—</span></div>' +
+    '<div class="livewrap"><canvas class="spark" width="1040" height="300"></canvas><div class="pill" hidden></div></div>' +
+    '<div class="zoomrow"><div class="zoomseg">' +
+    '<button type="button" data-zoom="live">Live</button><button type="button" data-zoom="5">5M</button><button type="button" data-zoom="15">15M</button><button type="button" data-zoom="30">30M</button>' +
+    '</div><div class="past"></div></div>' +
+    '<div class="charts single"><div><div class="chartlbl">Estimate — forecast</div><canvas class="fc" width="520" height="220"></canvas></div>' +
+    '<div class="fc30wrap" hidden><div class="chartlbl">Estimate — 30-day forecast</div><canvas class="fc30" width="520" height="220"></canvas><div class="fc30stat"></div></div></div>' +
+    '<div class="row" style="margin-top:6px"><button class="fc30btn snap" type="button">30-day forecast: off</button></div>' +
+    '<div class="regime">Loading 6 months of pattern stats…</div>' +
+    '<div class="trend"></div>' +
+    '<div class="swline"></div>' +
+    '<div class="snipe" hidden></div>' +
+    '<div class="pred"><div class="call noedge">NO CYCLE RUNNING</div><div class="conf">Set your line, then press Start — every call is for the close vs your line, never for right now.</div><div class="pbar"><div style="width:0%"></div></div></div>' +
+    '<div class="line-ctl"><label>Over / under line <span class="slider-val"></span></label>' +
+    '<input type="range" class="line-slider" min="-10" max="10" step="0.1" value="0">' +
+    '<div class="stops"><span>-10%</span><span>-5%</span><span><b>0%</b></span><span>+5%</span><span>+10%</span></div>' +
+    '<div class="row" style="margin-top:6px"><input type="number" class="line-num" step="any" placeholder="Exact line price"> <button class="snap" type="button">snap to price</button></div>' +
+    '<div class="legend">Slider = the line\'s offset from the live price — a slider-set line rides the ticks at that offset. The number box sets an exact price and can go past ±10% (the slider then pins at the end and the readout shows the true offset).</div>' +
+    '<div class="linemoved" hidden></div></div>' +
+    '<div class="flashmsg"></div>' +
+    '<div class="rec"></div>' +
+    '<div class="learnline"></div>' +
+    '<div class="pooline"></div>' +
+    '<div class="gateline"></div>';
+  $("#cards").appendChild(el);
+  cs.els = {
+    root: el, chg: el.querySelector(".chg"), price: el.querySelector(".price"),
+    spark: el.querySelector(".spark"), fc: el.querySelector(".fc"), regime: el.querySelector(".regime"),
+    trend: el.querySelector(".trend"), swline: el.querySelector(".swline"),
+    snipe: el.querySelector(".snipe"), pred: el.querySelector(".pred"),
+    call: el.querySelector(".pred .call"), conf: el.querySelector(".pred .conf"),
+    pbar: el.querySelector(".pbar > div"), num: el.querySelector(".line-num"),
+    slider: el.querySelector(".line-slider"), flash: el.querySelector(".flashmsg"),
+    sval: el.querySelector(".slider-val"), lmoved: el.querySelector(".linemoved"),
+    rec: el.querySelector(".rec"), learn: el.querySelector(".learnline"),
+    pool: el.querySelector(".pooline"), gate: el.querySelector(".gateline"),
+    roLine: el.querySelector(".ro-line"), roCur: el.querySelector(".ro-cur"),
+    roDist: el.querySelector(".ro-dist"), pill: el.querySelector(".pill"),
+    past: el.querySelector(".past"), charts: el.querySelector(".charts"),
+    fc30wrap: el.querySelector(".fc30wrap"), fc30: el.querySelector(".fc30"),
+    fc30stat: el.querySelector(".fc30stat"), fc30btn: el.querySelector(".fc30btn"),
+    zoombtns: el.querySelectorAll(".zoomseg button")
+  };
+  cs.els.zoombtns.forEach(b => {
+    b.classList.toggle("on", b.dataset.zoom === cs.zoom);
+    b.addEventListener("click", () => setZoom(sym, b.dataset.zoom));
+  });
+  cs.els.fc30btn.addEventListener("click", () => setFC30(sym, !cs.fc30on));
+  applyFC30(sym);
+  cs.els.slider.addEventListener("input", () => {
+    let off = parseFloat(cs.els.slider.value);
+    if (!isFinite(off) || !cs.price) return;
+    if (Math.abs(off) <= 0.2){ off = 0; cs.els.slider.value = 0; }   // soft detent at 0
+    setLineOffset(sym, off);
+  });
+  cs.els.slider.addEventListener("pointerdown", () => { cs.dragging = true; });
+  cs.els.slider.addEventListener("pointerup", () => { cs.dragging = false; });
+  cs.els.slider.addEventListener("change", () => { cs.dragging = false; });
+  cs.els.num.addEventListener("change", () => { const v = parseFloat(cs.els.num.value); if (isFinite(v) && v > 0) setLine(sym, v); });
+  el.querySelector(".snap").addEventListener("click", () => { if (cs.price) setLine(sym, cs.price); });
+  renderRec(sym);
+  renderLearn(sym);
+  updateLineUI(sym);
+}
+function removeCard(sym){
+  const el = document.getElementById("card-" + sym);
+  if (el) el.remove();
+  delete S.coins[sym];
+}
+function fmtOff(off){ return (off > 0 ? "+" : "") + off.toFixed(1) + "%"; }
+function updateLineUI(sym){
+  // O(1): slider position (never while the user is dragging it), the
+  // exact-price entry (never while it has focus), and the offset/line
+  // readout. Called from the slider handler, setLine, and the price tick.
+  const cs = coinState(sym);
+  if (!cs.els.slider) return;
+  const off = cs.price && cs.line ? (cs.line / cs.price - 1) * 100 : 0;
+  const pinned = Math.abs(off) > 10;
+  if (!cs.dragging) cs.els.slider.value = clamp(off, -10, 10);
+  cs.els.slider.classList.toggle("pinned", pinned);
+  if (document.activeElement !== cs.els.num) cs.els.num.value = cs.line ? cs.line.toFixed(dp(cs.line)) : "";
+  cs.els.sval.innerHTML = 'offset <span class="off">' + fmtOff(off) + "</span> · line " + fmtPrice(cs.line) +
+    (pinned ? " (past slider range)" : "");
+  cs.els.lmoved.hidden = !cs.lineMoved;
+  if (cs.lineMoved) cs.els.lmoved.textContent = "Line moved mid-cycle — the score judges the call against the line at the close.";
+  renderReadouts(sym);
+}
+function noteLineChange(sym){
+  // A mid-cycle line move changes what the current prediction means. The
+  // move is flagged on the cycle's record (lineMoved), the stored
+  // prediction is rescored against the new line, and the flip counter
+  // absorbs any side change the move caused — scoring stays honest
+  // about what was predicted against what.
+  const cs = coinState(sym);
+  if (!S.cycle.active || cs.lineMoved) return;
+  cs.lineMoved = true;
+  if (cs.lastPred && cs.price){
+    const T = Math.max(1, (S.cycle.closeAt - Date.now()) / 1000);
+    const sigT = liveSigma(sym) * Math.sqrt(T / 3600);
+    const z = (Math.log(cs.price / cs.line) + cs.lastPred.driftTotal) / sigT;
+    const pRaw = normCdf(z);
+    cs.lastPred = {p: applyCalib(sym, pRaw), pRaw: pRaw, z: z, sigmaT: sigT,
+                   driftTotal: cs.lastPred.driftTotal, driftRaw: cs.lastPred.driftRaw,
+                   lineMoved: true};
+    if (cs.lastCall){
+      const p = cs.lastPred.p;
+      if (Math.abs(p - 0.5) < bandFor(sym)) { cs.lastCall = null; cs.flips++; }
+      else {
+        const side = p > 0.5 ? "over" : "under";
+        if (side !== cs.lastCall.side) cs.flips++;
+        cs.lastCall = {side: side, p: p};
+      }
+    }
+  }
+  if (S.cycle.active) predict(sym);
+}
+function setLine(sym, v, fromSlider){
+  const cs = coinState(sym);
+  const had = cs.lineSet, prev = cs._lastLine;
+  cs.line = v; cs.lineSet = true;
+  if (!fromSlider){ cs.lineMode = "abs"; cs.lineOff = cs.price ? (v / cs.price - 1) * 100 : 0; }
+  cs._lastLine = v;
+  if (had && prev != null && Math.abs(v - prev) > 1e-9) noteLineChange(sym);
+  updateLineUI(sym);
+  if (cs.els.trend){ computeTrend(sym); renderTrend(sym); }
+  drawSpark(sym);
+}
+function setLineOffset(sym, off){
+  // Slider path: the line becomes an offset that rides the live price.
+  const cs = coinState(sym);
+  if (!cs.price) return;
+  cs.lineMode = "off"; cs.lineOff = off;
+  setLine(sym, cs.price * (1 + off / 100), true);
+}
+
+/* ---------- data + features ---------- */
+async function loadCoin(sym){
+  const cs = coinState(sym);
+  const [h, m15, m1] = await Promise.all([
+    fetchJSON(CB + "/products/" + sym + "-USD/candles?granularity=3600"),
+    fetchJSON(CB + "/products/" + sym + "-USD/candles?granularity=900"),
+    fetchJSON(CB + "/products/" + sym + "-USD/candles?granularity=60")
+  ]);
+  if (Array.isArray(h) && h.length > 30){
+    const rows = h.slice().reverse(); // ascending
+    cs.closesH = rows.map(r => r[4]);
+    cs.volsH = rows.map(r => r[5]);
+    computeFeatures(sym);
+    computeSnipe(sym);
+    drawSpark(sym);
+    const M = MODELS[sym];
+    cs.els.regime.textContent =
+      "6-mo regime: " + (M.slope >= 0 ? "upward" : "downward") + " drift " + fmtPct(M.slope, true) + "/day · range position " +
+      Math.round(M.pos * 100) + "% · base model held-out record " + (M.bt * 100).toFixed(1) + "% (n=" + M.btN + ")";
+    if (!cs.lineSet && cs.closesH.length) setLine(sym, cs.closesH[cs.closesH.length - 1]);
+  } else if (cs.els.regime) {
+    cs.els.regime.innerHTML = '<span class="err">Candle feed hiccup — retrying on the next refresh.</span>';
+  }
+  if (Array.isArray(m15) && m15.length > 10){
+    cs.closes15 = m15.slice().reverse().map(r => r[4]);
+    drawSpark(sym);
+  }
+  if (Array.isArray(m1) && m1.length > 30){
+    cs.closes1 = m1.slice().reverse().map(r => r[4]);
+  }
+  computeAnalysis(sym);
+  fcCheckpoint(sym);
+}
+function computeFeatures(sym){
+  const cs = coinState(sym), c = cs.closesH, n = c.length;
+  const lr = [];
+  for (let i = 1; i < n; i++) lr.push(Math.log(c[i] / c[i - 1]));
+  cs.feat.volH = stdev(lr.slice(-168)) || MODELS[sym].vol;
+  // Realized vol over the last few hours of hourly candles — liveSigma()
+  // blends this into the model's base sigma so probabilities track the
+  // market as it is now, not just the 6-month base rate.
+  cs.feat.volRecent = lr.length >= 3 ? stdev(lr.slice(-6)) : null;
+  cs.feat.ret24 = n > 24 ? c[n - 1] / c[n - 25] - 1 : null;
+  cs.feat.ret7d = n > 168 ? c[n - 1] / c[n - 169] - 1 : null;
+}
+function computeSnipe(sym){
+  // Hourly squeeze/shock exactly as calibrated (SNIPE.md): the only config
+  // that beat its base rate, read on a ~4h window.
+  const cs = coinState(sym), c = cs.closesH, v = cs.volsH, n = c.length;
+  const P = SNIPE_PARAMS, W = P.squeeze_window_bars;
+  cs.snipe = null;
+  if (n < 80) return;
+  const logc = c.map(x => Math.log(x));
+  const lr = []; for (let i = 1; i < n; i++) lr.push(logc[i] - logc[i - 1]);
+  const sigmaBar = stdev(lr.slice(-24));
+  if (!(sigmaBar > 0)) return;
+  const winVol = [];
+  for (let j = W; j <= lr.length; j++) winVol.push(stdev(lr.slice(j - W, j)));
+  const cur = winVol[winVol.length - 1], past = winVol.slice(0, -1);
+  if (past.length < 40) return;
+  const sqPct = past.filter(x => x <= cur).length / past.length;
+  const pz = (logc[n - 1] - logc[n - 1 - W]) / (sigmaBar * Math.sqrt(W));
+  const sz = lr[lr.length - 1] / sigmaBar;
+  const vPast = v.slice(0, -1), vMean = mean(vPast), vSd = stdev(vPast);
+  const vz = vSd > 0 ? (v[n - 1] - vMean) / vSd : 0;
+  const viaSq = sqPct <= P.squeeze_pct_max && Math.abs(pz) >= P.pressure_min_z;
+  const viaSh = Math.abs(sz) >= P.shock_mult && vz >= P.vol_z_min;
+  if (!viaSq && !viaSh) return;
+  let strength = 0;
+  if (viaSq) strength = Math.max(strength, Math.min(1, 0.5 * (1 - sqPct / P.squeeze_pct_max) + 0.5 * Math.min(1, Math.abs(pz) / (2 * P.pressure_min_z))));
+  if (viaSh) strength = Math.max(strength, Math.min(1, (0.7 * Math.abs(sz) / P.shock_mult + 0.3 * vz / P.vol_z_min) / 2));
+  cs.snipe = {dir: viaSh ? (sz > 0 ? "up" : "down") : (pz > 0 ? "up" : "down"), strength: strength, via: viaSh ? "shock" : "squeeze"};
+  const M = MODELS[sym];
+  cs.els.snipe.hidden = false;
+  cs.els.snipe.innerHTML = "⚡ SNIPE — big move brewing: likely " + (cs.snipe.dir === "up" ? "JUMP" : "PLUMMET") +
+    " over the next ~4h · strength " + Math.round(strength * 100) + "%" +
+    '<div style="font-weight:400;font-size:12px;margin-top:3px">Hourly ' + cs.snipe.via + " setup — a ~4h watch, not a call on this cycle's close. Held-out on " + sym +
+    ": flagged hit " + (M.sn4.hit * 100).toFixed(0) + "% vs " + (M.sn4.base * 100).toFixed(0) + "% base · " + M.sn4.lift.toFixed(2) + "x lift (n=" + M.sn4.n + ")</div>";
+}
+function chartScale(sym){
+  const cs = coinState(sym);
+  const data = cs.closes15.length > 10 ? cs.closes15.slice(-96) : cs.closesH.slice(-48);
+  let lo = Infinity, hi = -Infinity;
+  data.forEach(p => { if (p < lo) lo = p; if (p > hi) hi = p; });
+  if (!isFinite(lo)) { const a = cs.price || 1; lo = a * 0.99; hi = a * 1.01; }
+  if (cs.line){ lo = Math.min(lo, cs.line); hi = Math.max(hi, cs.line); }
+  const anchor = cs.price || data[data.length - 1] || lo;
+  const volH = liveSigma(sym), hz = cs.fcHorizonH || 0.5;
+  const sigEnd = volH * Math.sqrt(hz);
+  lo = Math.min(lo, anchor * Math.exp(cs.fcMu * hz - sigEnd));
+  hi = Math.max(hi, anchor * Math.exp(cs.fcMu * hz + sigEnd));
+  const pad = (hi - lo) * 0.05 || hi * 0.01;
+  return {lo: lo - pad, hi: hi + pad, data: data, anchor: anchor};
+}
+/* ---------- WEB4 live chart: tight zoom windows, coin color,
+   gradient fill, glowing head dot, dashed line with edge chevron,
+   right-edge price labels. Windows end now; the y-axis scales
+   tightly to JUST the visible stretch on every zoom. Live frames
+   only the tick tail (<= ~60s): full-strength near the head dot,
+   easing back along its length; stale ticks are called out on the
+   chart instead of being stretched to fill the frame. */
+const COIN_COLORS = {BTC: "#f7931a", ETH: "#8a9cff", SOL: "#9945ff", XRP: "#4db2ff", DOGE: "#d3b755",
+  ADA: "#4a7dd4", LINK: "#5b83e6", AVAX: "#ff6b6b", DOT: "#ff4d9d", LTC: "#a5b8d3", BCH: "#8dc351",
+  NEAR: "#2ee6a8", UNI: "#ff5ca8", ATOM: "#b7bcd4", XLM: "#9d6bff", ETC: "#3ddc97", FIL: "#4da2ff",
+  HBAR: "#b388ff", SUI: "#6cb8ff", PEPE: "#69c24a"};
+const ZOOM_MS = {live: 60000, "5": 300000, "15": 900000, "30": 1800000};
+function seriesForZoom(sym){
+  const cs = coinState(sym), now = Date.now(), winMs = ZOOM_MS[cs.zoom] || 900000;
+  const pts = [];
+  if (cs.zoom !== "live"){
+    // Base layer: 1-minute candle closes (each stamped at its candle
+    // end). Already loaded by loadCoin — zooming never refetches.
+    const c1 = cs.closes1, n = c1.length;
+    if (n > 1){
+      const endT = Math.floor(now / 60000) * 60000 + 60000;
+      for (let i = 0; i < n; i++){
+        const t = endT - (n - 1 - i) * 60000;
+        if (t >= now - winMs) pts.push({t: t, p: c1[i]});
+      }
+    }
+  }
+  for (const tk of cs.ticks) if (tk.t >= now - winMs) pts.push(tk);
+  pts.sort((a, b) => a.t - b.t);
+  return pts;
+}
+function drawLive(sym){
+  const cs = coinState(sym), cv = cs.els.spark;
+  if (!cv) return;
+  const ctx = cv.getContext("2d"), W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  const col = COIN_COLORS[sym] || "#c9a227";
+  const now = Date.now(), winMs = ZOOM_MS[cs.zoom] || 900000, t0 = now - winMs;
+  const RP = 96;   // right-edge label room
+  const pts = seriesForZoom(sym);
+  ctx.font = "22px system-ui";
+  if (pts.length < 2){
+    ctx.fillStyle = "#9a96ad";
+    const msg = cs.zoom === "live"
+      ? (cs.ticks.length ? "Live tail forming — ticks landing…" : "Waiting for ticks…")
+      : "Loading candles…";
+    ctx.fillText(msg, 18, H / 2);
+    return;
+  }
+  let lo = Infinity, hi = -Infinity;
+  pts.forEach(q => { if (q.p < lo) lo = q.p; if (q.p > hi) hi = q.p; });
+  const pad = Math.max((hi - lo) * 0.12, hi * 0.0004);
+  lo -= pad; hi += pad;
+  const X = t => 8 + (t - t0) / winMs * (W - RP - 16);
+  const Y = p => H - 16 - (p - lo) / (hi - lo) * (H - 32);
+  // faint frame lines at top/bottom of the tight range
+  ctx.strokeStyle = "rgba(154,150,173,0.16)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, Y(hi - pad)); ctx.lineTo(W - RP, Y(hi - pad)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, Y(lo + pad)); ctx.lineTo(W - RP, Y(lo + pad)); ctx.stroke();
+  const tracePath = () => {
+    ctx.moveTo(X(pts[0].t), Y(pts[0].p));
+    for (let i = 1; i < pts.length - 1; i++){
+      const xc = (X(pts[i].t) + X(pts[i + 1].t)) / 2, yc = (Y(pts[i].p) + Y(pts[i + 1].p)) / 2;
+      ctx.quadraticCurveTo(X(pts[i].t), Y(pts[i].p), xc, yc);
+    }
+    ctx.lineTo(X(pts[pts.length - 1].t), Y(pts[pts.length - 1].p));
+  };
+  // gradient fill beneath
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, col + "59"); grad.addColorStop(1, col + "00");
+  ctx.beginPath(); tracePath();
+  ctx.lineTo(X(pts[pts.length - 1].t), H - 2); ctx.lineTo(X(pts[0].t), H - 2); ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
+  // the line itself
+  if (cs.zoom === "live" && pts.length >= 3){
+    // Tail: full strength at the head, easing back along its length.
+    for (let i = 1; i < pts.length; i++){
+      const f = i / (pts.length - 1);
+      ctx.beginPath();
+      ctx.moveTo(X(pts[i - 1].t), Y(pts[i - 1].p));
+      ctx.lineTo(X(pts[i].t), Y(pts[i].p));
+      ctx.strokeStyle = col; ctx.globalAlpha = 0.22 + 0.78 * Math.pow(f, 1.4);
+      ctx.lineWidth = 1.4 + 1.8 * f; ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  } else {
+    ctx.beginPath(); tracePath();
+    ctx.strokeStyle = col; ctx.lineWidth = 2.6; ctx.stroke();
+  }
+  // the user's line: dashed across when in frame, edge chevron when not
+  if (cs.line){
+    if (cs.line >= lo && cs.line <= hi){
+      const yy = Y(cs.line);
+      ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(W - RP, yy);
+      ctx.strokeStyle = "#c9a227"; ctx.setLineDash([7, 5]); ctx.lineWidth = 1.6; ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = "#f3d27a"; ctx.font = "bold 19px system-ui";
+      ctx.fillText("LINE " + fmtPrice(cs.line), 10, yy - 8);
+    } else {
+      const above = cs.line > hi, yy = above ? 14 : H - 14;
+      ctx.fillStyle = "#c9a227";
+      ctx.beginPath();
+      if (above){ ctx.moveTo(W - RP - 26, yy + 12); ctx.lineTo(W - RP - 14, yy); ctx.lineTo(W - RP - 2, yy + 12); }
+      else { ctx.moveTo(W - RP - 26, yy - 12); ctx.lineTo(W - RP - 14, yy); ctx.lineTo(W - RP - 2, yy - 12); }
+      ctx.closePath(); ctx.fill();
+      ctx.font = "bold 19px system-ui"; ctx.fillStyle = "#f3d27a";
+      ctx.fillText("Line " + fmtPrice(cs.line), W - RP - 30 - ctx.measureText("Line " + fmtPrice(cs.line)).width, above ? yy + 16 : yy - 2);
+    }
+  }
+  // right-edge labels: range top/bottom + current at the head
+  ctx.font = "20px system-ui"; ctx.fillStyle = "#9a96ad";
+  ctx.fillText(fmtPrice(hi - pad), W - RP + 10, 24);
+  ctx.fillText(fmtPrice(lo + pad), W - RP + 10, H - 8);
+  const head = pts[pts.length - 1];
+  ctx.font = "bold 21px system-ui"; ctx.fillStyle = col;
+  ctx.fillText(fmtPrice(head.p), W - RP + 10, clamp(Y(head.p) + 7, 24, H - 8));
+  // glowing head dot
+  const hx = X(head.t), hy = Y(head.p);
+  ctx.save();
+  ctx.shadowColor = col; ctx.shadowBlur = 22;
+  ctx.beginPath(); ctx.arc(hx, hy, 7, 0, 7); ctx.fillStyle = col; ctx.fill();
+  ctx.restore();
+  ctx.beginPath(); ctx.arc(hx, hy, 3, 0, 7); ctx.fillStyle = "#fff"; ctx.fill();
+  // Live honesty: stale tail gets said out loud, not padded over.
+  if (cs.zoom === "live"){
+    const ageS = Math.round((now - head.t) / 1000);
+    if (ageS >= 10){
+      ctx.font = "20px system-ui"; ctx.fillStyle = "#ffd257";
+      ctx.fillText("Ticks stale — last update " + ageS + "s ago", 14, 28);
+    }
+  }
+}
+function drawForecast(sym, sc){
+  const cs = coinState(sym), cv = cs.els.fc;
+  if (!cv) return;
+  const ctx = cv.getContext("2d"), W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  const volH = liveSigma(sym), hz = cs.fcHorizonH || 0.5, mu = cs.fcMu || 0;
+  const y = p => H - 14 - (p - sc.lo) / (sc.hi - sc.lo) * (H - 26);
+  const N = 48;
+  const path = [];
+  for (let k = 0; k <= N; k++){
+    const t = hz * k / N, x = 4 + (W - 8) * k / N, m = mu * t, s = volH * Math.sqrt(Math.max(t, 1e-9));
+    path.push({x: x, mean: sc.anchor * Math.exp(m), u68: sc.anchor * Math.exp(m + s),
+               l68: sc.anchor * Math.exp(m - s), u95: sc.anchor * Math.exp(m + 1.96 * s),
+               l95: sc.anchor * Math.exp(m - 1.96 * s)});
+  }
+  const band = (up, dn, fill) => {
+    ctx.beginPath();
+    path.forEach((q, i) => i ? ctx.lineTo(q.x, y(q[up])) : ctx.moveTo(q.x, y(q[up])));
+    for (let i = N; i >= 0; i--) ctx.lineTo(path[i].x, y(path[i][dn]));
+    ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
+  };
+  band("u95", "l95", "rgba(124,92,255,0.10)");
+  band("u68", "l68", "rgba(201,162,39,0.13)");
+  ctx.beginPath();
+  path.forEach((q, i) => i ? ctx.lineTo(q.x, y(q.mean)) : ctx.moveTo(q.x, y(q.mean)));
+  ctx.strokeStyle = "#f3d27a"; ctx.lineWidth = 2; ctx.stroke();
+  if (cs.line){
+    const yy = y(cs.line);
+    if (yy > 0 && yy < H){
+      ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(W, yy);
+      ctx.strokeStyle = "#c9a227"; ctx.setLineDash([6, 4]); ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+  if (S.cycle.active && S.cycle.closeAt > Date.now()){
+    const frac = (S.cycle.closeAt - Date.now()) / 3600000 / hz;
+    if (frac > 0 && frac < 1){
+      const x = 4 + (W - 8) * frac;
+      ctx.beginPath(); ctx.moveTo(x, 8); ctx.lineTo(x, H - 14);
+      ctx.strokeStyle = "rgba(236,234,244,0.45)"; ctx.setLineDash([3, 4]); ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = "#9a96ad"; ctx.font = "15px system-ui"; ctx.fillText("close", x + 4, 22);
+    }
+  }
+  // Expected swing times: ticks on the time axis + dots on the mean path.
+  const med = cs.swings && cs.swings.medDurMin;
+  if (med && med > 0){
+    ctx.fillStyle = "#7c5cff"; ctx.strokeStyle = "#7c5cff";
+    for (let tt = med; tt < hz * 60; tt += med){
+      const f = tt / (hz * 60), x = 4 + (W - 8) * f;
+      ctx.beginPath(); ctx.moveTo(x, H - 14); ctx.lineTo(x, H - 6); ctx.lineWidth = 2; ctx.stroke();
+      const t = tt / 60, m = mu * t, s = volH * Math.sqrt(t);
+      const py = y(sc.anchor * Math.exp(m));
+      ctx.beginPath(); ctx.arc(x, py, 3, 0, 7); ctx.fill();
+    }
+  }
+  ctx.beginPath(); ctx.arc(4, y(sc.anchor), 3.5, 0, 7); ctx.fillStyle = "#eceaf4"; ctx.fill();
+  ctx.fillStyle = "#9a96ad"; ctx.font = "bold 16px system-ui";
+  ctx.fillText("ESTIMATE", 8, 20);
+  ctx.font = "15px system-ui";
+  ctx.fillText("+" + (hz >= 1 ? hz.toFixed(hz % 1 ? 1 : 0) + "h" : Math.round(hz * 60) + "m"), W - 44, H - 18);
+  ctx.fillText(fmtPrice(sc.hi), 5, 38);
+  ctx.fillText(fmtPrice(sc.lo), 5, H - 18);
+}
+function drawSpark(sym){
+  const cs = coinState(sym);
+  if (!cs.els.spark) return;
+  drawLive(sym);
+  const sc = chartScale(sym);
+  drawForecast(sym, sc);
+  if (cs.fc30on) drawFC30(sym);
+}
+function renderReadouts(sym){
+  const cs = coinState(sym);
+  if (!cs.els.roLine) return;
+  cs.els.roLine.textContent = cs.line ? fmtPrice(cs.line) : "—";
+  cs.els.roCur.textContent = cs.price ? fmtPrice(cs.price) : "—";
+  if (cs.price && cs.line){
+    const d = cs.price - cs.line, up = d >= 0;
+    cs.els.roDist.textContent = (up ? "▲ " : "▼ ") + fmtPrice(Math.abs(d)).slice(0) + " " + (up ? "above" : "below") + " the line";
+    cs.els.roDist.className = "ro-dist " + (up ? "up" : "down");
+  } else {
+    cs.els.roDist.textContent = "—";
+    cs.els.roDist.className = "ro-dist";
+  }
+}
+function renderPast(sym){
+  const cs = coinState(sym);
+  if (!cs.els.past) return;
+  const log = learnState(sym).log.slice(-8);
+  if (!log.length){ cs.els.past.innerHTML = '<span class="pastlbl">Past</span><span class="tothers">no scored closes yet</span>'; return; }
+  cs.els.past.innerHTML = '<span class="pastlbl">Past</span>' + log.map(e =>
+    '<span class="' + (e.over ? "up" : "down") + '" title="closed ' + (e.over ? "OVER" : "UNDER") + " the line at " + fmtPrice(e.close) + '">' +
+    (e.over ? "▲" : "▼") + "</span>").join("");
+}
+
+/* ---------- WEB4: 30-day forecast + self-grading checkpoints ------
+   30 daily expected-path points from the same tuned brain: regime
+   slope + learned component drift + rise/fall asymmetry, anchored
+   at the current price, cones from the coin's daily vol. Each day
+   the 1-day-ahead point projected yesterday is graded against the
+   actual price; the error accumulates per coin, is displayed under
+   the graph, and nudges the forecast drift (fc.bias) through the
+   same tuning loop — a coin whose checkpoints keep missing gets its
+   drift corrected instead of repeating the miss. */
+function forecast30(sym){
+  const cs = coinState(sym), M = MODELS[sym];
+  const anchor = cs.price || (cs.closesH.length ? cs.closesH[cs.closesH.length - 1] : null);
+  if (!anchor) return null;
+  const W = effW(sym), volH = cs.feat.volH || M.vol;
+  const tw = cs.trend ? cs.trend.w1h : null;
+  const slopePH = tw ? tw.logret / tw.winHours : 0;
+  let asym = 0;
+  const s = cs.swings && (cs.swings.h24 || cs.swings.d7);
+  if (s && (s.avgUp + s.avgDn) > 0) asym = (s.avgUp - s.avgDn) / (s.avgUp + s.avgDn);
+  const dailyVol = volH * Math.sqrt(24);
+  let muDay = 24 * (W.mom * 0.5 * slopePH + W.reg * (M.slope / 24) + W.asym * asym * volH);
+  muDay = clamp(muDay, -3 * dailyVol, 3 * dailyVol);
+  const L = learnState(sym);
+  const bias = (L.fc && L.fc.bias) || 0;
+  muDay += bias;
+  const pts = [];
+  for (let d = 0; d <= 30; d++){
+    const m = muDay * d, sd = dailyVol * Math.sqrt(d);
+    pts.push({d: d, mean: anchor * Math.exp(m), u68: anchor * Math.exp(m + sd),
+              l68: anchor * Math.exp(m - sd), u95: anchor * Math.exp(m + 1.96 * sd),
+              l95: anchor * Math.exp(m - 1.96 * sd)});
+  }
+  return {pts: pts, anchor: anchor, muDay: muDay, dailyVol: dailyVol, bias: bias,
+          medDurMin: (cs.swings && cs.swings.medDurMin) || null};
+}
+function drawFC30(sym){
+  const cs = coinState(sym), cv = cs.els.fc30;
+  if (!cv || !cs.fc30on) return;
+  const f = forecast30(sym);
+  const ctx = cv.getContext("2d"), Wd = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, Wd, H);
+  ctx.fillStyle = "#9a96ad"; ctx.font = "17px system-ui";
+  if (!f){ ctx.fillText("Not enough data yet.", 8, 24); return; }
+  let lo = Infinity, hi = -Infinity;
+  f.pts.forEach(q => { lo = Math.min(lo, q.l95); hi = Math.max(hi, q.u95); });
+  lo = Math.min(lo, cs.line || lo); hi = Math.max(hi, cs.line || hi);
+  const pad = (hi - lo) * 0.05 || hi * 0.01; lo -= pad; hi += pad;
+  const X = d => 4 + (Wd - 8) * d / 30;
+  const Y = p => H - 14 - (p - lo) / (hi - lo) * (H - 26);
+  const band = (up, dn, fill) => {
+    ctx.beginPath();
+    f.pts.forEach((q, i) => i ? ctx.lineTo(X(q.d), Y(q[up])) : ctx.moveTo(X(q.d), Y(q[up])));
+    for (let i = f.pts.length - 1; i >= 0; i--) ctx.lineTo(X(f.pts[i].d), Y(f.pts[i][dn]));
+    ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
+  };
+  band("u95", "l95", "rgba(124,92,255,0.10)");
+  band("u68", "l68", "rgba(201,162,39,0.13)");
+  ctx.beginPath();
+  f.pts.forEach((q, i) => i ? ctx.lineTo(X(q.d), Y(q.mean)) : ctx.moveTo(X(q.d), Y(q.mean)));
+  ctx.strokeStyle = "#f3d27a"; ctx.lineWidth = 2; ctx.stroke();
+  if (cs.line){
+    const yy = Y(cs.line);
+    if (yy > 0 && yy < H){
+      ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(Wd, yy);
+      ctx.strokeStyle = "#c9a227"; ctx.setLineDash([6, 4]); ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+  const med = f.medDurMin;
+  if (med && med > 0){
+    ctx.fillStyle = "#7c5cff"; ctx.strokeStyle = "#7c5cff";
+    for (let tt = med; tt < 30 * 1440; tt += med){
+      const d = tt / 1440, x = X(d);
+      ctx.beginPath(); ctx.moveTo(x, H - 14); ctx.lineTo(x, H - 6); ctx.lineWidth = 2; ctx.stroke();
+      const q = f.pts[Math.round(d)];
+      if (q){ ctx.beginPath(); ctx.arc(x, Y(q.mean), 3, 0, 7); ctx.fill(); }
+    }
+  }
+  ctx.beginPath(); ctx.arc(X(0), Y(f.anchor), 3.5, 0, 7); ctx.fillStyle = "#eceaf4"; ctx.fill();
+  ctx.fillStyle = "#9a96ad"; ctx.font = "bold 15px system-ui";
+  ctx.fillText("ESTIMATE — 30-day forecast", 8, 20);
+  ctx.font = "15px system-ui";
+  ctx.fillText("+30d", Wd - 40, H - 18);
+  ctx.fillText(fmtPrice(hi), 5, 38);
+  ctx.fillText(fmtPrice(lo), 5, H - 18);
+}
+function renderFC30Stat(sym){
+  const cs = coinState(sym);
+  if (!cs.els.fc30stat) return;
+  const L = learnState(sym), ck = (L.fc && L.fc.ck) || [];
+  let txt;
+  if (!ck.length){
+    txt = "Checkpoints: none yet — the first 1-day-ahead projection grades tomorrow, and its error starts correcting this forecast's drift.";
+  } else {
+    const avg = mean(ck.map(c => Math.abs(c.errPct)));
+    txt = "Checkpoints: " + ck.length + " · avg error " + (avg * 100).toFixed(1) + "%" +
+      (Math.abs(L.fc.bias) > 0.0001 ? " · drift corrected " + (L.fc.bias * 100).toFixed(2) + "%/day by checkpoint misses" : "");
+  }
+  if (cs.els.fc30stat.textContent !== txt) cs.els.fc30stat.textContent = txt;
+}
+function fcCheckpoint(sym){
+  const cs = coinState(sym);
+  const actual = cs.price || (cs.closesH.length ? cs.closesH[cs.closesH.length - 1] : null);
+  if (!actual) return;
+  const L = learnState(sym);
+  const today = new Date().toISOString().slice(0, 10);
+  const pend = L.fc.pending;
+  if (pend && pend.date <= today){
+    const errPct = actual / pend.proj - 1;
+    L.fc.ck.push({date: pend.date, proj: pend.proj, actual: actual, errPct: errPct});
+    if (L.fc.ck.length > 60) L.fc.ck.splice(0, L.fc.ck.length - 60);
+    L.fc.bias = clamp((L.fc.bias || 0) + 0.3 * Math.log(actual / pend.proj), -0.01, 0.01);
+    L.fc.pending = null;
+    saveLearn();
+  }
+  if (!L.fc.pending){
+    const f = forecast30(sym);
+    if (f){
+      const tmr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+      L.fc.pending = {date: tmr, proj: f.pts[1].mean, anchor: f.anchor};
+      saveLearn();
+    }
+  }
+  renderFC30Stat(sym);
+}
+
+/* ---------- trend state, swings, forecast, learning ---------- */
+function median(a){
+  if (!a.length) return 0;
+  const s = a.slice().sort((x, y) => x - y), m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+function matchedWin(){ return S.lenMin < 15 ? "w15" : S.lenMin <= 60 ? "w1h" : "w4h"; }
+const WIN_LABEL = {w15: "15m", w1h: "1h", w4h: "4h"};
+
+// Pick the finest candle series that actually spans the window.
+function seriesFor(cs, winHours){
+  const cands = [[cs.closes1, 1 / 60], [cs.closes15, 0.25], [cs.closesH, 1]];
+  for (const [arr, bh] of cands){
+    if (arr && arr.length > 2 && (arr.length - 1) * bh >= winHours) return {arr: arr, barHours: bh};
+  }
+  return null;
+}
+function medRange(arr, bars){
+  const rs = [];
+  const step = Math.max(1, Math.floor(bars / 2));
+  for (let i = 0; i + bars < arr.length; i += step){
+    const seg = arr.slice(i, i + bars + 1);
+    rs.push((Math.max.apply(null, seg) - Math.min.apply(null, seg)) / seg[bars]);
+  }
+  return rs.length ? median(rs) : 0;
+}
+function trendFor(cs, winHours, volH){
+  const sf = seriesFor(cs, winHours);
+  if (!sf || !(volH > 0)) return null;
+  const arr = sf.arr, bars = Math.max(1, Math.round(winHours / sf.barHours));
+  if (arr.length < bars + 1) return null;
+  const seg = arr.slice(-(bars + 1));
+  const start = seg[0], end = seg[bars];
+  const logret = Math.log(end / start);
+  const sigW = volH * Math.sqrt(winHours);           // one window-sigma, in log terms
+  const stdSlope = logret / sigW;
+  let decel = false;
+  if (bars >= 4){
+    const mid = seg[Math.floor(bars / 2)];
+    const s1 = Math.log(mid / start), s2 = Math.log(end / mid);
+    if (s1 > 0 && s2 < 0.4 * s1) decel = true;
+    if (s1 < 0 && s2 > 0.4 * s1) decel = true;
+  }
+  const range = (Math.max.apply(null, seg) - Math.min.apply(null, seg)) / end;
+  const typical = medRange(arr, bars) || range;
+  const useLine = cs.lineSet && cs.line;
+  const ref = useLine ? cs.line : mean(seg);
+  let crossings = 0;
+  for (let i = 0; i < bars; i++) if ((seg[i] - ref) * (seg[i + 1] - ref) < 0) crossings++;
+  const distRef = Math.abs(end - ref) / (sigW * end);
+  let state;
+  if (crossings >= 2 && distRef < 0.25) state = useLine ? "RIDING THE LINE" : "RIDING THE AVERAGE";
+  else if (stdSlope >= 0.5 && !decel) state = "JUMPING";
+  else if (stdSlope <= -0.5 && !decel) state = "DROPPING";
+  else if (Math.abs(stdSlope) < 0.25 && range < 0.6 * typical) state = "LEVELING OUT";
+  else if (stdSlope >= 0.35) state = "JUMPING";
+  else if (stdSlope <= -0.35) state = "DROPPING";
+  else state = "LEVELING OUT";
+  return {state: state, stdSlope: stdSlope, logret: logret, winHours: winHours, decel: decel};
+}
+function computeTrend(sym){
+  const cs = coinState(sym), volH = cs.feat.volH || MODELS[sym].vol;
+  cs.trend = {
+    w15: trendFor(cs, 0.25, volH),
+    w1h: trendFor(cs, 1, volH),
+    w4h: trendFor(cs, 4, volH)
+  };
+}
+function renderTrend(sym){
+  const cs = coinState(sym);
+  if (!cs.els.trend) return;
+  if (!cs.trend){ cs.els.trend.innerHTML = '<span class="tothers">Trend: warming up…</span>'; return; }
+  const mw = matchedWin(), t = cs.trend[mw];
+  if (!t){ cs.els.trend.innerHTML = '<span class="tothers">Trend: not enough candle history yet.</span>'; return; }
+  const cls = t.state === "JUMPING" ? "jump" : t.state === "DROPPING" ? "drop" : t.state.indexOf("RIDING") === 0 ? "ride" : "level";
+  const others = ["w15", "w1h", "w4h"].filter(k => k !== mw)
+    .map(k => WIN_LABEL[k] + " " + (cs.trend[k] ? cs.trend[k].state : "—")).join(" · ");
+  cs.els.trend.innerHTML = '<span class="tchip ' + cls + '">' + WIN_LABEL[mw] + " · " + t.state + "</span>" +
+    '<span class="tothers">' + others + (t.decel && (t.state === "JUMPING" || t.state === "DROPPING") ? " · easing" : "") + "</span>";
+}
+function zigzagSwings(closes, barHours, theta){
+  // Pivot-to-pivot swings; a reversal of theta (fraction) confirms a pivot.
+  const pivots = [{i: 0, p: closes[0]}];
+  let dirn = 0, top = closes[0], topI = 0, bot = closes[0], botI = 0;
+  let last = {i: 0, p: closes[0]};
+  for (let i = 1; i < closes.length; i++){
+    const p = closes[i];
+    if (dirn >= 0){
+      if (p > top){ top = p; topI = i; }
+      if (top > 0 && (top - p) / top >= theta && topI > last.i){
+        pivots.push({i: topI, p: top}); last = {i: topI, p: top};
+        dirn = -1; bot = p; botI = i; continue;
+      }
+    }
+    if (dirn <= 0){
+      if (p < bot){ bot = p; botI = i; }
+      if (bot > 0 && (p - bot) / bot >= theta && botI > last.i){
+        pivots.push({i: botI, p: bot}); last = {i: botI, p: bot};
+        dirn = 1; top = p; topI = i;
+      }
+    }
+  }
+  const swings = [];
+  for (let k = 1; k < pivots.length; k++){
+    const a = pivots[k - 1], b = pivots[k];
+    swings.push({pct: b.p / a.p - 1, durMin: (b.i - a.i) * barHours * 60});
+  }
+  return swings;
+}
+function swingStats(closes, barHours, theta){
+  if (!closes || closes.length < 8) return null;
+  const sw = zigzagSwings(closes, barHours, theta);
+  if (sw.length < 2) return null;
+  const ups = sw.filter(s => s.pct > 0), dns = sw.filter(s => s.pct < 0);
+  const avgUp = ups.length ? mean(ups.map(s => s.pct)) : 0;
+  const avgDn = dns.length ? mean(dns.map(s => -s.pct)) : 0;
+  return {
+    avgUp: avgUp, avgDn: avgDn, nUp: ups.length, nDn: dns.length, n: sw.length,
+    ratio: avgDn > 0 ? avgUp / avgDn : null,
+    medDurMin: median(sw.map(s => s.durMin))
+  };
+}
+function computeSwings(sym){
+  const cs = coinState(sym), volH = cs.feat.volH || MODELS[sym].vol;
+  const theta = 0.5 * volH;
+  const s24 = cs.closes15.length >= 40 ? swingStats(cs.closes15.slice(-96), 0.25, theta)
+                                        : swingStats(cs.closesH.slice(-24), 1, theta);
+  const s7d = swingStats(cs.closesH.slice(-168), 1, theta);
+  cs.swings = {h24: s24, d7: s7d, medDurMin: (s24 && s24.medDurMin) || (s7d && s7d.medDurMin) || null};
+}
+function renderSwings(sym){
+  const cs = coinState(sym);
+  if (!cs.els.swline) return;
+  const sw = cs.swings;
+  if (!sw || (!sw.h24 && !sw.d7)){ cs.els.swline.textContent = ""; return; }
+  const line = (s, lbl) => "Avg rise +" + (s.avgUp * 100).toFixed(2) + "% vs avg fall -" + (s.avgDn * 100).toFixed(2) +
+    "% · ratio " + (s.ratio != null ? s.ratio.toFixed(2) : "—") + " (" + lbl + ", " + s.n + " swings)";
+  const parts = [];
+  if (sw.h24) parts.push(line(sw.h24, "24h"));
+  if (sw.d7) parts.push(line(sw.d7, "7d"));
+  cs.els.swline.innerHTML = parts.join("<br>");
+}
+function computeForecast(sym){
+  const cs = coinState(sym), M = MODELS[sym], volH = cs.feat.volH || M.vol;
+  const tw = cs.trend ? cs.trend[matchedWin()] : null;
+  const slopePH = tw ? tw.logret / tw.winHours : 0;                 // log drift per hour
+  const regimePH = M.slope / 24;
+  let asym = 0;
+  const s = cs.swings && (cs.swings.h24 || cs.swings.d7);
+  if (s && (s.avgUp + s.avgDn) > 0) asym = (s.avgUp - s.avgDn) / (s.avgUp + s.avgDn);
+  // Same three drift components the barrier math uses, with the same
+  // learned per-component weights — one brain, consistently tuned.
+  // Momentum carries the trend-state slope; asymmetry (in [-1,1]) scales
+  // to at most +-1 sigma/hour of drift before its weight applies.
+  const W = effW(sym);
+  let mu = W.mom * (0.5 * slopePH) + W.reg * regimePH + W.asym * (asym * volH);
+  mu = clamp(mu, -1.2 * volH, 1.2 * volH);
+  cs.fcMu = mu;
+  cs.fcHorizonH = clamp(2 * S.lenMin / 60, 0.5, 8);
+}
+function computeAnalysis(sym){
+  const cs = coinState(sym);
+  if (!cs.closesH.length && !cs.closes15.length && !cs.closes1.length) return;
+  computeTrend(sym);
+  computeSwings(sym);
+  computeForecast(sym);
+  renderTrend(sym);
+  renderSwings(sym);
+  drawSpark(sym);
+}
+
+/* ---------- self-adjustment (learning, flaw-aware) ----------
+   Per coin, persisted in localStorage (ph.learn.v2):
+   - w.mom / w.reg / w.asym: separate bounded weights (clamp 0..2) for
+     the momentum, regime-slope and rise/fall-asymmetry drift
+     components. Each scored close steps only the components that were
+     in the prediction, along their own log-loss gradients, so a
+     component that has been hurting is down-weighted toward 0
+     without dragging the others down with it.
+   - buckets: per-confidence-bucket counts + hits (buckets in
+     |p-50| points: 7-15, 15-25, 25+). With >= 10 scored in a bucket,
+     realized accuracy below the bucket's claimed confidence shrinks
+     that bucket's probabilities toward 50 by the measured gap
+     (factor clamp 0.5..1.05) — "confident and wrong" gets fixed
+     specifically, not globally.
+   - flip control: within-cycle side flips of the displayed call are
+     counted per coin. A rolling flip rate over the last 20 scored
+     cycles above 1.5/cycle widens that coin's NO EDGE band (from
+     +/-7 up to +/-12 points) and enables call-dwell: the displayed
+     call changes side only when the new side leads the old by >= 4
+     points on 2 consecutive ticks. The band relaxes as flips recover.
+   - sigma: the barrier math and the forecast cone use an EMA-style
+     blend of the model's base sigma with the realized vol of the
+     last few hours of candles (liveSigma), so a wilder live market
+     widens probabilities honestly.
+   Every value is printed on the card's Learning line — no invisible
+   tweaks. The v1 store (ph.learn.v1, single drift weight + global
+   calibration) migrates forward: scored history carries over and the
+   old drift weight seeds all three component weights. */
+const LS_LEARN2 = "ph.learn.v2";
+const LS_LEARN3 = "ph.learn.v3";
+const BAND_BASE = 0.07, BAND_MAX = 0.12, FLIP_HI = 1.5;
+function learnState(sym){
+  let L = S.learn[sym];
+  if (!L) L = S.learn[sym] = {w: {mom: 1, reg: 1, asym: 1}, buckets: {}, log: []};
+  if (!L.w) L.w = {mom: 1, reg: 1, asym: 1};
+  if (!L.buckets) L.buckets = {};
+  if (!Array.isArray(L.log)) L.log = [];
+  // WEB4 additions: 30-day forecast self-grading (fc), adopted-fix
+  // adjustments (bucketAdj / bandAdj), and the fix-gate state (gate).
+  if (!L.fc) L.fc = {bias: 0, ck: [], pending: null};
+  if (!L.gate) L.gate = {};
+  if (!L.bucketAdj) L.bucketAdj = {};
+  if (typeof L.bandAdj !== "number") L.bandAdj = 0;
+  return L;
+}
+function migrateLearn(){
+  const v3 = lsGet(LS_LEARN3, null);
+  if (v3 && typeof v3 === "object"){ S.learn = v3; return; }
+  const v2 = lsGet(LS_LEARN2, null);
+  if (v2 && typeof v2 === "object"){
+    S.learn = v2;
+    for (const sym of Object.keys(S.learn)) learnState(sym);   // add WEB4 fields
+    lsSet(LS_LEARN3, S.learn);
+    return;
+  }
+  const v1 = lsGet(LS_LEARN, {});
+  const out = {};
+  for (const sym of Object.keys(v1 || {})){
+    const o = v1[sym] || {};
+    const w0 = clamp(typeof o.w === "number" ? o.w : 1, 0, 2);
+    out[sym] = {w: {mom: w0, reg: w0, asym: w0}, buckets: {}, log: Array.isArray(o.log) ? o.log : []};
+  }
+  S.learn = out;
+  for (const sym of Object.keys(S.learn)) learnState(sym);
+  lsSet(LS_LEARN3, out);
+}
+function saveLearn(){ lsSet(LS_LEARN3, S.learn); }
+function bucketKey(p){
+  const d = Math.abs(p - 0.5) * 100;
+  return d < 15 ? "b1" : d < 25 ? "b2" : "b3";
+}
+const BUCKET_MID = {b1: 0.61, b2: 0.70, b3: 0.85};
+function bucketFactor(L, key){
+  const b = L.buckets[key];
+  let f = 1;
+  if (b && b.n >= 10){
+    const gap = BUCKET_MID[key] - b.hit / b.n;
+    f = gap <= 0 ? 1 : clamp(1 - gap, 0.5, 1.05);
+  }
+  const adj = (L.bucketAdj || {})[key];
+  return adj ? clamp(f * adj, 0.5, 1.05) : f;
+}
+function applyCalib(sym, pRaw){
+  return 0.5 + (pRaw - 0.5) * effBucketFactor(sym, bucketKey(pRaw));
+}
+function flipStats(L){
+  const scored = L.log.slice(-20).filter(e => typeof e.flips === "number");
+  return {cycles: scored.length,
+          rate: scored.length ? scored.reduce((s, e) => s + e.flips, 0) / scored.length : 0};
+}
+function bandFor(sym){
+  const L = learnState(sym), fs = flipStats(L);
+  let band = BAND_BASE;
+  if (fs.cycles >= 5 && fs.rate > FLIP_HI) band = BAND_BASE + (BAND_MAX - BAND_BASE) * clamp((fs.rate - FLIP_HI) / FLIP_HI, 0, 1);
+  return clamp(band + (L.bandAdj || 0), BAND_BASE, BAND_MAX + 0.03);
+}
+function dwellOn(sym){
+  const fs = flipStats(learnState(sym));
+  return fs.cycles >= 5 && fs.rate > FLIP_HI;
+}
+function liveSigma(sym){
+  const cs = coinState(sym), base = MODELS[sym].vol;
+  const feat = cs.feat.volH || base, rec = cs.feat.volRecent;
+  const s = (rec != null && rec > 0) ? 0.65 * feat + 0.35 * rec : feat;
+  return clamp(s, base * 0.4, base * 3);
+}
+
+/* ---------- global learning pool (GLOBAL-SPEC) ----------
+   One shared brain: the auth service pools every user's scored
+   predictions (anonymous aggregates only) and publishes global tuning
+   per coin. Effective tuning here = global blended with this device's
+   own: local weight = min(0.5, own_scored/400) per coin, so a fresh
+   visitor runs ~fully on the crowd and a veteran keeps up to half
+   personal tuning. While a coin's pool is still warming up (< 200
+   pooled scored) the server publishes base params, so blending is a
+   no-op and behavior is exactly the local-only tuning. If the global
+   fetch fails, everything degrades to local-only, unchanged. */
+let GLOBAL_POOL = null, GLOBAL_TOTALS = null;
+async function loadGlobal(){
+  const j = await fetchJSON(AUTH + "/api/perp/global");
+  if (!j || !j.ok || !j.coins) return;
+  GLOBAL_POOL = j.coins; GLOBAL_TOTALS = j.totals || null;
+  S.selected.forEach(sym => { renderLearn(sym); if (S.cycle.active) predict(sym); });
+}
+function globalCoin(sym){
+  const g = GLOBAL_POOL && GLOBAL_POOL[sym];
+  return g && g.evidence === "live" ? g : null;
+}
+function ownScored(sym){ return learnState(sym).log.length; }
+function localWeight(sym){ return Math.min(0.5, ownScored(sym) / 400); }
+function effW(sym){
+  const L = learnState(sym), g = globalCoin(sym);
+  if (!g) return L.w;
+  const lw = localWeight(sym), out = {};
+  for (const k of ["mom", "reg", "asym"]) out[k] = clamp((1 - lw) * g.w[k] + lw * L.w[k], 0, 2);
+  return out;
+}
+function effBucketFactor(sym, key){
+  const lf = bucketFactor(learnState(sym), key), g = globalCoin(sym);
+  if (!g) return lf;
+  const gf = (g.buckets && g.buckets[key]) || 1, lw = localWeight(sym);
+  return clamp(1 + (1 - lw) * (gf - 1) + lw * (lf - 1), 0.5, 1.05);
+}
+function effBand(sym){
+  const g = globalCoin(sym);
+  if (!g) return bandFor(sym);
+  return (1 - localWeight(sym)) * g.band + localWeight(sym) * bandFor(sym);
+}
+function effDwell(sym){
+  const g = globalCoin(sym);
+  return dwellOn(sym) || !!(g && g.dwell && localWeight(sym) < 0.5);
+}
+function renderPool(sym){
+  const cs = coinState(sym);
+  if (!cs.els.pool) return;
+  let txt = "";
+  if (GLOBAL_POOL){
+    const g = GLOBAL_POOL[sym], tot = GLOBAL_TOTALS ? GLOBAL_TOTALS.scored : 0;
+    if (g && g.evidence === "live"){
+      const lw = localWeight(sym);
+      txt = "Global pool: " + tot + " scored across all users · " + sym + " global hit " +
+        (g.hitRate != null ? Math.round(g.hitRate * 100) + "%" : "—") + " (" + g.scored + " scored) · your tuning: " +
+        Math.round((1 - lw) * 100) + "% global / " + Math.round(lw * 100) + "% yours";
+      if (g.fix && g.fix.state === "testing") txt += " · global fix test running (" + g.fix.shadowScored + "/30): " + (g.fix.desc || "");
+      if (g.fix && g.fix.lastEvent) txt += " · " + g.fix.lastEvent;
+    } else if (g) {
+      txt = "Global pool: " + tot + " scored across all users · " + sym + " warming up (" +
+        g.evidenceHave + "/" + g.evidenceNeed + ") — global tuning kicks in at " + g.evidenceNeed;
+    }
+  }
+  if (cs.els.pool.textContent !== txt) cs.els.pool.textContent = txt;
+}
+
+/* ---------- anonymous contributions to the pool ----------
+   Every scored close on this device queues one small record (coin,
+   the probability shown, the call, the outcome, flip count, cycle
+   length, and the per-component gradient contributions). Batches go
+   up on close #5, then every 10 closes, and when the page hides.
+   The server folds them into pooled aggregates only — no raw history,
+   no identifiers. Resetting the scoreboard does NOT clear the queue:
+   already-scored anonymous aggregates are historical facts. */
+const LS_CONTRIB = "ph.contrib.v1";
+function contribState(){ return lsGet(LS_CONTRIB, {queue: [], total: 0}); }
+function saveContrib(st){ lsSet(LS_CONTRIB, st); }
+function queueContribution(sym, cs, closedOver){
+  const lp = cs.lastPred;
+  if (!lp) return;
+  const st = contribState();
+  st.queue.push({coin: sym, p: lp.p, pRaw: lp.pRaw, call: cs.lastCall ? cs.lastCall.side : "none",
+                 outcome: closedOver, flips: cs.flips, lenMin: S.lenMin,
+                 comp: lp.comp || {mom: 0, reg: 0, asym: 0}});
+  st.total++;
+  saveContrib(st);
+  if (st.total === 5 || st.total % 10 === 0) flushContrib(false);
+}
+async function flushContrib(keepalive){
+  const st = contribState();
+  if (!st.queue.length) return;
+  const batch = st.queue.slice(0, 50);
+  try {
+    const r = await fetch(AUTH + "/api/perp/contribute", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({records: batch}), keepalive: !!keepalive
+    });
+    if (!r.ok) return;
+    const j = await r.json().catch(() => null);
+    if (j && j.ok){
+      const cur = contribState();
+      cur.queue.splice(0, batch.length);
+      saveContrib(cur);
+    }
+  } catch (e) { /* offline or blocked: the queue keeps the records */ }
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushContrib(true); });
+window.addEventListener("pagehide", () => flushContrib(true));
+function renderLearn(sym){
+  const cs = coinState(sym);
+  if (!cs.els.learn) return;
+  const L = learnState(sym);
+  let txt;
+  if (!L.log.length){
+    txt = "Learning: no scored closes yet — momentum x1.0 · regime x1.0 · asym x1.0 · band ±7 (base model values)";
+  } else {
+    const calls = L.log.filter(e => e.call !== "none");
+    const corr = calls.filter(e => (e.call === "over") === e.over).length;
+    const last50 = L.log.slice(-50);
+    const brier = mean(last50.map(e => { const q = e.over ? 1 : 0; return (e.p - q) * (e.p - q); }));
+    let ceNum = 0, ceDen = 0;
+    for (const k of Object.keys(BUCKET_MID)){
+      const b = L.buckets[k];
+      if (b && b.n >= 4){ ceNum += Math.abs(BUCKET_MID[k] - b.hit / b.n) * b.n; ceDen += b.n; }
+    }
+    const ce = ceDen ? ceNum / ceDen : null;
+    const fs = flipStats(L), band = effBand(sym), dw = effDwell(sym);
+    const tweaks = [];
+    if (Math.abs(L.w.mom - 1) >= 0.05 || Math.abs(L.w.reg - 1) >= 0.05 || Math.abs(L.w.asym - 1) >= 0.05) tweaks.push("weights retuned");
+    if (Object.keys(L.buckets).some(k => bucketFactor(L, k) < 0.99)) tweaks.push("hot confidence buckets shrunk");
+    if (band > BAND_BASE + 0.001) tweaks.push("band widened");
+    if (dw) tweaks.push("dwell on");
+    const sigLive = cs.feat.volRecent != null && cs.feat.volH &&
+      Math.abs(liveSigma(sym) - cs.feat.volH) > 0.02 * cs.feat.volH;
+    if (sigLive) tweaks.push("sigma live");
+    txt = "Learning: " + L.log.length + " scored · " + (calls.length ? Math.round(corr / calls.length * 100) + "% hit" : "no calls yet") +
+      " · Brier " + brier.toFixed(2) +
+      " · flips " + (fs.cycles ? fs.rate.toFixed(1) : "—") + "/cycle" +
+      (ce != null ? " · calib err " + Math.round(ce * 100) + "pt" : "") +
+      " · momentum x" + L.w.mom.toFixed(1) + " · regime x" + L.w.reg.toFixed(1) + " · asym x" + L.w.asym.toFixed(1) +
+      " · band ±" + Math.round(band * 100) + (dw ? " (dwell on)" : "") +
+      (tweaks.length ? " · active: " + tweaks.join(", ") : "");
+  }
+  if (cs.els.learn.textContent !== txt) cs.els.learn.textContent = txt;
+  renderPool(sym);
+  renderGate(sym);
+}
+function updateLearn(sym, lp, closedOver){
+  const L = learnState(sym);
+  const y = closedOver ? 1 : 0, p = clamp(lp.p, 0.02, 0.98);
+  // Per-component log-loss gradient steps. The prediction's z is
+  // (log price/line distance + sum_k w_k * raw_k) / sigmaT, so
+  // d(log-loss)/dw_k runs through the chain rule on the total drift;
+  // each weight moves only by its own component's share, clamped 0..2.
+  // p graded here is the calibrated probability the user actually saw.
+  if (lp.driftRaw && lp.sigmaT > 0){
+    const f = bucketFactor(L, bucketKey(lp.pRaw != null ? lp.pRaw : lp.p));
+    const phi = Math.exp(-lp.z * lp.z / 2) / Math.sqrt(2 * Math.PI);
+    const grad = (p - y) / (p * (1 - p)) * f * phi;   // d log-loss / d z
+    // Per-component gradient contributions, stashed for the anonymous
+    // global-pool record (the server folds exactly these).
+    lp.comp = {mom: grad * (lp.driftRaw.mom / lp.sigmaT),
+               reg: grad * (lp.driftRaw.reg / lp.sigmaT),
+               asym: grad * (lp.driftRaw.asym / lp.sigmaT)};
+    for (const k of ["mom", "reg", "asym"]){
+      L.w[k] = clamp(L.w[k] - 0.25 * grad * (lp.driftRaw[k] / lp.sigmaT), 0, 2);
+    }
+  } else {
+    lp.comp = {mom: 0, reg: 0, asym: 0};
+  }
+  // Per-bucket calibration record: which confidence bucket this call
+  // fell in, and whether the called side won.
+  const bk = bucketKey(lp.pRaw != null ? lp.pRaw : lp.p);
+  const b = L.buckets[bk] || (L.buckets[bk] = {n: 0, hit: 0});
+  b.n++;
+  if ((lp.p > 0.5) === closedOver) b.hit++;
+}
+
+/* ---------- WEB4 fix gate (local layer) ----------
+   Same champion-vs-challenger discipline as the server pool, run on
+   this device's own closes. The WEB3 micro-steps above keep tuning
+   continuously; STRUCTURAL fixes (bucket recalibration, weight caps,
+   band changes) must first shadow-score >= 30 closes in parallel
+   and beat the champion by a real margin (Brier -0.01 or hit +3pts)
+   before they apply. An adopted fix is watched for the next 30
+   scored closes — a >= 5pt success drop auto-reverts to the
+   snapshot and that fix goes on a 48h cooldown. Champion snapshot +
+   challenger state persist in the v3 store. Note: the shadow call
+   is computed from the prediction's stored internals with the local
+   bucket factor; the champion's shown probability is the
+   global-blended one — the comparison is same-close, same-stream. */
+const GATE_COOLDOWN_MS = 48 * 3600 * 1000;
+function detectLocalFix(sym){
+  const L = learnState(sym);
+  for (const k of ["b1", "b2", "b3"]){
+    const b = L.buckets[k];
+    if (b && b.n >= 20 && bucketFactor(L, k) <= 0.88)
+      return {kind: "bucket", key: k, mult: 0.92, sig: "bucket:" + k,
+              desc: "bucket " + k + " calibration x0.92 (confident bucket running hot)"};
+  }
+  for (const k of ["mom", "reg", "asym"]){
+    if (Math.abs(L.w[k] - 1) >= 0.4){
+      const nv = 1 + (L.w[k] - 1) * 0.75;
+      return {kind: "weight", key: k, value: nv, sig: "weight:" + k,
+              desc: "weight " + k + " " + L.w[k].toFixed(2) + " → " + nv.toFixed(2) + " (pulled toward base)"};
+    }
+  }
+  const fs = flipStats(L);
+  if (fs.cycles >= 10 && fs.rate > FLIP_HI)
+    return {kind: "band", add: 0.02, sig: "band", desc: "no-edge band +2pts (flip-flop control)"};
+  return null;
+}
+function shadowPred(sym, chal){
+  const cs = coinState(sym), lp = cs.lastPred, L = learnState(sym);
+  if (!lp || lp.driftRaw == null || !(lp.sigmaT > 0)) return null;
+  let p = lp.p, pRaw = lp.pRaw;
+  if (chal.kind === "weight"){
+    pRaw = normCdf(lp.z + (chal.value - L.w[chal.key]) * lp.driftRaw[chal.key] / lp.sigmaT);
+    p = 0.5 + (pRaw - 0.5) * bucketFactor(L, bucketKey(pRaw));
+  } else if (chal.kind === "bucket"){
+    p = 0.5 + (lp.pRaw - 0.5) * clamp(bucketFactor(L, bucketKey(lp.pRaw)) * chal.mult, 0.5, 1.05);
+  }
+  const band = bandFor(sym) + (chal.kind === "band" ? chal.add : 0);
+  return {p: p, call: Math.abs(p - 0.5) >= band ? (p > 0.5 ? "over" : "under") : "none"};
+}
+function scoreGate(sym, closedOver){
+  const cs = coinState(sym), L = learnState(sym), G = L.gate, lp = cs.lastPred;
+  if (!lp) return;
+  const y = closedOver ? 1 : 0, hadWatch = !!G.watch;
+  if (G.challenger){
+    const sh = shadowPred(sym, G.challenger);
+    if (sh){
+      const c = G.challenger;
+      c.scored++;
+      c.brier += (sh.p - y) * (sh.p - y);
+      c.champBrier += (lp.p - y) * (lp.p - y);
+      if (sh.call !== "none"){ c.calls++; if ((sh.call === "over") === closedOver) c.hits++; }
+      if (cs.lastCall){ c.champCalls++; if ((cs.lastCall.side === "over") === closedOver) c.champHits++; }
+      if (c.scored >= 30){
+        const cb = c.brier / c.scored, hb = c.champBrier / c.scored;
+        const chHit = c.calls >= 10 ? c.hits / c.calls : null;
+        const hpHit = c.champCalls >= 10 ? c.champHits / c.champCalls : null;
+        if (cb <= hb - 0.01 || (chHit != null && hpHit != null && chHit >= hpHit + 0.03)){
+          if (c.kind === "bucket") L.bucketAdj[c.key] = ((L.bucketAdj || {})[c.key] || 1) * c.mult;
+          if (c.kind === "weight") L.w[c.key] = c.value;
+          if (c.kind === "band") L.bandAdj = (L.bandAdj || 0) + c.add;
+          G.watch = {desc: c.desc, sig: c.sig, scored: 0, calls: 0, hits: 0, baseHits: c.champHits, baseCalls: c.champCalls};
+          G.lastEvent = "Fix adopted: " + c.desc + " — shadow " + c.scored + " scored" +
+            (hpHit != null && chHit != null ? ", " + Math.round(chHit * 100) + "% vs " + Math.round(hpHit * 100) + "%"
+                                            : ", Brier " + cb.toFixed(3) + " vs " + hb.toFixed(3));
+          G.challenger = null;
+        } else if (cb >= hb + 0.01 || c.scored >= 80){
+          G.lastEvent = "Fix rejected in shadow test: " + c.desc + " — " + c.scored + " scored, Brier " + cb.toFixed(3) + " vs champion " + hb.toFixed(3);
+          G.rejectedSig = c.sig; G.cooldownUntil = Date.now() + GATE_COOLDOWN_MS;
+          G.challenger = null;
+        }
+      }
+    }
+  }
+  if (G.watch && hadWatch){
+    const w = G.watch;
+    w.scored++;
+    if (cs.lastCall){ w.calls++; if ((cs.lastCall.side === "over") === closedOver) w.hits++; }
+    if (w.scored >= 30){
+      const cur = w.calls >= 10 ? w.hits / w.calls : null;
+      const base = w.baseCalls >= 10 ? w.baseHits / w.baseCalls : null;
+      if (cur != null && base != null && cur <= base - 0.05){
+        const snap = G.champion;
+        if (snap){ L.w = {...snap.w}; L.bucketAdj = {...(snap.bucketAdj || {})}; L.bandAdj = snap.bandAdj || 0; }
+        G.lastEvent = "Fix reverted — success rate dropped after adoption (" + Math.round(cur * 100) + "% vs " + Math.round(base * 100) + "% baseline): " + w.desc;
+        G.rejectedSig = w.sig; G.cooldownUntil = Date.now() + GATE_COOLDOWN_MS;
+      } else {
+        G.lastEvent = "Fix confirmed: " + w.desc + " — held up over " + w.scored + " post-adoption closes";
+      }
+      G.watch = null;
+    }
+  }
+  if (!G.challenger && !G.watch && Date.now() >= (G.cooldownUntil || 0)){
+    const cand = detectLocalFix(sym);
+    if (cand && cand.sig !== G.rejectedSig){
+      G.champion = {w: {...L.w}, bucketAdj: {...(L.bucketAdj || {})}, bandAdj: L.bandAdj || 0};
+      G.challenger = {...cand, scored: 0, brier: 0, champBrier: 0, calls: 0, hits: 0, champCalls: 0, champHits: 0};
+      G.lastEvent = "Fix proposed: " + cand.desc + " — shadow testing";
+    }
+  }
+  saveLearn();
+}
+function renderGate(sym){
+  const cs = coinState(sym);
+  if (!cs.els.gate) return;
+  const G = learnState(sym).gate || {};
+  const parts = [];
+  if (G.challenger) parts.push("Fix test running: " + G.challenger.desc + " — shadow " + G.challenger.scored + "/30 scored");
+  if (G.watch) parts.push("Fix watch: " + G.watch.desc + " — " + G.watch.scored + "/30 post-adoption closes");
+  if (G.lastEvent) parts.push(G.lastEvent);
+  const txt = parts.join(" · ");
+  if (cs.els.gate.textContent !== txt) cs.els.gate.textContent = txt;
+}
+
+/* ---------- prediction ---------- */
+function predict(sym){
+  const cs = coinState(sym);
+  if (!S.cycle.active || !cs.price || !cs.line) return;
+  const M = MODELS[sym], f = cs.feat;
+  const T = Math.max(1, (S.cycle.closeAt - Date.now()) / 1000), Th = T / 3600;
+  const sigmaT = liveSigma(sym) * Math.sqrt(Th);
+  // Three drift components (per hour, log-return units), each carrying
+  // its own learned weight — the same components the forecast graph
+  // uses, so the whole page tunes as one brain.
+  const baseVol = f.volH || M.vol;
+  let momC = 0;
+  if (f.ret24 != null) momC += 0.45 * (f.ret24 / 24);
+  if (f.ret7d != null) momC += 0.25 * (f.ret7d / 168);
+  const trend = (f.ret24 != null && f.ret24 < 0) ? "down" : "up";
+  const ratio = baseVol / M.vol, terc = ratio < 0.8 ? "t0" : ratio < 1.3 ? "t1" : "t2";
+  const bucketUp = (M.buckets || {})[trend + "_" + terc];
+  if (bucketUp != null) momC += (bucketUp - 0.5) * 2 * baseVol * 0.6;
+  const tw = cs.trend ? cs.trend[matchedWin()] : null;
+  if (tw) momC += 0.5 * (tw.logret / tw.winHours);
+  const regC = 0.30 * (M.slope / 24);
+  let asymC = 0;
+  const sws = cs.swings && (cs.swings.h24 || cs.swings.d7);
+  if (sws && (sws.avgUp + sws.avgDn) > 0) asymC = (sws.avgUp - sws.avgDn) / (sws.avgUp + sws.avgDn) * baseVol;
+  const W = effW(sym);
+  const driftRaw = {mom: momC * Th, reg: regC * Th, asym: asymC * Th};
+  const driftTotal = W.mom * driftRaw.mom + W.reg * driftRaw.reg + W.asym * driftRaw.asym;
+  const z = (Math.log(cs.price / cs.line) + driftTotal) / sigmaT;
+  const pRaw = normCdf(z);
+  const p = applyCalib(sym, pRaw);
+  cs.lastPred = {p: p, pRaw: pRaw, z: z, sigmaT: sigmaT, driftTotal: driftTotal,
+                 driftRaw: driftRaw,
+                 lineMoved: !!(cs.lastPred && cs.lastPred.lineMoved) || cs.lineMoved};
+  // The displayed call: judged against this coin's own NO EDGE band
+  // (widened when its calls have been flip-flopping), with call-dwell
+  // so a jumpy call can't strobe — a side change must lead the old
+  // side by >= 4 points on 2 consecutive ticks while dwell is on.
+  const band = effBand(sym);
+  let side = null;
+  if (Math.abs(p - 0.5) >= band) side = p > 0.5 ? "over" : "under";
+  if (side && cs.dispSide && side !== cs.dispSide){
+    cs.flips++;
+    if (effDwell(sym)){
+      const adv = Math.abs(p - 0.5) - Math.abs((cs.dispP != null ? cs.dispP : 0.5) - 0.5);
+      if (cs.dwellSide === side) cs.dwellCount++; else { cs.dwellSide = side; cs.dwellCount = 1; }
+      if (!(adv >= 0.04 && cs.dwellCount >= 2)) side = cs.dispSide;   // hold the old call
+    }
+  }
+  if (!side){
+    cs.dwellSide = null; cs.dwellCount = 0;
+    cs.lastCall = null;
+    cs.els.call.textContent = "NO EDGE"; cs.els.call.className = "call noedge";
+    cs.els.conf.textContent = "Probability sits at " + (p * 100).toFixed(0) + "% — inside this coin's ±" + Math.round(band * 100) +
+      "pt no-call band around 50" + (band > BAND_BASE + 0.001 ? " (widened: its recent calls kept flip-flopping)" : "") +
+      ". The model won't dress up a coin flip.";
+    cs.els.pbar.style.width = "0%";
+  } else {
+    const over = side === "over", conf = over ? p : 1 - p;
+    if (cs.dispSide === side) cs.dispP = p;
+    cs.lastCall = {side: side, p: p};
+    cs.els.call.textContent = (over ? "OVER " : "UNDER ") + (conf * 100).toFixed(0) + "%";
+    cs.els.call.className = "call " + (over ? "over" : "under");
+    cs.els.conf.textContent = "Chance the close lands over your line: " + (p * 100).toFixed(1) + "% · closes in " + fmtClock(S.cycle.closeAt - Date.now());
+    cs.els.pbar.style.width = (conf * 100).toFixed(0) + "%";
+  }
+  if (side) cs.dispSide = side;
+  drawSpark(sym);
+  renderLearn(sym);
+}
+
+/* ---------- cycle ---------- */
+function startCycle(){
+  if (!S.selected.length){
+    $("#cycleStatus").textContent = "Pick at least one crypto first.";
+    return;
+  }
+  const L = S.lenMin * 60000, now = Date.now();
+  S.cycle.closeAt = Math.floor(now / L) * L + L;
+  S.cycle.active = true;
+  $("#startBtn").disabled = true; $("#stopBtn").disabled = false;
+  S.selected.forEach(sym => { const cs = coinState(sym); if (!cs.lineSet && cs.price) setLine(sym, cs.price); predict(sym); });
+  $("#cycleStatus").textContent = "Cycle running — " + S.lenMin + "m perpetuals, aligned to the wall clock. Every call below is for the close vs each coin's line.";
+}
+function stopCycle(){
+  S.cycle.active = false;
+  $("#startBtn").disabled = false; $("#stopBtn").disabled = true;
+  $("#countdown").textContent = "—";
+  $("#cycleStatus").textContent = "Cycle stopped. Prices stay live; press Start to run the next cycle.";
+  S.selected.forEach(sym => {
+    const cs = coinState(sym);
+    cs.els.call.textContent = "NO CYCLE RUNNING"; cs.els.call.className = "call noedge";
+    cs.els.conf.textContent = "Set your line, then press Start — every call is for the close vs your line, never for right now.";
+    cs.els.pbar.style.width = "0%";
+    cs.dispSide = null; cs.dispP = null; cs.dwellSide = null; cs.dwellCount = 0;
+    cs.flips = 0; cs.lineMoved = false;
+    updateLineUI(sym);
+  });
+}
+async function scoreCycle(){
+  const L = S.lenMin * 60000;
+  for (const sym of S.selected.slice()){
+    const cs = coinState(sym);
+    const t = await fetchJSON(CB + "/products/" + sym + "-USD/ticker");
+    const final = t && isFinite(+t.price) ? +t.price : cs.price;
+    if (final == null || !cs.line) continue;
+    cs.price = final;
+    const closedOver = final > cs.line;
+    const sc = S.score[sym] || (S.score[sym] = {hit: 0, miss: 0, nocall: 0});
+    let cls, msg;
+    if (!cs.lastCall){
+      sc.nocall++; cls = "";
+      msg = "Closed " + (closedOver ? "OVER" : "UNDER") + " the line at " + fmtPrice(final) + " — no call was on (no edge).";
+    } else {
+      const right = (cs.lastCall.side === "over") === closedOver;
+      if (right) sc.hit++; else sc.miss++;
+      cls = right ? "right" : "wrong";
+      msg = (right ? "RIGHT — " : "WRONG — ") + "called " + cs.lastCall.side.toUpperCase() + ", closed " +
+        (closedOver ? "OVER" : "UNDER") + " the line at " + fmtPrice(final) + ".";
+    }
+    cs.els.flash.textContent = msg; cs.els.flash.className = "flashmsg " + cls;
+    cs.els.root.classList.remove("flash-right", "flash-wrong");
+    if (cls) cs.els.root.classList.add(cls === "right" ? "flash-right" : "flash-wrong");
+    setTimeout(((el, f) => () => { el.classList.remove("flash-right", "flash-wrong"); f.textContent = ""; })(cs.els.root, cs.els.flash), 12000);
+    if (cs.lastPred){
+      const L = learnState(sym);
+      L.log.push({t: Date.now(), p: cs.lastPred.p, call: cs.lastCall ? cs.lastCall.side : "none",
+                  over: closedOver, close: final, line: cs.line, flips: cs.flips,
+                  lineMoved: !!cs.lastPred.lineMoved});
+      if (L.log.length > 300) L.log.splice(0, L.log.length - 300);
+      updateLearn(sym, cs.lastPred, closedOver);
+      saveLearn();
+      queueContribution(sym, cs, closedOver);
+      scoreGate(sym, closedOver);
+      renderGate(sym);
+    }
+    renderRec(sym);
+    renderLearn(sym);
+  }
+  lsSet(LS_SCORE, S.score);
+  renderScore();
+  const now = Date.now();
+  while (S.cycle.closeAt <= now) S.cycle.closeAt += L;
+  S.selected.forEach(sym => {
+    const c = coinState(sym);
+    c.lastCall = null; c.lastPred = null;
+    c.flips = 0; c.lineMoved = false;                    // fresh cycle record
+    c.dispSide = null; c.dispP = null; c.dwellSide = null; c.dwellCount = 0;
+    updateLineUI(sym);
+    predict(sym);
+  });
+}
+function renderRec(sym){
+  const cs = coinState(sym), sc = S.score[sym];
+  renderPast(sym);
+  if (!cs.els.rec) return;
+  cs.els.rec.textContent = sc && (sc.hit + sc.miss + sc.nocall) > 0
+    ? "Page record on " + sym + ": " + sc.hit + " right · " + sc.miss + " wrong · " + sc.nocall + " no-call"
+    : "No closes scored on " + sym + " yet.";
+}
+function renderScore(){
+  const tb = $("#scoreBody");
+  const rows = Object.keys(S.score).filter(s => { const x = S.score[s]; return x.hit + x.miss + x.nocall > 0; });
+  if (!rows.length){ tb.innerHTML = '<tr><td colspan="5" class="note">No closes scored yet.</td></tr>'; return; }
+  tb.innerHTML = rows.sort().map(s => {
+    const x = S.score[s], tot = x.hit + x.miss;
+    return "<tr><td>" + s + "</td><td>" + x.hit + "</td><td>" + x.miss + "</td><td>" + x.nocall + "</td><td>" +
+      (tot ? (x.hit / tot * 100).toFixed(1) + "%" : "—") + "</td></tr>";
+  }).join("");
+}
+$("#startBtn").addEventListener("click", startCycle);
+$("#stopBtn").addEventListener("click", stopCycle);
+$("#resetScore").addEventListener("click", () => {
+  S.score = {}; lsSet(LS_SCORE, {});
+  S.learn = {}; lsSet(LS_LEARN, {}); lsSet(LS_LEARN2, {}); lsSet(LS_LEARN3, {});
+  renderScore(); S.selected.forEach(sym => { renderRec(sym); renderLearn(sym); });
+});
+
+/* ---------- main loop ---------- */
+async function priceTick(){
+  for (const sym of S.selected.slice()){
+    const cs = coinState(sym);
+    const t = await fetchJSON(CB + "/products/" + sym + "-USD/ticker");
+    if (t && isFinite(+t.price)){
+      cs.price = +t.price;
+      cs.ticks.push({t: Date.now(), p: cs.price});
+      if (cs.ticks.length > 700) cs.ticks.splice(0, cs.ticks.length - 700);
+      cs.els.price.textContent = fmtPrice(cs.price);
+      renderReadouts(sym);
+      const c = cs.closesH, n = c.length;
+      if (n > 24){
+        const chg = cs.price / c[n - 25] - 1;
+        cs.els.chg.textContent = "24h " + fmtPct(chg, true);
+        cs.els.chg.style.color = chg >= 0 ? "var(--up)" : "var(--down)";
+      }
+      if (!cs.lineSet) setLine(sym, cs.price);
+      else {
+        if (cs.lineMode === "off"){
+          // A slider-set line rides the live price at its fixed offset.
+          const nl = cs.price * (1 + cs.lineOff / 100);
+          if (Math.abs(nl - cs.line) > 1e-12){ cs.line = nl; cs._lastLine = nl; }
+          updateLineUI(sym);
+        }
+        if (S.cycle.active) predict(sym);
+      }
+      drawSpark(sym);
+    }
+  }
+}
+setInterval(() => {
+  S.loopN++;
+  if (S.cycle.active){
+    $("#countdown").textContent = "Perpetual closes in " + fmtClock(S.cycle.closeAt - Date.now());
+    for (const sym of S.selected){
+      const pill = coinState(sym).els.pill;
+      if (pill){
+        pill.hidden = false;
+        const txt = "Closes in " + fmtClock(S.cycle.closeAt - Date.now());
+        if (pill.textContent !== txt) pill.textContent = txt;
+      }
+    }
+    if (Date.now() >= S.cycle.closeAt) scoreCycle();
+  } else {
+    for (const sym of S.selected){ const pill = coinState(sym).els.pill; if (pill) pill.hidden = true; }
+  }
+  if (S.loopN % 3 === 0 && S.selected.length) priceTick();
+  if (S.loopN % 60 === 0) S.selected.forEach(loadCoin);
+  if (S.loopN % 900 === 0) loadGlobal();
+}, 1000);
+
+/* ---------- odds panel (ODDS-SPEC) ----------
+   The user picks only a coin and a value; the server (the global
+   system itself) answers with OVER/UNDER odds for the closes at
+   5/15/30/45/60 minutes. The value entry mirrors the watch cards:
+   the % slider sets an offset that rides the live price; the number
+   box sets an exact value. Polls every 20s; the numbers are the
+   system's own issued predictions, scored by the server. */
+const ODDS = {coin: "BTC", mode: "off", off: 0, line: null, price: null, closes: {}};
+function oddsLine(){
+  if (ODDS.mode === "abs" && ODDS.line > 0) return ODDS.line;
+  if (ODDS.price > 0) return ODDS.price * (1 + ODDS.off / 100);
+  return null;
+}
+function oddsRenderOff(){
+  const v = $("#oddsOffVal");
+  if (ODDS.mode === "abs") v.textContent = "exact value set — slider takes over if moved";
+  else v.innerHTML = '<span class="off">' + (ODDS.off > 0 ? "+" : "") + ODDS.off.toFixed(1) + "%</span> vs live price → line " +
+    (oddsLine() ? fmtPrice(oddsLine()) : "—");
+}
+async function oddsSeedPrice(){
+  const t = await fetchJSON(CB + "/products/" + ODDS.coin + "-USD/ticker");
+  if (t && isFinite(+t.price)) ODDS.price = +t.price;
+}
+async function refreshOdds(){
+  const line = oddsLine();
+  if (!(line > 0)){ $("#oddsMeta").textContent = "Waiting for a live price to anchor the line…"; return; }
+  const j = await fetchJSON(AUTH + "/api/perp/odds?coin=" + ODDS.coin + "&line=" + encodeURIComponent(line));
+  if (!j || !j.ok){
+    $("#oddsMeta").textContent = "Odds are unavailable right now — the system's market feed didn't answer. Retrying on the next poll.";
+    return;
+  }
+  ODDS.price = j.price;
+  if (ODDS.mode === "off") $("#oddsLine").value = Math.round(oddsLine() * 100) / 100;
+  $("#oddsPrice").textContent = ODDS.coin + " live: " + fmtPrice(j.price) + " · line " + fmtPrice(line);
+  oddsRenderOff();
+  const pct = (p) => (p * 100).toFixed(1) + "%";
+  const HLBL = {5: "5 min", 15: "15 min", 30: "30 min", 45: "45 min", 60: "1 hour"};
+  $("#oddsGrid").innerHTML = [5, 15, 30, 45, 60].map(h => {
+    const hz = j.horizons[h];
+    ODDS.closes[h] = Date.parse(hz.close_at);
+    const cls = hz.call === "OVER" ? "over" : hz.call === "UNDER" ? "under" : "noedge";
+    const st = hz.stats.global, sc = hz.stats.coin;
+    const rec = st.calls ? st.calls + " calls · " + Math.round(st.hitRate * 100) + "% hit (" + st.scored + " scored, all coins)"
+                         : "no scored calls on this horizon yet";
+    const crec = sc.calls ? " · this coin " + Math.round(sc.hitRate * 100) + "% (" + sc.calls + ")" : "";
+    return '<div class="ocard"><div class="oh"><span>' + HLBL[h] + '</span><span data-odds-close="' + h + '"></span></div>' +
+      '<div class="ocall ' + cls + '">' + hz.call + (hz.weak ? ' <span class="weak">· weak horizon</span>' : "") + '</div>' +
+      '<div class="opct">OVER ' + pct(hz.p_over) + ' · UNDER ' + pct(hz.p_under) + '</div>' +
+      '<div class="ostat">Global record: ' + rec + crec + '</div></div>';
+  }).join("");
+  const r = j.record;
+  $("#oddsMeta").textContent =
+    ODDS.coin + " global record: " + r.scored + " scored predictions" +
+    (r.hitRate != null ? " · hit " + Math.round(r.hitRate * 100) + "% on its calls" : "") +
+    (r.evidence !== "live" ? " · pool still warming up — tuning is at base values until 200 scored per coin" : "") +
+    (j.stale ? " · MARKET DATA STALE — calls degraded to NO EDGE" : "");
+  const sn = j.snipes.pooled, snc = j.snipes.coin;
+  $("#oddsSnipe").textContent = sn.called
+    ? "Snipe record (server-tracked, ~4h windows): " + sn.called + " flagged · " + Math.round(sn.hitRate * 100) +
+      "% produced the big move vs " + (sn.baseRate != null ? Math.round(sn.baseRate * 100) + "%" : "—") + " unflagged base (" + sn.baseN + " windows)" +
+      (snc.called ? " · " + ODDS.coin + ": " + snc.called + " flagged, " + Math.round(snc.hitRate * 100) + "%" : "")
+    : "Snipe record: the server is tracking hourly snipe setups now — the first flagged windows score about 4 hours after they fire.";
+}
+(function oddsInit(){
+  const sel = $("#oddsCoin");
+  sel.innerHTML = ORDER.map(s => '<option value="' + s + '"' + (s === "BTC" ? " selected" : "") + ">" + s + "</option>").join("");
+  sel.addEventListener("change", async () => {
+    ODDS.coin = sel.value; ODDS.price = null;
+    await oddsSeedPrice(); refreshOdds();
+  });
+  const sl = $("#oddsSlider");
+  sl.addEventListener("input", () => {
+    let off = parseFloat(sl.value);
+    if (!isFinite(off)) return;
+    if (Math.abs(off) <= 0.2){ off = 0; sl.value = 0; }
+    ODDS.mode = "off"; ODDS.off = off;
+    oddsRenderOff(); refreshOdds();
+  });
+  $("#oddsLine").addEventListener("change", ev => {
+    const v = parseFloat(ev.target.value);
+    if (isFinite(v) && v > 0){ ODDS.mode = "abs"; ODDS.line = v; oddsRenderOff(); refreshOdds(); }
+  });
+  setInterval(() => {
+    for (const h of Object.keys(ODDS.closes)){
+      const el = document.querySelector('[data-odds-close="' + h + '"]');
+      if (el) el.textContent = "closes " + fmtClock(ODDS.closes[h] - Date.now());
+    }
+  }, 1000);
+  setInterval(refreshOdds, 20000);
+  oddsSeedPrice().then(refreshOdds);
+})();
+
+/* ---------- pop-out (document picture-in-picture) ---------- */
+$("#pipBtn").addEventListener("click", async () => {
+  const note = $("#pipNote");
+  if (!("documentPictureInPicture" in window)){
+    note.textContent = "Pop-out needs Chrome's document picture-in-picture — this browser doesn't offer it. The Android app floats over every app instead.";
+    return;
+  }
+  try {
+    const pip = await window.documentPictureInPicture.requestWindow({width: 470, height: 660});
+    const st = document.createElement("style");
+    st.textContent = document.getElementById("mainCss").textContent;
+    pip.document.head.appendChild(st);
+    pip.document.body.style.margin = "10px";
+    pip.document.body.style.background = "#050510";
+    const panel = $("#watchPanel");
+    pip.document.body.appendChild(panel);
+    pip.addEventListener("pagehide", () => { $("#panelSlot").appendChild(panel); });
+    note.textContent = "Panel popped out — it stays on top of other windows. Close the pop-out to bring it back here.";
+  } catch (e) {
+    note.textContent = "The pop-out was blocked or dismissed — try again.";
+  }
+});
+
+/* ---------- init ---------- */
+migrateLearn();
+buildCoinGrid();
+(function init(){
+  const len = S.lenMin;
+  document.querySelectorAll("#lenChips .chip").forEach(c => c.classList.toggle("on", +c.dataset.min === len));
+  const saved = lsGet(LS_SEL, []);
+  saved.slice(0, 6).forEach(sym => {
+    if (!MODELS[sym]) return;
+    const box = document.querySelector('#coinGrid input[value="' + sym + '"]');
+    if (box){ box.checked = true; toggleCoin(sym, true, box); }
+  });
+  renderScore();
+  loadGlobal();
+  flushContrib(false);
+})();
+</script>
+</body>
+</html>
