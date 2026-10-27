@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Web Apps — Rival Eclipse</title>
+<meta name="description" content="Rival Eclipse web apps: the Perpetual Helper crypto market tracker and the GIF to QR Converter. Open in your browser, nothing to install.">
+<style>
+  :root{
+    --bg:#050510; --bg2:#0a0a12; --card:#14141f; --line:#26263a;
+    --gold:#c9a227; --gold2:#f3d27a; --violet:#7c5cff;
+    --text:#eceaf4; --muted:#9a96ad;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background-image:
+      radial-gradient(1px 1px at 12% 22%, #ffffffcc 50%, transparent 51%),
+      radial-gradient(1px 1px at 68% 12%, #ffffff99 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 84% 34%, #ffffffbb 50%, transparent 51%),
+      radial-gradient(1px 1px at 34% 64%, #ffffff88 50%, transparent 51%),
+      radial-gradient(1px 1px at 52% 84%, #ffffffaa 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 92% 78%, #ffffff99 50%, transparent 51%),
+      radial-gradient(1px 1px at 6% 88%, #ffffff77 50%, transparent 51%),
+      radial-gradient(1px 1px at 44% 8%, #ffffff99 50%, transparent 51%);
+    min-height:100vh;}
+  .wrap{max-width:1020px;margin:0 auto;padding:56px 20px 70px}
+  .wordmark{font-size:2rem;font-weight:800;letter-spacing:.01em;margin:0}
+  .wordmark .w{color:#fff}
+  .wordmark .g{background:linear-gradient(90deg,var(--gold2),var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .wordmark .dot{color:var(--gold)}
+  .sub{color:var(--muted);margin:10px 0 6px;font-size:1.05rem;max-width:640px;line-height:1.55}
+  h1.page{font-size:1.35rem;margin:26px 0 4px;font-weight:700}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px;margin-top:24px}
+  .card{display:block;background:linear-gradient(180deg,var(--card),#10101a);border:1px solid var(--line);
+    border-radius:20px;padding:24px;text-decoration:none;color:inherit;position:relative;overflow:hidden;transition:.15s}
+  .card::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;
+    background:linear-gradient(90deg,var(--gold),var(--violet))}
+  .card:hover{border-color:var(--gold);transform:translateY(-2px)}
+  .card img{width:64px;height:64px;border-radius:14px}
+  .card h2{margin:14px 0 8px;font-size:1.25rem}
+  .card p{color:var(--muted);line-height:1.55;margin:0 0 14px;font-size:.97rem}
+  .badge{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    color:#0a0a12;background:linear-gradient(90deg,var(--gold2),var(--gold));border-radius:999px;padding:3px 10px;margin-top:10px}
+  .go{color:var(--gold2);font-weight:700}
+  .portals{margin-top:44px;border-top:1px solid var(--line);padding-top:22px;color:var(--muted);font-size:.95rem;line-height:1.9}
+  .portals a{color:var(--text);text-decoration:none;border-bottom:1px dotted var(--gold)}
+  .portals a:hover{color:var(--gold2)}
+  footer{color:var(--muted);font-size:.85rem;margin-top:36px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="wordmark"><span class="w">Rıval</span> <span class="g">Eclıpse</span><span class="dot">.</span></p>
+  <h1 class="page">Web Apps</h1>
+  <p class="sub">Our web apps and online services live here — open them in your browser, nothing to install.</p>
+
+  <div class="grid">
+    <a class="card" href="/Market-Tracker">
+      <img src="/perp-helper.webp" alt="Perpetual Helper icon">
+      <span class="badge">Open to everyone</span>
+      <h2>Perpetual Helper — Market Tracker</h2>
+      <p>Live crypto perpetual tracker. Pick up to 6 coins, set your over/under line, and get a fresh prediction every 3 seconds for where the cycle closes — with snipe alerts, an estimate graph beside the live feed, odds for the 5/15/30/45/60-minute closes, and a scoreboard that grades every call it makes. It learns from its own record, shared across every user.</p>
+      <span class="go">Open the tracker →</span>
+    </a>
+    <a class="card" href="/GIF-2-QR">
+      <img src="/qr-converter.webp" alt="GIF to QR Converter icon">
+      <span class="badge">Open to everyone</span>
+      <h2>GIF to QR Converter</h2>
+      <p>Turn GIFs and images into artistic, fully-scannable QR codes — the artwork fused right into the code itself. Five free generations per account; $0.99 unlocks unlimited conversions.</p>
+      <span class="go">Open the converter →</span>
+    </a>
+  </div>
+
+  <div class="portals">
+    More Rival Eclipse: <a href="https://www.rivaleclipse.dev/">Home</a> ·
+    <a href="https://www.rivaleclipse.dev/apps-bots/">Discord Bots</a> ·
+    <a href="https://www.rivaleclipse.dev/dashboards/">Dashboards</a> ·
+    <a href="https://demos.rivaleclipse.dev/">Website demos</a> ·
+    <a href="https://www.rivaleclipse.dev/dev-request/">Request a build</a> ·
+    <a href="https://www.rivaleclipse.dev/ToS-Privacy-legal/">ToS &amp; Privacy</a>
+  </div>
+
+  <footer>© 2026 Rival Eclipse. All things under rivaleclipse.dev.</footer>
+</div>
+</body>
+</html>
