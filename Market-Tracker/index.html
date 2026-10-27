@@ -135,6 +135,7 @@ canvas.spark{width:100%;height:150px;display:block}
 .slider-val{font-size:13px;color:var(--txt);font-variant-numeric:tabular-nums;white-space:nowrap}
 .slider-val .off{color:var(--gold2);font-weight:700}
 .linemoved{color:var(--edge);font-size:12px;margin-top:5px}
+.lockedline{color:var(--gold2);font-size:12.5px;margin-top:6px;line-height:1.5;border:1px solid var(--line);border-radius:8px;padding:6px 9px;background:rgba(201,162,39,.06)}
 .legend{color:var(--mut);font-size:11px;margin-top:5px;line-height:1.5}
 .snap{background:none;border:none;color:var(--gold2);cursor:pointer;font-size:12px;padding:0}
 .rec{color:var(--mut);font-size:12px;margin-top:9px}
@@ -152,7 +153,7 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
 <header>
   <div class="wordmark"><b>Rıval</b> <i>Eclıpse</i></div>
   <h1>Perpetual Helper</h1>
-  <p class="sub">Live prices for the cryptos you pick, a cycle timer synced to the market clock, and an over/under call for the close — recomputed every 3 seconds from 6 months of pattern stats per coin. It scores itself at every close, in the open.</p>
+  <p class="sub">Live prices for the cryptos you pick, a cycle timer synced to the market clock, and an over/under call for the close from 6 months of pattern stats per coin. Each cycle's call locks at the open — that locked call is the only one graded — while the live call keeps tracking every 10 seconds until the close. It scores itself at every close, in the open.</p>
 </header>
 <main>
   <section class="card" id="setupCard">
@@ -285,7 +286,8 @@ function coinState(sym){
     flips: 0, dispSide: null, dispP: null, dwellSide: null, dwellCount: 0, dragging: false,
     zoom: lsGet(LS_ZOOM, {})[sym] || "live",
     fc30on: !!lsGet(LS_FC30, {})[sym],
-    lastCall: null, lastPred: null, els: {}
+    lastCall: null, lastPred: null, els: {},
+    snap: null, lastPredAt: 0
   };
   return S.coins[sym];
 }
@@ -375,6 +377,7 @@ function addCard(sym){
     '<div class="swline"></div>' +
     '<div class="snipe" hidden></div>' +
     '<div class="pred"><div class="call noedge">NO CYCLE RUNNING</div><div class="conf">Set your line, then press Start — every call is for the close vs your line, never for right now.</div><div class="pbar"><div style="width:0%"></div></div></div>' +
+    '<div class="lockedline" hidden></div>' +
     '<div class="line-ctl"><label>Over / under line <span class="slider-val"></span></label>' +
     '<input type="range" class="line-slider" min="-10" max="10" step="0.1" value="0">' +
     '<div class="stops"><span>-10%</span><span>-5%</span><span><b>0%</b></span><span>+5%</span><span>+10%</span></div>' +
@@ -397,6 +400,7 @@ function addCard(sym){
     pbar: el.querySelector(".pbar > div"), num: el.querySelector(".line-num"),
     slider: el.querySelector(".line-slider"), flash: el.querySelector(".flashmsg"),
     sval: el.querySelector(".slider-val"), lmoved: el.querySelector(".linemoved"),
+    locked: el.querySelector(".lockedline"),
     rec: el.querySelector(".rec"), learn: el.querySelector(".learnline"),
     pool: el.querySelector(".pooline"), src: el.querySelector(".srcline"), gate: el.querySelector(".gateline"),
     roLine: el.querySelector(".ro-line"), roCur: el.querySelector(".ro-cur"),
@@ -447,15 +451,16 @@ function updateLineUI(sym){
   cs.els.sval.innerHTML = 'offset <span class="off">' + fmtOff(off) + "</span> · line " + fmtPrice(cs.line) +
     (pinned ? " (past slider range)" : "");
   cs.els.lmoved.hidden = !cs.lineMoved;
-  if (cs.lineMoved) cs.els.lmoved.textContent = "Line moved mid-cycle — the score judges the call against the line at the close.";
+  if (cs.lineMoved) cs.els.lmoved.textContent = "Line moved mid-cycle — the live view follows your new line, but grading stays on the call and line locked at the open.";
   renderReadouts(sym);
 }
 function noteLineChange(sym){
-  // A mid-cycle line move changes what the current prediction means. The
-  // move is flagged on the cycle's record (lineMoved), the stored
-  // prediction is rescored against the new line, and the flip counter
-  // absorbs any side change the move caused — scoring stays honest
-  // about what was predicted against what.
+  // A mid-cycle line move changes what the LIVE tracking view means:
+  // the live prediction is rescored against the new line and the flip
+  // counter absorbs any side change the move caused. The prediction
+  // LOCKED at the cycle open (cs.snap) is never touched by a move —
+  // grading, learning, and the pool contribution all consume the
+  // opening snapshot only (SCORING-LOCK-SPEC).
   const cs = coinState(sym);
   if (!S.cycle.active || cs.lineMoved) return;
   cs.lineMoved = true;
@@ -1331,11 +1336,13 @@ function renderPool(sym){
 const LS_CONTRIB = "ph.contrib.v1";
 function contribState(){ return lsGet(LS_CONTRIB, {queue: [], total: 0}); }
 function saveContrib(st){ lsSet(LS_CONTRIB, st); }
-function queueContribution(sym, cs, closedOver){
-  const lp = cs.lastPred;
+function queueContribution(sym, cs, snap, closedOver){
+  // SCORING LOCK: the pooled record is the OPENING snapshot's p/call —
+  // the prediction of record — never the final-tick live values.
+  const lp = snap.pred;
   if (!lp) return;
   const st = contribState();
-  st.queue.push({coin: sym, p: lp.p, pRaw: lp.pRaw, call: cs.lastCall ? cs.lastCall.side : "none",
+  st.queue.push({coin: sym, p: lp.p, pRaw: lp.pRaw, call: snap.call || "none",
                  outcome: closedOver, flips: cs.flips, lenMin: S.lenMin,
                  comp: lp.comp || {mom: 0, reg: 0, asym: 0}});
   st.total++;
@@ -1466,8 +1473,8 @@ function detectLocalFix(sym){
     return {kind: "band", add: 0.02, sig: "band", desc: "no-edge band +2pts (flip-flop control)"};
   return null;
 }
-function shadowPred(sym, chal){
-  const cs = coinState(sym), lp = cs.lastPred, L = learnState(sym);
+function shadowPred(sym, chal, lp){
+  const L = learnState(sym);
   if (!lp || lp.driftRaw == null || !(lp.sigmaT > 0)) return null;
   let p = lp.p, pRaw = lp.pRaw;
   if (chal.kind === "weight"){
@@ -1479,19 +1486,22 @@ function shadowPred(sym, chal){
   const band = bandFor(sym) + (chal.kind === "band" ? chal.add : 0);
   return {p: p, call: Math.abs(p - 0.5) >= band ? (p > 0.5 ? "over" : "under") : "none"};
 }
-function scoreGate(sym, closedOver){
-  const cs = coinState(sym), L = learnState(sym), G = L.gate, lp = cs.lastPred;
+function scoreGate(sym, snap, closedOver){
+  // SCORING LOCK: the gate shadow-scores the OPENING prediction (the
+  // champion of record), exactly like grading does — never the live
+  // final-tick prediction.
+  const L = learnState(sym), G = L.gate, lp = snap.pred;
   if (!lp) return;
   const y = closedOver ? 1 : 0, hadWatch = !!G.watch;
   if (G.challenger){
-    const sh = shadowPred(sym, G.challenger);
+    const sh = shadowPred(sym, G.challenger, lp);
     if (sh){
       const c = G.challenger;
       c.scored++;
       c.brier += (sh.p - y) * (sh.p - y);
       c.champBrier += (lp.p - y) * (lp.p - y);
       if (sh.call !== "none"){ c.calls++; if ((sh.call === "over") === closedOver) c.hits++; }
-      if (cs.lastCall){ c.champCalls++; if ((cs.lastCall.side === "over") === closedOver) c.champHits++; }
+      if (snap.call){ c.champCalls++; if ((snap.call === "over") === closedOver) c.champHits++; }
       if (c.scored >= 30){
         const cb = c.brier / c.scored, hb = c.champBrier / c.scored;
         const chHit = c.calls >= 10 ? c.hits / c.calls : null;
@@ -1516,7 +1526,7 @@ function scoreGate(sym, closedOver){
   if (G.watch && hadWatch){
     const w = G.watch;
     w.scored++;
-    if (cs.lastCall){ w.calls++; if ((cs.lastCall.side === "over") === closedOver) w.hits++; }
+    if (snap.call){ w.calls++; if ((snap.call === "over") === closedOver) w.hits++; }
     if (w.scored >= 30){
       const cur = w.calls >= 10 ? w.hits / w.calls : null;
       const base = w.baseCalls >= 10 ? w.baseHits / w.baseCalls : null;
@@ -1619,8 +1629,35 @@ function predict(sym){
     cs.els.pbar.style.width = (conf * 100).toFixed(0) + "%";
   }
   if (side) cs.dispSide = side;
+  cs.lastPredAt = Date.now();
+  // SCORING LOCK (SCORING-LOCK-SPEC): the FIRST prediction computed
+  // in a cycle is that cycle's prediction of record — call, p, and
+  // the line as set at the open, frozen for the life of the cycle.
+  // Everything after is live tracking only: it may flip every 10s
+  // and follow mid-cycle line moves, but grading, the scoreboard,
+  // the learning update, and the pool contribution consume ONLY this
+  // snapshot + the closing outcome. NO EDGE at the open (call null)
+  // locks in a no-call for the cycle, whatever appears later.
+  if (S.cycle.active && (!cs.snap || cs.snap.closeAt !== S.cycle.closeAt)){
+    cs.snap = {closeAt: S.cycle.closeAt, call: cs.lastCall ? cs.lastCall.side : null,
+               p: cs.lastPred.p, line: cs.line, pred: cs.lastPred};
+  }
+  renderLocked(sym);
   drawSpark(sym);
   renderLearn(sym);
+}
+function renderLocked(sym){
+  const cs = coinState(sym);
+  if (!cs.els.locked) return;
+  const sn = cs.snap;
+  if (!S.cycle.active || !sn || sn.closeAt !== S.cycle.closeAt){ cs.els.locked.hidden = true; return; }
+  const txt = sn.call
+    ? "Locked at open: " + sn.call.toUpperCase() + " " + Math.round((sn.call === "over" ? sn.p : 1 - sn.p) * 100) +
+      "% · line " + fmtPrice(sn.line) + " — only this call is graded. The call above is live tracking and never counts."
+    : "Locked at open: NO EDGE · line " + fmtPrice(sn.line) +
+      " — this cycle grades as a no-call. The call above is live tracking and never counts.";
+  if (cs.els.locked.textContent !== txt) cs.els.locked.textContent = txt;
+  cs.els.locked.hidden = false;
 }
 
 /* ---------- cycle ---------- */
@@ -1634,7 +1671,7 @@ function startCycle(){
   S.cycle.active = true;
   $("#startBtn").disabled = true; $("#stopBtn").disabled = false;
   S.selected.forEach(sym => { const cs = coinState(sym); if (!cs.lineSet && cs.price) setLine(sym, cs.price); predict(sym); });
-  $("#cycleStatus").textContent = "Cycle running — " + S.lenMin + "m perpetuals, aligned to the wall clock. Every call below is for the close vs each coin's line.";
+  $("#cycleStatus").textContent = "Cycle running — " + S.lenMin + "m perpetuals, aligned to the wall clock. Each coin's call locks at the open (shown on its card) — only the locked call is graded; the live call just tracks.";
 }
 function stopCycle(){
   S.cycle.active = false;
@@ -1647,7 +1684,8 @@ function stopCycle(){
     cs.els.conf.textContent = "Set your line, then press Start — every call is for the close vs your line, never for right now.";
     cs.els.pbar.style.width = "0%";
     cs.dispSide = null; cs.dispP = null; cs.dwellSide = null; cs.dwellCount = 0;
-    cs.flips = 0; cs.lineMoved = false;
+    cs.flips = 0; cs.lineMoved = false; cs.snap = null;
+    if (cs.els.locked) cs.els.locked.hidden = true;
     updateLineUI(sym);
   });
 }
@@ -1659,33 +1697,41 @@ async function scoreCycle(){
     const final = t && isFinite(+t.price) ? +t.price : cs.price;
     if (final == null || !cs.line) continue;
     cs.price = final;
-    const closedOver = final > cs.line;
+    // SCORING LOCK: grade ONLY the prediction locked at this cycle's
+    // open — its call against the close vs the OPENING line. The
+    // final-tick live call, live p, and any mid-cycle line move are
+    // never consulted here.
+    const snap = (cs.snap && cs.snap.closeAt === S.cycle.closeAt) ? cs.snap : null;
+    const gradeLine = snap ? snap.line : cs.line;
+    const closedOver = final > gradeLine;
     const sc = S.score[sym] || (S.score[sym] = {hit: 0, miss: 0, nocall: 0});
     let cls, msg;
-    if (!cs.lastCall){
+    if (!snap || !snap.call){
       sc.nocall++; cls = "";
-      msg = "Closed " + (closedOver ? "OVER" : "UNDER") + " the line at " + fmtPrice(final) + " — no call was on (no edge).";
+      msg = "Closed " + (closedOver ? "OVER" : "UNDER") + " the opening line at " + fmtPrice(final) +
+        " — no call was locked at the open (no edge), so this grades as a no-call.";
     } else {
-      const right = (cs.lastCall.side === "over") === closedOver;
+      const right = (snap.call === "over") === closedOver;
       if (right) sc.hit++; else sc.miss++;
       cls = right ? "right" : "wrong";
-      msg = (right ? "RIGHT — " : "WRONG — ") + "called " + cs.lastCall.side.toUpperCase() + ", closed " +
-        (closedOver ? "OVER" : "UNDER") + " the line at " + fmtPrice(final) + ".";
+      msg = (right ? "RIGHT — " : "WRONG — ") + "locked at open: " + snap.call.toUpperCase() + " " +
+        Math.round((snap.call === "over" ? snap.p : 1 - snap.p) * 100) + "%, closed " +
+        (closedOver ? "OVER" : "UNDER") + " the opening line at " + fmtPrice(final) + ".";
     }
     cs.els.flash.textContent = msg; cs.els.flash.className = "flashmsg " + cls;
     cs.els.root.classList.remove("flash-right", "flash-wrong");
     if (cls) cs.els.root.classList.add(cls === "right" ? "flash-right" : "flash-wrong");
     setTimeout(((el, f) => () => { el.classList.remove("flash-right", "flash-wrong"); f.textContent = ""; })(cs.els.root, cs.els.flash), 12000);
-    if (cs.lastPred){
+    if (snap && snap.pred){
       const L = learnState(sym);
-      L.log.push({t: Date.now(), p: cs.lastPred.p, call: cs.lastCall ? cs.lastCall.side : "none",
-                  over: closedOver, close: final, line: cs.line, flips: cs.flips,
-                  lineMoved: !!cs.lastPred.lineMoved});
+      L.log.push({t: Date.now(), p: snap.pred.p, call: snap.call || "none",
+                  over: closedOver, close: final, line: snap.line, flips: cs.flips,
+                  lineMoved: !!cs.lineMoved});
       if (L.log.length > 300) L.log.splice(0, L.log.length - 300);
-      updateLearn(sym, cs.lastPred, closedOver);
+      updateLearn(sym, snap.pred, closedOver);
       saveLearn();
-      queueContribution(sym, cs, closedOver);
-      scoreGate(sym, closedOver);
+      queueContribution(sym, cs, snap, closedOver);
+      scoreGate(sym, snap, closedOver);
       renderGate(sym);
     }
     renderRec(sym);
@@ -1697,7 +1743,7 @@ async function scoreCycle(){
   while (S.cycle.closeAt <= now) S.cycle.closeAt += L;
   S.selected.forEach(sym => {
     const c = coinState(sym);
-    c.lastCall = null; c.lastPred = null;
+    c.lastCall = null; c.lastPred = null; c.snap = null;
     c.flips = 0; c.lineMoved = false;                    // fresh cycle record
     c.dispSide = null; c.dispP = null; c.dwellSide = null; c.dwellCount = 0;
     updateLineUI(sym);
@@ -1755,7 +1801,10 @@ async function priceTick(){
           if (Math.abs(nl - cs.line) > 1e-12){ cs.line = nl; cs._lastLine = nl; }
           updateLineUI(sym);
         }
-        if (S.cycle.active) predict(sym);
+        // SCORING LOCK: the live tracking prediction recomputes on a
+        // 10-second cadence. Price + chart ticks stay on the fast
+        // loop; only the prediction readout is on the 10s clock.
+        if (S.cycle.active && Date.now() - (cs.lastPredAt || 0) >= 10000) predict(sym);
       }
       drawSpark(sym);
     }
