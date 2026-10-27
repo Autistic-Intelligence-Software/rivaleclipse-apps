@@ -1,0 +1,10 @@
+# app.rivaleclipse.dev — path canonicalization (Shane's URLs are the
+# capitalized forms; the all-lowercase variants redirect to them).
+/market-tracker /Market-Tracker/ 301
+/market-tracker/ /Market-Tracker/ 301
+/gif-2-qr /GIF-2-QR/ 301
+/gif-2-qr/ /GIF-2-QR/ 301
+# The converter page (served under /GIF-2-QR/) links to /terms and
+# /privacy at the origin root — send those to the converter's own pages.
+/terms /GIF-2-QR/terms 302
+/privacy /GIF-2-QR/privacy 302
