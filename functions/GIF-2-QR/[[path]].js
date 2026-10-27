@@ -17,11 +17,13 @@
 const UPSTREAM = 'https://customqr.rivaleclipse.dev';
 
 export async function onRequest(context) {
-  const { request, params } = context;
+  const { request } = context;
   const url = new URL(request.url);
-  let rest = params.path || '';
-  if (Array.isArray(rest)) rest = rest.join('/');
-  const target = UPSTREAM + (rest ? '/' + rest : '/') + url.search;
+  // Take the subpath from the URL itself, not params: the router's splat
+  // param drops trailing slashes, which made directory-style upstream
+  // paths (/terms/) bounce in a redirect loop.
+  const rest = url.pathname.slice('/GIF-2-QR'.length);
+  const target = UPSTREAM + (rest || '/') + url.search;
 
   const headers = new Headers(request.headers);
   headers.set('host', 'customqr.rivaleclipse.dev');
