@@ -146,6 +146,35 @@ canvas.spark{width:100%;height:150px;display:block}
 #scoreTable th{color:var(--mut);font-weight:600;font-size:12px;letter-spacing:.1em;text-transform:uppercase}
 footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-size:13px;line-height:1.6}
 .err{color:var(--down);font-size:12px}
+/* ---------- WEB5 ---------- */
+.ro-line-in{background:#0c0c18;border:1px solid var(--line);border-radius:8px;color:var(--txt);
+  font-size:15px;font-weight:700;width:118px;padding:2px 6px;font-variant-numeric:tabular-nums}
+.ro-line-in:focus{outline:none;border-color:var(--gold)}
+.trendread{color:#b9b4d6;font-size:12.5px;margin-top:7px;line-height:1.5}
+.trendread.strong{color:var(--gold2);font-size:13.5px;font-weight:600;border:1px solid var(--gold);
+  border-radius:8px;padding:6px 9px;background:rgba(201,162,39,.07)}
+.detbtn{background:none;border:1px solid var(--line);border-radius:999px;color:var(--gold2);
+  cursor:pointer;font-size:12px;font-weight:700;padding:4px 12px;margin-top:10px}
+.carddetails[hidden]{display:none}
+.otrend{color:#b9b4d6;font-size:11.5px;margin-top:6px;line-height:1.5}
+.otrend.strong{color:var(--gold2);font-weight:600}
+.drawer{position:fixed;top:0;bottom:0;width:min(450px,94vw);z-index:60;overflow-y:auto;
+  background:var(--bg2);padding:12px;transition:transform .28s ease;box-shadow:0 0 44px rgba(0,0,0,.55)}
+.drawer.left{left:0;transform:translateX(-106%)}
+.drawer.right{right:0;transform:translateX(106%)}
+.drawer.open{transform:translateX(0)}
+.drawer .card{margin:0}
+.drawerhead{display:flex;justify-content:space-between;align-items:center;padding:2px 4px 10px;
+  font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
+.dclose{background:#0c0c18;border:1px solid var(--line);color:var(--txt);border-radius:999px;
+  width:32px;height:32px;font-size:15px;cursor:pointer;line-height:1}
+#drawerBackdrop{position:fixed;inset:0;background:rgba(3,3,10,.62);z-index:58}
+.edgetab{position:fixed;top:50%;transform:translateY(-50%);z-index:55;writing-mode:vertical-rl;
+  background:rgba(12,12,24,.94);border:1px solid var(--gold);color:var(--gold2);font-size:12.5px;
+  font-weight:800;letter-spacing:.18em;text-transform:uppercase;padding:14px 7px;cursor:pointer}
+.edgetab.left{left:0;border-left:none;border-radius:0 12px 12px 0}
+.edgetab.right{right:0;border-right:none;border-radius:12px 0 0 12px}
+.fczoomseg button.on{border-color:var(--gold);color:var(--gold2);background:#1c1808}
 @media (max-width:640px){h1{font-size:27px}.price{font-size:23px}}
 </style>
 </head>
@@ -155,7 +184,11 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
   <h1>Perpetual Helper</h1>
   <p class="sub">Live prices for the cryptos you pick, a cycle timer synced to the market clock, and an over/under call for the close from 6 months of pattern stats per coin. Each cycle's call locks at the open — that locked call is the only one graded — while the live call keeps tracking every 10 seconds until the close. It scores itself at every close, in the open.</p>
 </header>
-<main>
+<div id="drawerBackdrop" hidden></div>
+<button class="edgetab left" id="oddsTab" type="button" title="Open the odds board">Odds</button>
+<button class="edgetab right" id="setupTab" type="button" title="Open setup">Setup</button>
+<aside class="drawer right" id="setupDrawer" aria-label="Setup">
+  <div class="drawerhead"><span>Setup</span><button class="dclose" type="button" data-close aria-label="Close setup">✕</button></div>
   <section class="card" id="setupCard">
     <h2>Setup</h2>
     <div class="lbl">Length of perpetuals</div>
@@ -182,7 +215,9 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
     <div class="note" id="pipNote" style="margin-top:8px"></div>
     <div class="note">The floating panel in this browser edition uses Chrome's picture-in-picture. The Android app floats over any app instead — its download button activates when the build lands.</div>
   </section>
-
+</aside>
+<aside class="drawer left" id="oddsDrawer" aria-label="Odds board">
+  <div class="drawerhead"><span>Odds board</span><button class="dclose" type="button" data-close aria-label="Close odds board">✕</button></div>
   <section class="card" id="oddsCard">
     <h2>Odds — the system's own calls</h2>
     <p class="note" style="margin-top:0">Pick any crypto and a value. The system — the same global brain the watch panel learns into — returns its OVER / UNDER odds for the close at each horizon, computed server-side. It scores only its own predictions: every card shows that horizon's real global record, and a horizon running at coin-flip gets flagged weak instead of hiding behind the average.</p>
@@ -202,7 +237,8 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
     <div class="note" id="oddsMeta" style="margin-top:10px"></div>
     <div class="note" id="oddsSnipe"></div>
   </section>
-
+</aside>
+<main>
   <div id="panelSlot">
     <section class="card" id="watchPanel">
       <div id="watchHead">
@@ -221,11 +257,11 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
   </div>
 </main>
 <footer>
-  Predictions are probabilities built from pattern statistics — barrier distance to your line, volatility, momentum, and each coin's 6-month base rates. They are not guarantees, and short-horizon crypto direction is close to a coin flip: the base models' held-out record is printed on every card, and the scoreboard above shows this page's real record, wins and losses alike. The snipe badge uses the hourly setup only, read on a ~4-hour window: on held-out data across all 20 coins, flagged setups produced the big move 23.1% of the time against a 14.4% unflagged base rate (1.61x lift). The 15-minute snipe tested as noise (lift under 1x) and is not used. The forecast chart beside each live chart is an estimate cone — the mean path and bands show where the price could plausibly wander given current volatility and drift, not a promised path; the tick marks are the times swings have typically arrived, not appointments. The page also audits its own flaws, live: every scored close retunes separate weights for momentum, regime, and rise/fall asymmetry; confidence buckets that run hot get shrunk toward 50; a coin whose call keeps flip-flopping gets a wider no-call band and a steadier, dwell-held call; and the volatility inside every probability follows the last few hours of live market, blended with the 6-month base. The current state of all of it is printed on each card's Learning line. Data: Coinbase Exchange public feed. Not financial advice.
+  Predictions are probabilities built from pattern statistics — barrier distance to your line, volatility, momentum, and each coin's 6-month base rates. They are not guarantees, and short-horizon crypto direction is close to a coin flip: the base models' held-out record is printed on every card, and the scoreboard above shows this page's real record, wins and losses alike. The snipe badge uses the hourly setup only, read on a ~4-hour window: on held-out data across all 20 coins, flagged setups produced the big move 23.1% of the time against a 14.4% unflagged base rate (1.61x lift). The 15-minute snipe tested as noise (lift under 1x) and is not used. The forecast chart beside each live chart is an estimate cone — the mean path and bands show where the price could plausibly wander given current volatility and drift, not a promised path; the tick marks are the times swings have typically arrived, not appointments. The page also audits its own flaws, live: every scored close retunes separate weights for momentum, regime, and rise/fall asymmetry; confidence buckets that run hot get shrunk toward 50; a coin whose call keeps flip-flopping gets a wider no-call band and a steadier, dwell-held call; and the volatility inside every probability follows the last few hours of live market, blended with the 6-month base. The current state of all of it is printed on each card's Learning line. The Trend read on each call is a plain-language summary of those same pattern signals — trend state, how rises have been running against falls, swing timing, forecast slope, and this coin's hour-of-day habits over the 6-month history — read off the numbers at that moment, not a separate prediction and not a guarantee. The 30-day forecast graph freezes when you open it: the actual price then draws over the frozen forecast, and the running miss between the two feeds back into the forecast's drift correction, with the measured error printed on the graph. Data: Coinbase Exchange public feed. Not financial advice.
 </footer>
 <script>
 "use strict";
-const MODELS = {"ADA":{"vol":0.005383,"slope":0.000381,"pos":0.4306,"buckets":{"down_t0":0.4921,"down_t1":0.4769,"down_t2":0.5011,"up_t0":0.4176,"up_t1":0.4843,"up_t2":0.4824},"bt":0.5458,"btN":240,"sn4":{"hit":0.0909,"base":0.1441,"lift":0.631,"n":11}},"ATOM":{"vol":0.004703,"slope":-0.000894,"pos":0.382,"buckets":{"down_t0":0.4612,"down_t1":0.4752,"down_t2":0.5057,"up_t0":0.4152,"up_t1":0.4924,"up_t2":0.4727},"bt":0.5083,"btN":240,"sn4":{"hit":0.0,"base":0.1602,"lift":0.0,"n":9}},"AVAX":{"vol":0.00541,"slope":0.000914,"pos":0.5035,"buckets":{"down_t0":0.4921,"down_t1":0.5076,"down_t2":0.479,"up_t0":0.4286,"up_t1":0.4489,"up_t2":0.4455},"bt":0.4958,"btN":240,"sn4":{"hit":0.2727,"base":0.1266,"lift":2.154,"n":11}},"BCH":{"vol":0.00525,"slope":-0.001109,"pos":0.3246,"buckets":{"down_t0":0.5098,"down_t1":0.5275,"down_t2":0.5377,"up_t0":0.4561,"up_t1":0.4854,"up_t2":0.5068},"bt":0.5,"btN":240,"sn4":{"hit":0.2727,"base":0.1266,"lift":2.154,"n":11}},"BTC":{"vol":0.003131,"slope":0.000963,"pos":0.7558,"buckets":{"down_t0":0.514,"down_t1":0.4964,"down_t2":0.5212,"up_t0":0.5064,"up_t1":0.4715,"up_t2":0.4891},"bt":0.5042,"btN":240,"sn4":{"hit":0.2308,"base":0.1189,"lift":1.94,"n":13}},"DOGE":{"vol":0.004305,"slope":-0.000973,"pos":0.1746,"buckets":{"down_t0":0.5442,"down_t1":0.4915,"down_t2":0.5088,"up_t0":0.4587,"up_t1":0.47,"up_t2":0.5065},"bt":0.4625,"btN":240,"sn4":{"hit":0.1667,"base":0.1453,"lift":1.147,"n":6}},"DOT":{"vol":0.006082,"slope":-0.00033,"pos":0.3748,"buckets":{"down_t0":0.4773,"down_t1":0.5025,"down_t2":0.5,"up_t0":0.4439,"up_t1":0.4526,"up_t2":0.4559},"bt":0.5125,"btN":240,"sn4":{"hit":0.1111,"base":0.1299,"lift":0.856,"n":9}},"ETC":{"vol":0.004447,"slope":-0.000138,"pos":0.3614,"buckets":{"down_t0":0.4461,"down_t1":0.4657,"down_t2":0.5288,"up_t0":0.3976,"up_t1":0.4094,"up_t2":0.4585},"bt":0.4875,"btN":240,"sn4":{"hit":0.35,"base":0.1227,"lift":2.852,"n":20}},"ETH":{"vol":0.003925,"slope":0.001825,"pos":0.616,"buckets":{"down_t0":0.5281,"down_t1":0.4994,"down_t2":0.5307,"up_t0":0.4785,"up_t1":0.4772,"up_t2":0.5057},"bt":0.4833,"btN":240,"sn4":{"hit":0.125,"base":0.1466,"lift":0.853,"n":8}},"FIL":{"vol":0.00677,"slope":0.000357,"pos":0.3976,"buckets":{"down_t0":0.4503,"down_t1":0.5061,"down_t2":0.5032,"up_t0":0.4363,"up_t1":0.4619,"up_t2":0.4412},"bt":0.4792,"btN":240,"sn4":{"hit":0.1,"base":0.1478,"lift":0.676,"n":10}},"HBAR":{"vol":0.004261,"slope":-4e-05,"pos":0.1938,"buckets":{"down_t0":0.4885,"down_t1":0.4898,"down_t2":0.493,"up_t0":0.4463,"up_t1":0.4781,"up_t2":0.4791},"bt":0.4375,"btN":240,"sn4":{"hit":0.2857,"base":0.133,"lift":2.147,"n":7}},"LINK":{"vol":0.005127,"slope":0.002677,"pos":0.5039,"buckets":{"down_t0":0.5207,"down_t1":0.5037,"down_t2":0.5,"up_t0":0.476,"up_t1":0.4734,"up_t2":0.4975},"bt":0.5083,"btN":240,"sn4":{"hit":0.3333,"base":0.1579,"lift":2.111,"n":12}},"LTC":{"vol":0.00472,"slope":0.001285,"pos":0.485,"buckets":{"down_t0":0.5217,"down_t1":0.5033,"down_t2":0.512,"up_t0":0.5087,"up_t1":0.5031,"up_t2":0.4909},"bt":0.4875,"btN":240,"sn4":{"hit":0.1,"base":0.1652,"lift":0.605,"n":10}},"NEAR":{"vol":0.009307,"slope":0.005776,"pos":0.6957,"buckets":{"down_t0":0.4957,"down_t1":0.4837,"down_t2":0.5395,"up_t0":0.4823,"up_t1":0.4602,"up_t2":0.4955},"bt":0.475,"btN":240,"sn4":{"hit":0.1429,"base":0.1588,"lift":0.9,"n":7}},"PEPE":{"vol":0.005579,"slope":0.001355,"pos":0.7368,"buckets":{"down_t0":0.3683,"down_t1":0.4095,"down_t2":0.4098,"up_t0":0.3651,"up_t1":0.3485,"up_t2":0.4129},"bt":0.4833,"btN":240,"sn4":{"hit":0.6667,"base":0.141,"lift":4.727,"n":6}},"SOL":{"vol":0.004303,"slope":0.0023,"pos":0.63,"buckets":{"down_t0":0.5238,"down_t1":0.4879,"down_t2":0.5038,"up_t0":0.4587,"up_t1":0.5145,"up_t2":0.4965},"bt":0.4792,"btN":240,"sn4":{"hit":0.1429,"base":0.1504,"lift":0.95,"n":14}},"SUI":{"vol":0.005508,"slope":0.000323,"pos":0.3803,"buckets":{"down_t0":0.5561,"down_t1":0.473,"down_t2":0.5148,"up_t0":0.4444,"up_t1":0.4628,"up_t2":0.4988},"bt":0.5208,"btN":240,"sn4":{"hit":0.4,"base":0.1478,"lift":2.706,"n":10}},"UNI":{"vol":0.00678,"slope":0.006519,"pos":0.5911,"buckets":{"down_t0":0.5191,"down_t1":0.4782,"down_t2":0.5315,"up_t0":0.4846,"up_t1":0.4576,"up_t2":0.4964},"bt":0.525,"btN":240,"sn4":{"hit":0.2667,"base":0.1467,"lift":1.818,"n":15}},"XLM":{"vol":0.004153,"slope":0.000587,"pos":0.2097,"buckets":{"down_t0":0.4939,"down_t1":0.4771,"down_t2":0.4791,"up_t0":0.4697,"up_t1":0.495,"up_t2":0.4901},"bt":0.5458,"btN":240,"sn4":{"hit":0.2857,"base":0.1372,"lift":2.083,"n":14}},"XRP":{"vol":0.005107,"slope":0.000593,"pos":0.5334,"buckets":{"down_t0":0.5087,"down_t1":0.4901,"down_t2":0.5118,"up_t0":0.4369,"up_t1":0.501,"up_t2":0.4895},"bt":0.5083,"btN":240,"sn4":{"hit":0.2308,"base":0.1674,"lift":1.379,"n":13}}};
+const MODELS = {"ADA":{"hod":[0.444,0.528,0.469,0.441,0.486,0.48,0.503,0.483,0.467,0.461,0.506,0.506,0.467,0.528,0.478,0.45,0.489,0.456,0.483,0.461,0.467,0.489,0.483,0.567],"vol":0.005383,"slope":0.000381,"pos":0.4306,"buckets":{"down_t0":0.4921,"down_t1":0.4769,"down_t2":0.5011,"up_t0":0.4176,"up_t1":0.4843,"up_t2":0.4824},"bt":0.5458,"btN":240,"sn4":{"hit":0.0909,"base":0.1441,"lift":0.631,"n":11}},"ATOM":{"hod":[0.472,0.483,0.453,0.492,0.469,0.475,0.486,0.45,0.444,0.422,0.556,0.467,0.478,0.489,0.494,0.456,0.478,0.467,0.428,0.528,0.422,0.433,0.55,0.467],"vol":0.004703,"slope":-0.000894,"pos":0.382,"buckets":{"down_t0":0.4612,"down_t1":0.4752,"down_t2":0.5057,"up_t0":0.4152,"up_t1":0.4924,"up_t2":0.4727},"bt":0.5083,"btN":240,"sn4":{"hit":0.0,"base":0.1602,"lift":0.0,"n":9}},"AVAX":{"hod":[0.478,0.467,0.419,0.492,0.52,0.447,0.458,0.422,0.494,0.472,0.489,0.467,0.428,0.478,0.517,0.444,0.467,0.467,0.461,0.494,0.439,0.406,0.533,0.461],"vol":0.00541,"slope":0.000914,"pos":0.5035,"buckets":{"down_t0":0.4921,"down_t1":0.5076,"down_t2":0.479,"up_t0":0.4286,"up_t1":0.4489,"up_t2":0.4455},"bt":0.4958,"btN":240,"sn4":{"hit":0.2727,"base":0.1266,"lift":2.154,"n":11}},"BCH":{"hod":[0.517,0.517,0.497,0.508,0.559,0.52,0.503,0.478,0.489,0.467,0.517,0.5,0.456,0.506,0.5,0.544,0.461,0.511,0.533,0.583,0.467,0.511,0.567,0.506],"vol":0.00525,"slope":-0.001109,"pos":0.3246,"buckets":{"down_t0":0.5098,"down_t1":0.5275,"down_t2":0.5377,"up_t0":0.4561,"up_t1":0.4854,"up_t2":0.5068},"bt":0.5,"btN":240,"sn4":{"hit":0.2727,"base":0.1266,"lift":2.154,"n":11}},"BTC":{"hod":[0.472,0.439,0.503,0.508,0.553,0.508,0.469,0.517,0.456,0.533,0.567,0.461,0.456,0.556,0.517,0.472,0.511,0.461,0.578,0.5,0.478,0.456,0.539,0.517],"vol":0.003131,"slope":0.000963,"pos":0.7558,"buckets":{"down_t0":0.514,"down_t1":0.4964,"down_t2":0.5212,"up_t0":0.5064,"up_t1":0.4715,"up_t2":0.4891},"bt":0.5042,"btN":240,"sn4":{"hit":0.2308,"base":0.1189,"lift":1.94,"n":13}},"DOGE":{"hod":[0.45,0.478,0.458,0.486,0.559,0.475,0.458,0.506,0.439,0.539,0.583,0.517,0.472,0.561,0.483,0.522,0.478,0.467,0.511,0.544,0.433,0.433,0.539,0.533],"vol":0.004305,"slope":-0.000973,"pos":0.1746,"buckets":{"down_t0":0.5442,"down_t1":0.4915,"down_t2":0.5088,"up_t0":0.4587,"up_t1":0.47,"up_t2":0.5065},"bt":0.4625,"btN":240,"sn4":{"hit":0.1667,"base":0.1453,"lift":1.147,"n":6}},"DOT":{"hod":[0.411,0.483,0.48,0.441,0.497,0.492,0.447,0.472,0.428,0.472,0.5,0.506,0.433,0.456,0.578,0.472,0.478,0.456,0.478,0.517,0.478,0.367,0.5,0.511],"vol":0.006082,"slope":-0.00033,"pos":0.3748,"buckets":{"down_t0":0.4773,"down_t1":0.5025,"down_t2":0.5,"up_t0":0.4439,"up_t1":0.4526,"up_t2":0.4559},"bt":0.5125,"btN":240,"sn4":{"hit":0.1111,"base":0.1299,"lift":0.856,"n":9}},"ETC":{"hod":[0.461,0.489,0.475,0.441,0.48,0.453,0.41,0.45,0.428,0.406,0.48,0.45,0.394,0.456,0.544,0.478,0.478,0.411,0.422,0.483,0.422,0.389,0.533,0.472],"vol":0.004447,"slope":-0.000138,"pos":0.3614,"buckets":{"down_t0":0.4461,"down_t1":0.4657,"down_t2":0.5288,"up_t0":0.3976,"up_t1":0.4094,"up_t2":0.4585},"bt":0.4875,"btN":240,"sn4":{"hit":0.35,"base":0.1227,"lift":2.852,"n":20}},"ETH":{"hod":[0.461,0.478,0.48,0.492,0.553,0.52,0.475,0.506,0.478,0.522,0.522,0.489,0.422,0.544,0.544,0.5,0.544,0.5,0.539,0.483,0.467,0.444,0.561,0.55],"vol":0.003925,"slope":0.001825,"pos":0.616,"buckets":{"down_t0":0.5281,"down_t1":0.4994,"down_t2":0.5307,"up_t0":0.4785,"up_t1":0.4772,"up_t2":0.5057},"bt":0.4833,"btN":240,"sn4":{"hit":0.125,"base":0.1466,"lift":0.853,"n":8}},"FIL":{"hod":[0.444,0.494,0.492,0.492,0.469,0.497,0.447,0.422,0.494,0.439,0.456,0.456,0.461,0.5,0.506,0.522,0.456,0.411,0.428,0.561,0.394,0.372,0.533,0.489],"vol":0.00677,"slope":0.000357,"pos":0.3976,"buckets":{"down_t0":0.4503,"down_t1":0.5061,"down_t2":0.5032,"up_t0":0.4363,"up_t1":0.4619,"up_t2":0.4412},"bt":0.4792,"btN":240,"sn4":{"hit":0.1,"base":0.1478,"lift":0.676,"n":10}},"HBAR":{"hod":[0.467,0.511,0.453,0.48,0.464,0.531,0.497,0.489,0.428,0.439,0.544,0.533,0.439,0.5,0.467,0.433,0.467,0.439,0.528,0.544,0.461,0.45,0.5,0.494],"vol":0.004261,"slope":-4e-05,"pos":0.1938,"buckets":{"down_t0":0.4885,"down_t1":0.4898,"down_t2":0.493,"up_t0":0.4463,"up_t1":0.4781,"up_t2":0.4791},"bt":0.4375,"btN":240,"sn4":{"hit":0.2857,"base":0.133,"lift":2.147,"n":7}},"LINK":{"hod":[0.472,0.483,0.441,0.497,0.581,0.458,0.497,0.5,0.522,0.433,0.533,0.522,0.456,0.517,0.511,0.494,0.511,0.45,0.556,0.5,0.439,0.433,0.556,0.511],"vol":0.005127,"slope":0.002677,"pos":0.5039,"buckets":{"down_t0":0.5207,"down_t1":0.5037,"down_t2":0.5,"up_t0":0.476,"up_t1":0.4734,"up_t2":0.4975},"bt":0.5083,"btN":240,"sn4":{"hit":0.3333,"base":0.1579,"lift":2.111,"n":12}},"LTC":{"hod":[0.472,0.517,0.486,0.447,0.547,0.553,0.464,0.528,0.428,0.406,0.517,0.567,0.483,0.489,0.539,0.522,0.494,0.489,0.561,0.55,0.517,0.478,0.544,0.533],"vol":0.00472,"slope":0.001285,"pos":0.485,"buckets":{"down_t0":0.5217,"down_t1":0.5033,"down_t2":0.512,"up_t0":0.5087,"up_t1":0.5031,"up_t2":0.4909},"bt":0.4875,"btN":240,"sn4":{"hit":0.1,"base":0.1652,"lift":0.605,"n":10}},"NEAR":{"hod":[0.456,0.528,0.497,0.503,0.525,0.503,0.425,0.472,0.461,0.489,0.494,0.5,0.489,0.45,0.511,0.494,0.517,0.483,0.456,0.561,0.45,0.489,0.489,0.572],"vol":0.009307,"slope":0.005776,"pos":0.6957,"buckets":{"down_t0":0.4957,"down_t1":0.4837,"down_t2":0.5395,"up_t0":0.4823,"up_t1":0.4602,"up_t2":0.4955},"bt":0.475,"btN":240,"sn4":{"hit":0.1429,"base":0.1588,"lift":0.9,"n":7}},"PEPE":{"hod":[0.361,0.4,0.447,0.397,0.402,0.33,0.38,0.385,0.372,0.367,0.378,0.433,0.383,0.4,0.422,0.467,0.433,0.383,0.328,0.356,0.339,0.339,0.417,0.45],"vol":0.005579,"slope":0.001355,"pos":0.7368,"buckets":{"down_t0":0.3683,"down_t1":0.4095,"down_t2":0.4098,"up_t0":0.3651,"up_t1":0.3485,"up_t2":0.4129},"bt":0.4833,"btN":240,"sn4":{"hit":0.6667,"base":0.141,"lift":4.727,"n":6}},"SOL":{"hod":[0.489,0.5,0.464,0.486,0.564,0.486,0.486,0.494,0.444,0.478,0.483,0.5,0.494,0.533,0.533,0.533,0.533,0.461,0.522,0.5,0.444,0.467,0.528,0.539],"vol":0.004303,"slope":0.0023,"pos":0.63,"buckets":{"down_t0":0.5238,"down_t1":0.4879,"down_t2":0.5038,"up_t0":0.4587,"up_t1":0.5145,"up_t2":0.4965},"bt":0.4792,"btN":240,"sn4":{"hit":0.1429,"base":0.1504,"lift":0.95,"n":14}},"SUI":{"hod":[0.439,0.489,0.486,0.48,0.52,0.503,0.486,0.472,0.456,0.494,0.522,0.55,0.439,0.5,0.506,0.528,0.489,0.5,0.5,0.539,0.428,0.461,0.55,0.561],"vol":0.005508,"slope":0.000323,"pos":0.3803,"buckets":{"down_t0":0.5561,"down_t1":0.473,"down_t2":0.5148,"up_t0":0.4444,"up_t1":0.4628,"up_t2":0.4988},"bt":0.5208,"btN":240,"sn4":{"hit":0.4,"base":0.1478,"lift":2.706,"n":10}},"UNI":{"hod":[0.461,0.522,0.447,0.525,0.553,0.492,0.419,0.528,0.494,0.467,0.5,0.528,0.467,0.472,0.561,0.478,0.483,0.428,0.533,0.55,0.444,0.422,0.556,0.567],"vol":0.00678,"slope":0.006519,"pos":0.5911,"buckets":{"down_t0":0.5191,"down_t1":0.4782,"down_t2":0.5315,"up_t0":0.4846,"up_t1":0.4576,"up_t2":0.4964},"bt":0.525,"btN":240,"sn4":{"hit":0.2667,"base":0.1467,"lift":1.818,"n":15}},"XLM":{"hod":[0.478,0.478,0.425,0.453,0.52,0.469,0.464,0.494,0.411,0.506,0.589,0.483,0.489,0.456,0.5,0.533,0.522,0.411,0.511,0.5,0.489,0.433,0.5,0.511],"vol":0.004153,"slope":0.000587,"pos":0.2097,"buckets":{"down_t0":0.4939,"down_t1":0.4771,"down_t2":0.4791,"up_t0":0.4697,"up_t1":0.495,"up_t2":0.4901},"bt":0.5458,"btN":240,"sn4":{"hit":0.2857,"base":0.1372,"lift":2.083,"n":14}},"XRP":{"hod":[0.489,0.494,0.497,0.508,0.536,0.536,0.475,0.506,0.456,0.506,0.456,0.517,0.5,0.556,0.511,0.45,0.533,0.422,0.528,0.489,0.433,0.439,0.494,0.506],"vol":0.005107,"slope":0.000593,"pos":0.5334,"buckets":{"down_t0":0.5087,"down_t1":0.4901,"down_t2":0.5118,"up_t0":0.4369,"up_t1":0.501,"up_t2":0.4895},"bt":0.5083,"btN":240,"sn4":{"hit":0.2308,"base":0.1674,"lift":1.379,"n":13}}};
 const SNIPE_PARAMS = {"squeeze_window_bars":6,"squeeze_pct_max":0.2,"pressure_min_z":1.0,"shock_mult":2.5,"vol_z_min":1.5,"move_multiple":1.5,"adverse_multiple":0.75};
 const ORDER = ["BTC","ETH","SOL","XRP","DOGE","ADA","LINK","AVAX","DOT","LTC","BCH","NEAR","UNI","ATOM","XLM","ETC","FIL","HBAR","SUI","PEPE"];
 const CB = "https://api.exchange.coinbase.com";
@@ -277,6 +313,7 @@ const S = {
 };
 
 const LS_ZOOM = "ph.zoom.v1", LS_FC30 = "ph.fc30.v1";
+const LS_DET = "ph.det.v1", LS_FCZ = "ph.fczoom.v1";
 function coinState(sym){
   if (!S.coins[sym]) S.coins[sym] = {
     price: null, closesH: [], volsH: [], closes15: [], closes1: [], ticks: [],
@@ -286,10 +323,39 @@ function coinState(sym){
     flips: 0, dispSide: null, dispP: null, dwellSide: null, dwellCount: 0, dragging: false,
     zoom: lsGet(LS_ZOOM, {})[sym] || "live",
     fc30on: !!lsGet(LS_FC30, {})[sym],
+    fcSnap: null, fcZoom: lsGet(LS_FCZ, {})[sym] || "30D", fcErrLast: 0,
+    detailsOpen: !!lsGet(LS_DET, {})[sym],
     lastCall: null, lastPred: null, els: {},
     snap: null, lastPredAt: 0
   };
   return S.coins[sym];
+}
+/* ---------- WEB5: header line entry + collapsible card details ------
+   The Line field at the top of the card is the exact-price entry now:
+   typing the perpetual contract price there pins the line, with the
+   same semantics the old under-slider number box had (setLine, abs
+   mode). "snap to price" pins the line at the current live price. */
+function setLineFromHeader(sym, raw){
+  const v = parseFloat(raw);
+  if (isFinite(v) && v > 0) setLine(sym, v);
+}
+function snapLineToPrice(sym){
+  const cs = coinState(sym);
+  if (cs.price) setLine(sym, cs.price);
+}
+function setDetails(sym, open){
+  const cs = coinState(sym);
+  cs.detailsOpen = !!open;
+  const m = lsGet(LS_DET, {}); m[sym] = cs.detailsOpen; lsSet(LS_DET, m);
+  if (cs.els.details) cs.els.details.hidden = !cs.detailsOpen;
+  if (cs.els.detBtn) cs.els.detBtn.textContent = cs.detailsOpen ? "Details ▴" : "Details ▸";
+}
+function setFCZoom(sym, z){
+  const cs = coinState(sym);
+  cs.fcZoom = z;
+  const m = lsGet(LS_FCZ, {}); m[sym] = z; lsSet(LS_FCZ, m);
+  if (cs.els.fc30zoombtns) cs.els.fc30zoombtns.forEach(b => b.classList.toggle("on", b.dataset.fczoom === z));
+  drawFC30(sym);   // re-slices the SAME frozen snapshot — never recaptures
 }
 function setZoom(sym, z){
   const cs = coinState(sym);
@@ -299,9 +365,13 @@ function setZoom(sym, z){
   drawSpark(sym);
 }
 function setFC30(sym, on){
+  // WEB5 snapshot semantics: opening the forecast CAPTURES it (frozen
+  // until closed); closing discards the snapshot, so the next open
+  // captures a fresh one. While open, nothing recomputes it.
   const cs = coinState(sym);
   cs.fc30on = on;
   const m = lsGet(LS_FC30, {}); m[sym] = on; lsSet(LS_FC30, m);
+  if (on) captureFC30(sym); else cs.fcSnap = null;
   applyFC30(sym);
   drawSpark(sym);
 }
@@ -311,6 +381,10 @@ function applyFC30(sym){
   cs.els.fc30wrap.hidden = !cs.fc30on;
   cs.els.charts.classList.toggle("single", !cs.fc30on);
   cs.els.fc30btn.textContent = "30-day forecast: " + (cs.fc30on ? "on" : "off");
+  if (cs.els.fc30zoombtns) cs.els.fc30zoombtns.forEach(b => b.classList.toggle("on", b.dataset.fczoom === cs.fcZoom));
+  if (cs.els.fc30age) cs.els.fc30age.textContent = cs.fc30on && cs.fcSnap
+    ? "snapshot " + new Date(cs.fcSnap.t0).toLocaleTimeString() + " — frozen until closed"
+    : "";
   if (cs.fc30on) renderFC30Stat(sym);
 }
 
@@ -364,32 +438,36 @@ function addCard(sym){
   el.innerHTML =
     '<div class="wtop"><h3>' + sym + '</h3><span class="chg">24h —</span></div>' +
     '<div class="price">—</div>' +
-    '<div class="readouts"><span class="ro">Line <b class="ro-line">—</b></span><span class="ro">Current <b class="ro-cur">—</b></span><span class="ro-dist">—</span></div>' +
+    '<div class="readouts"><span class="ro">Line $<input class="ro-line-in" type="number" step="any" inputmode="decimal" placeholder="—" title="Type the perpetual contract price — sets your line exactly"></span><span class="ro">Current <b class="ro-cur">—</b></span><span class="ro-dist">—</span></div>' +
     '<div class="livewrap"><canvas class="spark" width="1040" height="300"></canvas><div class="pill" hidden></div></div>' +
     '<div class="zoomrow"><div class="zoomseg">' +
     '<button type="button" data-zoom="live">Live</button><button type="button" data-zoom="5">5M</button><button type="button" data-zoom="15">15M</button><button type="button" data-zoom="30">30M</button>' +
     '</div><div class="past"></div></div>' +
     '<div class="charts single"><div><div class="chartlbl">Estimate — forecast</div><canvas class="fc" width="520" height="220"></canvas></div>' +
-    '<div class="fc30wrap" hidden><div class="chartlbl">Estimate — 30-day forecast</div><canvas class="fc30" width="520" height="220"></canvas><div class="fc30stat"></div></div></div>' +
+    '<div class="fc30wrap" hidden><div class="chartlbl">Estimate — 30-day forecast (frozen while open)</div><canvas class="fc30" width="520" height="220"></canvas>' +
+    '<div class="zoomrow"><div class="zoomseg fczoomseg"><button type="button" data-fczoom="24H">24H</button><button type="button" data-fczoom="7D">7D</button><button type="button" data-fczoom="30D">30D</button></div><span class="note fc30age"></span></div>' +
+    '<div class="fc30stat"></div></div></div>' +
     '<div class="row" style="margin-top:6px"><button class="fc30btn snap" type="button">30-day forecast: off</button></div>' +
     '<div class="regime">Loading 6 months of pattern stats…</div>' +
     '<div class="trend"></div>' +
     '<div class="swline"></div>' +
     '<div class="snipe" hidden></div>' +
-    '<div class="pred"><div class="call noedge">NO CYCLE RUNNING</div><div class="conf">Set your line, then press Start — every call is for the close vs your line, never for right now.</div><div class="pbar"><div style="width:0%"></div></div></div>' +
+    '<div class="pred"><div class="call noedge">NO CYCLE RUNNING</div><div class="conf">Set your line, then press Start — every call is for the close vs your line, never for right now.</div><div class="trendread" hidden></div><div class="pbar"><div style="width:0%"></div></div></div>' +
     '<div class="lockedline" hidden></div>' +
+    '<button class="detbtn" type="button">Details ▸</button>' +
+    '<div class="carddetails" hidden>' +
     '<div class="line-ctl"><label>Over / under line <span class="slider-val"></span></label>' +
     '<input type="range" class="line-slider" min="-10" max="10" step="0.1" value="0">' +
     '<div class="stops"><span>-10%</span><span>-5%</span><span><b>0%</b></span><span>+5%</span><span>+10%</span></div>' +
-    '<div class="row" style="margin-top:6px"><input type="number" class="line-num" step="any" placeholder="Exact line price"> <button class="snap" type="button">snap to price</button></div>' +
-    '<div class="legend">Slider = the line\'s offset from the live price — a slider-set line rides the ticks at that offset. The number box sets an exact price and can go past ±10% (the slider then pins at the end and the readout shows the true offset).</div>' +
+    '<div class="row" style="margin-top:6px"><button class="snapbtn snap" type="button">snap to price</button></div>' +
+    '<div class="legend">Slider = the line\'s offset from the live price — a slider-set line rides the ticks at that offset. Type an exact price in the Line field at the top of the card to pin the line (it can go past ±10%; the slider then pins at the end and the readout shows the true offset). "snap to price" pins the line at the current live market price.</div>' +
     '<div class="linemoved" hidden></div></div>' +
     '<div class="flashmsg"></div>' +
     '<div class="rec"></div>' +
     '<div class="learnline"></div>' +
     '<div class="pooline"></div>' +
     '<div class="srcline" hidden></div>' +
-    '<div class="gateline"></div>';
+    '<div class="gateline"></div></div>';
   $("#cards").appendChild(el);
   cs.els = {
     root: el, chg: el.querySelector(".chg"), price: el.querySelector(".price"),
@@ -397,24 +475,34 @@ function addCard(sym){
     trend: el.querySelector(".trend"), swline: el.querySelector(".swline"),
     snipe: el.querySelector(".snipe"), pred: el.querySelector(".pred"),
     call: el.querySelector(".pred .call"), conf: el.querySelector(".pred .conf"),
-    pbar: el.querySelector(".pbar > div"), num: el.querySelector(".line-num"),
+    tread: el.querySelector(".trendread"),
+    pbar: el.querySelector(".pbar > div"), lineIn: el.querySelector(".ro-line-in"),
     slider: el.querySelector(".line-slider"), flash: el.querySelector(".flashmsg"),
     sval: el.querySelector(".slider-val"), lmoved: el.querySelector(".linemoved"),
     locked: el.querySelector(".lockedline"),
+    detBtn: el.querySelector(".detbtn"), details: el.querySelector(".carddetails"),
     rec: el.querySelector(".rec"), learn: el.querySelector(".learnline"),
     pool: el.querySelector(".pooline"), src: el.querySelector(".srcline"), gate: el.querySelector(".gateline"),
-    roLine: el.querySelector(".ro-line"), roCur: el.querySelector(".ro-cur"),
+    roCur: el.querySelector(".ro-cur"),
     roDist: el.querySelector(".ro-dist"), pill: el.querySelector(".pill"),
     past: el.querySelector(".past"), charts: el.querySelector(".charts"),
     fc30wrap: el.querySelector(".fc30wrap"), fc30: el.querySelector(".fc30"),
     fc30stat: el.querySelector(".fc30stat"), fc30btn: el.querySelector(".fc30btn"),
-    zoombtns: el.querySelectorAll(".zoomseg button")
+    fc30age: el.querySelector(".fc30age"),
+    zoombtns: el.querySelectorAll(".zoomseg:not(.fczoomseg) button"),
+    fc30zoombtns: el.querySelectorAll(".fczoomseg button")
   };
   cs.els.zoombtns.forEach(b => {
     b.classList.toggle("on", b.dataset.zoom === cs.zoom);
     b.addEventListener("click", () => setZoom(sym, b.dataset.zoom));
   });
+  cs.els.fc30zoombtns.forEach(b => {
+    b.classList.toggle("on", b.dataset.fczoom === cs.fcZoom);
+    b.addEventListener("click", () => setFCZoom(sym, b.dataset.fczoom));
+  });
   cs.els.fc30btn.addEventListener("click", () => setFC30(sym, !cs.fc30on));
+  cs.els.detBtn.addEventListener("click", () => setDetails(sym, !cs.detailsOpen));
+  setDetails(sym, cs.detailsOpen);
   applyFC30(sym);
   cs.els.slider.addEventListener("input", () => {
     let off = parseFloat(cs.els.slider.value);
@@ -425,8 +513,8 @@ function addCard(sym){
   cs.els.slider.addEventListener("pointerdown", () => { cs.dragging = true; });
   cs.els.slider.addEventListener("pointerup", () => { cs.dragging = false; });
   cs.els.slider.addEventListener("change", () => { cs.dragging = false; });
-  cs.els.num.addEventListener("change", () => { const v = parseFloat(cs.els.num.value); if (isFinite(v) && v > 0) setLine(sym, v); });
-  el.querySelector(".snap").addEventListener("click", () => { if (cs.price) setLine(sym, cs.price); });
+  cs.els.lineIn.addEventListener("change", () => setLineFromHeader(sym, cs.els.lineIn.value));
+  el.querySelector(".snapbtn").addEventListener("click", () => snapLineToPrice(sym));
   renderRec(sym);
   renderLearn(sym);
   updateLineUI(sym);
@@ -438,16 +526,16 @@ function removeCard(sym){
 }
 function fmtOff(off){ return (off > 0 ? "+" : "") + off.toFixed(1) + "%"; }
 function updateLineUI(sym){
-  // O(1): slider position (never while the user is dragging it), the
-  // exact-price entry (never while it has focus), and the offset/line
-  // readout. Called from the slider handler, setLine, and the price tick.
+  // O(1): slider position (never while the user is dragging it) and
+  // the offset/line readout; the header Line field itself is synced
+  // by renderReadouts (never while it has focus). Called from the
+  // slider handler, setLine, and the price tick.
   const cs = coinState(sym);
   if (!cs.els.slider) return;
   const off = cs.price && cs.line ? (cs.line / cs.price - 1) * 100 : 0;
   const pinned = Math.abs(off) > 10;
   if (!cs.dragging) cs.els.slider.value = clamp(off, -10, 10);
   cs.els.slider.classList.toggle("pinned", pinned);
-  if (document.activeElement !== cs.els.num) cs.els.num.value = cs.line ? cs.line.toFixed(dp(cs.line)) : "";
   cs.els.sval.innerHTML = 'offset <span class="off">' + fmtOff(off) + "</span> · line " + fmtPrice(cs.line) +
     (pinned ? " (past slider range)" : "");
   cs.els.lmoved.hidden = !cs.lineMoved;
@@ -519,7 +607,7 @@ async function loadCoin(sym){
     computeSnipe(sym);
     drawSpark(sym);
     const M = MODELS[sym];
-    cs.els.regime.textContent =
+    if (cs.els.regime) cs.els.regime.textContent =
       "6-mo regime: " + (M.slope >= 0 ? "upward" : "downward") + " drift " + fmtPct(M.slope, true) + "/day · range position " +
       Math.round(M.pos * 100) + "% · base model held-out record " + (M.bt * 100).toFixed(1) + "% (n=" + M.btN + ")";
     if (!cs.lineSet && cs.closesH.length) setLine(sym, cs.closesH[cs.closesH.length - 1]);
@@ -576,11 +664,13 @@ function computeSnipe(sym){
   if (viaSh) strength = Math.max(strength, Math.min(1, (0.7 * Math.abs(sz) / P.shock_mult + 0.3 * vz / P.vol_z_min) / 2));
   cs.snipe = {dir: viaSh ? (sz > 0 ? "up" : "down") : (pz > 0 ? "up" : "down"), strength: strength, via: viaSh ? "shock" : "squeeze"};
   const M = MODELS[sym];
-  cs.els.snipe.hidden = false;
-  cs.els.snipe.innerHTML = "⚡ SNIPE — big move brewing: likely " + (cs.snipe.dir === "up" ? "JUMP" : "PLUMMET") +
-    " over the next ~4h · strength " + Math.round(strength * 100) + "%" +
-    '<div style="font-weight:400;font-size:12px;margin-top:3px">Hourly ' + cs.snipe.via + " setup — a ~4h watch, not a call on this cycle's close. Held-out on " + sym +
-    ": flagged hit " + (M.sn4.hit * 100).toFixed(0) + "% vs " + (M.sn4.base * 100).toFixed(0) + "% base · " + M.sn4.lift.toFixed(2) + "x lift (n=" + M.sn4.n + ")</div>";
+  if (cs.els.snipe){
+    cs.els.snipe.hidden = false;
+    cs.els.snipe.innerHTML = "⚡ SNIPE — big move brewing: likely " + (cs.snipe.dir === "up" ? "JUMP" : "PLUMMET") +
+      " over the next ~4h · strength " + Math.round(strength * 100) + "%" +
+      '<div style="font-weight:400;font-size:12px;margin-top:3px">Hourly ' + cs.snipe.via + " setup — a ~4h watch, not a call on this cycle's close. Held-out on " + sym +
+      ": flagged hit " + (M.sn4.hit * 100).toFixed(0) + "% vs " + (M.sn4.base * 100).toFixed(0) + "% base · " + M.sn4.lift.toFixed(2) + "x lift (n=" + M.sn4.n + ")</div>";
+  }
 }
 function chartScale(sym){
   const cs = coinState(sym);
@@ -800,8 +890,11 @@ function drawSpark(sym){
 }
 function renderReadouts(sym){
   const cs = coinState(sym);
-  if (!cs.els.roLine) return;
-  cs.els.roLine.textContent = cs.line ? fmtPrice(cs.line) : "—";
+  if (!cs.els.lineIn) return;
+  // The header Line field shows the current line as a plain typeable
+  // number — synced here, but never while the user is typing in it.
+  if (document.activeElement !== cs.els.lineIn)
+    cs.els.lineIn.value = cs.line ? cs.line.toFixed(dp(cs.line)) : "";
   cs.els.roCur.textContent = cs.price ? fmtPrice(cs.price) : "—";
   if (cs.price && cs.line){
     const d = cs.price - cs.line, up = d >= 0;
@@ -845,7 +938,10 @@ function forecast30(sym){
   let muDay = 24 * (W.mom * 0.5 * slopePH + W.reg * (M.slope / 24) + W.asym * asym * volH);
   muDay = clamp(muDay, -3 * dailyVol, 3 * dailyVol);
   const L = learnState(sym);
-  const bias = (L.fc && L.fc.bias) || 0;
+  // Drift correction = the daily checkpoints' bias PLUS the WEB5
+  // overlay fine correction — both are measured forecast misses,
+  // folded back into the next forecast's drift.
+  const bias = ((L.fc && L.fc.bias) || 0) + ((L.fc && L.fc.biasFine) || 0);
   muDay += bias;
   const pts = [];
   for (let d = 0; d <= 30; d++){
@@ -857,30 +953,110 @@ function forecast30(sym){
   return {pts: pts, anchor: anchor, muDay: muDay, dailyVol: dailyVol, bias: bias,
           medDurMin: (cs.swings && cs.swings.medDurMin) || null};
 }
+/* ---------- WEB5: forecast snapshot, actual overlay, learning ----
+   Opening the 30-day forecast captures a snapshot — anchor, drift,
+   vol, bias as of that moment — and FREEZES it. While open, the
+   graph renders only the snapshot (the zooms re-slice it; nothing
+   recomputes it). The real price draws over the frozen forecast in
+   a left-to-right sweep that loops, from the prices recorded since
+   the snapshot (live ticks + 1m candles). Matched-time samples of
+   actual vs the frozen mean accumulate into the learning store and
+   feed its drift correction (fc.biasFine), so leaving a forecast
+   open literally trains the next one. */
+const FCZ_DAYS = {"24H": 1, "7D": 7, "30D": 30};
+function captureFC30(sym){
+  const cs = coinState(sym);
+  const f = forecast30(sym);
+  cs.fcSnap = f ? {t0: Date.now(), anchor: f.anchor, muDay: f.muDay,
+                   dailyVol: f.dailyVol, bias: f.bias,
+                   medDurMin: f.medDurMin, actuals: []} : null;
+  if (cs.els.fc30age && cs.fcSnap)
+    cs.els.fc30age.textContent = "snapshot " + new Date(cs.fcSnap.t0).toLocaleTimeString() + " — frozen until closed";
+  return cs.fcSnap;
+}
+function fcActualSeries(sym, sn){
+  // Actual prices since the snapshot: live ticks + the actuals the
+  // price loop records against the snapshot + 1m candle closes for
+  // coverage beyond the tick buffer. Merged, time-sorted.
+  const cs = coinState(sym), byT = new Map();
+  for (const a of sn.actuals) byT.set(a.t, a.p);
+  for (const tk of cs.ticks) if (tk.t >= sn.t0) byT.set(tk.t, tk.p);
+  const c1 = cs.closes1, n = c1.length, now = Date.now();
+  if (n > 1){
+    const endT = Math.floor(now / 60000) * 60000 + 60000;
+    for (let i = 0; i < n; i++){
+      const t = endT - (n - 1 - i) * 60000;
+      if (t < sn.t0) continue;
+      let covered = false;
+      for (const k of byT.keys()) if (Math.abs(k - t) < 30000){ covered = true; break; }
+      if (!covered) byT.set(t, c1[i]);
+    }
+  }
+  return [...byT.entries()].map(([t, p]) => ({t: t, p: p})).sort((a, b) => a.t - b.t);
+}
+function fcOverlaySample(sym, now){
+  // One matched-time error sample: the actual price vs the FROZEN
+  // forecast's mean at the same elapsed time. Throttled to one per
+  // 5 minutes per snapshot so a long-open graph yields a spread of
+  // independent-ish samples, not thousands of correlated ones. The
+  // log-error nudges fc.biasFine — the fine-grain sibling of the
+  // daily checkpoint's bias — and forecast30() adds it into the
+  // next forecast's drift, so the misses genuinely retrain it.
+  const cs = coinState(sym), sn = cs.fcSnap;
+  if (!sn || !cs.price) return false;
+  now = now || Date.now();
+  const elapsed = now - sn.t0;
+  if (elapsed < 60000) return false;
+  if (now - (cs.fcErrLast || 0) < 300000) return false;
+  cs.fcErrLast = now;
+  const meanAt = sn.anchor * Math.exp(sn.muDay * (elapsed / 86400000));
+  if (!(meanAt > 0)) return false;
+  const err = Math.log(cs.price / meanAt);
+  const F = learnState(sym).fc;
+  F.errN = (F.errN || 0) + 1;
+  F.errSum = (F.errSum || 0) + err;
+  F.errAbs = (F.errAbs || 0) + Math.abs(err);
+  F.biasFine = clamp((F.biasFine || 0) + 0.05 * err, -0.01, 0.01);
+  saveLearn();
+  renderFC30Stat(sym);
+  return true;
+}
 function drawFC30(sym){
   const cs = coinState(sym), cv = cs.els.fc30;
   if (!cv || !cs.fc30on) return;
-  const f = forecast30(sym);
+  if (!cs.fcSnap) captureFC30(sym);
+  const sn = cs.fcSnap;
   const ctx = cv.getContext("2d"), Wd = cv.width, H = cv.height;
   ctx.clearRect(0, 0, Wd, H);
   ctx.fillStyle = "#9a96ad"; ctx.font = "17px system-ui";
-  if (!f){ ctx.fillText("Not enough data yet.", 8, 24); return; }
+  if (!sn){ ctx.fillText("Not enough data yet.", 8, 24); return; }
+  const winD = FCZ_DAYS[cs.fcZoom] || 30, winMs = winD * 86400000;
+  const N = 64, pts = [];
+  for (let k = 0; k <= N; k++){
+    const d = winD * k / N, m = sn.muDay * d, sd = sn.dailyVol * Math.sqrt(d);
+    pts.push({d: d, mean: sn.anchor * Math.exp(m), u68: sn.anchor * Math.exp(m + sd),
+              l68: sn.anchor * Math.exp(m - sd), u95: sn.anchor * Math.exp(m + 1.96 * sd),
+              l95: sn.anchor * Math.exp(m - 1.96 * sd)});
+  }
+  const acts = fcActualSeries(sym, sn);
   let lo = Infinity, hi = -Infinity;
-  f.pts.forEach(q => { lo = Math.min(lo, q.l95); hi = Math.max(hi, q.u95); });
-  lo = Math.min(lo, cs.line || lo); hi = Math.max(hi, cs.line || hi);
+  pts.forEach(q => { lo = Math.min(lo, q.l95); hi = Math.max(hi, q.u95); });
+  acts.forEach(a => { if (a.t - sn.t0 <= winMs){ lo = Math.min(lo, a.p); hi = Math.max(hi, a.p); } });
+  if (cs.line){ lo = Math.min(lo, cs.line); hi = Math.max(hi, cs.line); }
+  if (!isFinite(lo) || hi <= lo){ lo = sn.anchor * 0.99; hi = sn.anchor * 1.01; }
   const pad = (hi - lo) * 0.05 || hi * 0.01; lo -= pad; hi += pad;
-  const X = d => 4 + (Wd - 8) * d / 30;
+  const X = d => 4 + (Wd - 8) * d / winD;
   const Y = p => H - 14 - (p - lo) / (hi - lo) * (H - 26);
   const band = (up, dn, fill) => {
     ctx.beginPath();
-    f.pts.forEach((q, i) => i ? ctx.lineTo(X(q.d), Y(q[up])) : ctx.moveTo(X(q.d), Y(q[up])));
-    for (let i = f.pts.length - 1; i >= 0; i--) ctx.lineTo(X(f.pts[i].d), Y(f.pts[i][dn]));
+    pts.forEach((q, i) => i ? ctx.lineTo(X(q.d), Y(q[up])) : ctx.moveTo(X(q.d), Y(q[up])));
+    for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(X(pts[i].d), Y(pts[i][dn]));
     ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
   };
   band("u95", "l95", "rgba(124,92,255,0.10)");
   band("u68", "l68", "rgba(201,162,39,0.13)");
   ctx.beginPath();
-  f.pts.forEach((q, i) => i ? ctx.lineTo(X(q.d), Y(q.mean)) : ctx.moveTo(X(q.d), Y(q.mean)));
+  pts.forEach((q, i) => i ? ctx.lineTo(X(q.d), Y(q.mean)) : ctx.moveTo(X(q.d), Y(q.mean)));
   ctx.strokeStyle = "#f3d27a"; ctx.lineWidth = 2; ctx.stroke();
   if (cs.line){
     const yy = Y(cs.line);
@@ -889,23 +1065,53 @@ function drawFC30(sym){
       ctx.strokeStyle = "#c9a227"; ctx.setLineDash([6, 4]); ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]);
     }
   }
-  const med = f.medDurMin;
-  if (med && med > 0){
+  const med = sn.medDurMin;
+  if (med && med > 0 && winD * 1440 / med <= 240){
     ctx.fillStyle = "#7c5cff"; ctx.strokeStyle = "#7c5cff";
-    for (let tt = med; tt < 30 * 1440; tt += med){
+    for (let tt = med; tt < winD * 1440; tt += med){
       const d = tt / 1440, x = X(d);
       ctx.beginPath(); ctx.moveTo(x, H - 14); ctx.lineTo(x, H - 6); ctx.lineWidth = 2; ctx.stroke();
-      const q = f.pts[Math.round(d)];
+      const q = pts[Math.round(d / winD * N)];
       if (q){ ctx.beginPath(); ctx.arc(x, Y(q.mean), 3, 0, 7); ctx.fill(); }
     }
   }
-  ctx.beginPath(); ctx.arc(X(0), Y(f.anchor), 3.5, 0, 7); ctx.fillStyle = "#eceaf4"; ctx.fill();
+  ctx.beginPath(); ctx.arc(X(0), Y(sn.anchor), 3.5, 0, 7); ctx.fillStyle = "#eceaf4"; ctx.fill();
+  // The actual-price overlay: the real travel since the snapshot,
+  // revealed by a sweep head that runs left to right over the
+  // elapsed span and loops — the forecast underneath never moves.
+  const elapsed = Math.min(Date.now() - sn.t0, winMs);
+  if (acts.length && elapsed > 3000){
+    const head = (Date.now() % 6000) / 6000 * elapsed;
+    ctx.beginPath();
+    let started = false, hx = 0, hy = 0;
+    for (const a of acts){
+      const off = a.t - sn.t0;
+      if (off > winMs || off > head) break;
+      const x = X(off / 86400000), y = Y(a.p);
+      if (!started){ ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      hx = x; hy = y;
+    }
+    if (started){
+      ctx.strokeStyle = "#eceaf4"; ctx.lineWidth = 2; ctx.stroke();
+      ctx.save();
+      ctx.shadowColor = "#eceaf4"; ctx.shadowBlur = 14;
+      ctx.beginPath(); ctx.arc(hx, hy, 4.5, 0, 7); ctx.fillStyle = "#eceaf4"; ctx.fill();
+      ctx.restore();
+      ctx.font = "bold 13px system-ui"; ctx.fillStyle = "#eceaf4";
+      ctx.fillText("ACTUAL", clamp(hx + 8, 8, Wd - 58), clamp(hy - 8, 14, H - 20));
+    }
+  }
   ctx.fillStyle = "#9a96ad"; ctx.font = "bold 15px system-ui";
-  ctx.fillText("ESTIMATE — 30-day forecast", 8, 20);
+  ctx.fillText("ESTIMATE — 30-day forecast · frozen snapshot", 8, 20);
   ctx.font = "15px system-ui";
-  ctx.fillText("+30d", Wd - 40, H - 18);
+  ctx.fillText(cs.fcZoom === "24H" ? "+24h" : cs.fcZoom === "7D" ? "+7d" : "+30d", Wd - 44, H - 18);
   ctx.fillText(fmtPrice(hi), 5, 38);
   ctx.fillText(fmtPrice(lo), 5, H - 18);
+  const F = learnState(sym).fc;
+  if (F.errN){
+    ctx.font = "14px system-ui"; ctx.fillStyle = "#b9b4d6";
+    ctx.fillText("forecast vs actual so far: ±" + (F.errAbs / F.errN * 100).toFixed(2) + "% over " + F.errN + " samples", 8, H - 18);
+  }
 }
 function renderFC30Stat(sym){
   const cs = coinState(sym);
@@ -918,6 +1124,14 @@ function renderFC30Stat(sym){
     const avg = mean(ck.map(c => Math.abs(c.errPct)));
     txt = "Checkpoints: " + ck.length + " · avg error " + (avg * 100).toFixed(1) + "%" +
       (Math.abs(L.fc.bias) > 0.0001 ? " · drift corrected " + (L.fc.bias * 100).toFixed(2) + "%/day by checkpoint misses" : "");
+  }
+  const F = L.fc;
+  if (F.errN){
+    txt += " · Overlay vs actual: " + F.errN + " samples · avg miss ±" + (F.errAbs / F.errN * 100).toFixed(2) + "%" +
+      " · signed " + (F.errSum / F.errN * 100).toFixed(2) + "%" +
+      (Math.abs(F.biasFine) > 0.00005 ? " · fine drift " + (F.biasFine * 100).toFixed(2) + "%/day now fed into new forecasts from those misses" : "");
+  } else if (cs.fcSnap) {
+    txt += " · Overlay vs actual: sampling — the first error sample lands a few minutes after the snapshot, then one every ~5 min while this stays open.";
   }
   if (cs.els.fc30stat.textContent !== txt) cs.els.fc30stat.textContent = txt;
 }
@@ -1026,6 +1240,7 @@ function renderTrend(sym){
     .map(k => WIN_LABEL[k] + " " + (cs.trend[k] ? cs.trend[k].state : "—")).join(" · ");
   cs.els.trend.innerHTML = '<span class="tchip ' + cls + '">' + WIN_LABEL[mw] + " · " + t.state + "</span>" +
     '<span class="tothers">' + others + (t.decel && (t.state === "JUMPING" || t.state === "DROPPING") ? " · easing" : "") + "</span>";
+  renderTrendRead(sym);
 }
 function zigzagSwings(closes, barHours, theta){
   // Pivot-to-pivot swings; a reversal of theta (fraction) confirms a pivot.
@@ -1054,6 +1269,11 @@ function zigzagSwings(closes, barHours, theta){
     const a = pivots[k - 1], b = pivots[k];
     swings.push({pct: b.p / a.p - 1, durMin: (b.i - a.i) * barHours * 60});
   }
+  // The current (unfinished) leg runs from the last confirmed pivot —
+  // the trend read uses its age + direction for swing-timing context.
+  const lp = pivots[pivots.length - 1];
+  swings.lastPivotI = lp ? lp.i : 0;
+  swings.lastPivotP = lp ? lp.p : closes[0];
   return swings;
 }
 function swingStats(closes, barHours, theta){
@@ -1066,7 +1286,9 @@ function swingStats(closes, barHours, theta){
   return {
     avgUp: avgUp, avgDn: avgDn, nUp: ups.length, nDn: dns.length, n: sw.length,
     ratio: avgDn > 0 ? avgUp / avgDn : null,
-    medDurMin: median(sw.map(s => s.durMin))
+    medDurMin: median(sw.map(s => s.durMin)),
+    lastPivotMinAgo: sw.lastPivotI != null ? (closes.length - 1 - sw.lastPivotI) * barHours * 60 : null,
+    lastLegDir: sw.lastPivotP ? Math.sign(closes[closes.length - 1] - sw.lastPivotP) : 0
   };
 }
 function computeSwings(sym){
@@ -1075,7 +1297,10 @@ function computeSwings(sym){
   const s24 = cs.closes15.length >= 40 ? swingStats(cs.closes15.slice(-96), 0.25, theta)
                                         : swingStats(cs.closesH.slice(-24), 1, theta);
   const s7d = swingStats(cs.closesH.slice(-168), 1, theta);
-  cs.swings = {h24: s24, d7: s7d, medDurMin: (s24 && s24.medDurMin) || (s7d && s7d.medDurMin) || null};
+  cs.swings = {h24: s24, d7: s7d, medDurMin: (s24 && s24.medDurMin) || (s7d && s7d.medDurMin) || null,
+               lastPivotMinAgo: (s24 && s24.lastPivotMinAgo != null) ? s24.lastPivotMinAgo
+                                : (s7d ? s7d.lastPivotMinAgo : null),
+               lastLegDir: (s24 && s24.lastLegDir) || (s7d && s7d.lastLegDir) || 0};
 }
 function renderSwings(sym){
   const cs = coinState(sym);
@@ -1118,6 +1343,137 @@ function computeAnalysis(sym){
   drawSpark(sym);
 }
 
+/* ---------- WEB5: trend verdicts ----------
+   One plain-language line per prediction, computed at render time
+   from the system's own signals for that coin: trend state on the
+   horizon-matched window, rise-vs-fall swing ratios (24h/7d), swing
+   timing (age of the current leg vs the typical leg), 24h momentum
+   scaled by the coin's own daily vol, the forecast path's slope,
+   the hour-of-day habit from the 6-month hourly model data
+   (MODELS[sym].hod — the share of hours starting at this UTC hour
+   that closed up), and the live-vs-base volatility character. Each
+   signal votes with its measured number attached; the verdict word
+   and the reasons are read off those votes, so different market
+   states produce genuinely different text — nothing is canned. */
+function fmtDur(min){
+  if (min == null || !isFinite(min)) return "—";
+  if (min < 90) return Math.round(min) + "m";
+  return (min / 60).toFixed(1).replace(/\.0$/, "") + "h";
+}
+function trendVerdict(sym, horizonMin){
+  const cs = coinState(sym);
+  if (!cs.closesH.length && !cs.closes15.length && !cs.closes1.length) return null;
+  const M = MODELS[sym];
+  const volH = cs.feat.volH || M.vol;
+  const dailyVol = volH * Math.sqrt(24);
+  const wk = horizonMin == null ? matchedWin() : horizonMin <= 20 ? "w15" : horizonMin <= 90 ? "w1h" : "w4h";
+  const t = cs.trend ? cs.trend[wk] : null;
+  let score = 0;
+  const up = [], dn = [], flat = [], notes = [];
+  if (t){
+    if (t.state === "JUMPING"){ score += 2; up.push("the " + WIN_LABEL[wk] + " trend is jumping (" + fmtPct(t.logret, true) + " across the window)"); }
+    else if (t.state === "DROPPING"){ score -= 2; dn.push("the " + WIN_LABEL[wk] + " trend is dropping (" + fmtPct(t.logret, true) + " across the window)"); }
+    else if (t.state.indexOf("RIDING") === 0){
+      if (t.stdSlope >= 0.1){ score += 0.5; up.push("price is riding the line with an upward tilt"); }
+      else if (t.stdSlope <= -0.1){ score -= 0.5; dn.push("price is riding the line with a downward tilt"); }
+      else flat.push("price is riding the line, flat");
+    } else flat.push("the " + WIN_LABEL[wk] + " trend is leveling out");
+    if (t.decel && Math.abs(score) >= 2) notes.push("the move is easing, though");
+  }
+  const sw = cs.swings && (cs.swings.h24 || cs.swings.d7);
+  if (sw && sw.ratio != null){
+    const lbl = cs.swings.h24 ? "24h" : "7d";
+    if (sw.ratio >= 1.25){ score += 1; up.push("rises are running " + sw.ratio.toFixed(1) + "x falls (" + lbl + ")"); }
+    else if (sw.ratio <= 0.8){ score -= 1; dn.push("falls are running " + (1 / sw.ratio).toFixed(1) + "x rises (" + lbl + ")"); }
+    else flat.push("rises and falls are balanced (ratio " + sw.ratio.toFixed(2) + ", " + lbl + ")");
+  }
+  const swg = cs.swings;
+  if (swg && swg.medDurMin && swg.lastPivotMinAgo != null){
+    const med = swg.medDurMin, ago = swg.lastPivotMinAgo;
+    if (ago >= 0.9 * med && swg.lastLegDir){
+      score += swg.lastLegDir > 0 ? -0.5 : 0.5;   // an aging leg: a turn is due against it
+      notes.push("the current swing leg is ~" + fmtDur(ago) + " old vs a typical ~" + fmtDur(med) + " — turns have been landing about then");
+    } else if (ago <= 0.35 * med){
+      notes.push("a swing just turned ~" + fmtDur(ago) + " ago — the new leg is young (typical leg ~" + fmtDur(med) + ")");
+    }
+  }
+  if (cs.feat.ret24 != null && dailyVol > 0){
+    const z = cs.feat.ret24 / dailyVol;
+    if (z >= 0.5){ score += 1; up.push("24h momentum is " + fmtPct(cs.feat.ret24, true)); }
+    else if (z <= -0.5){ score -= 1; dn.push("24h momentum is " + fmtPct(cs.feat.ret24, true)); }
+  }
+  const muDay = (cs.fcMu || 0) * 24;
+  if (dailyVol > 0 && Math.abs(muDay) >= 0.3 * dailyVol){
+    if (muDay > 0){ score += 1; up.push("the forecast path slopes up ~" + fmtPct(muDay, true) + "/day"); }
+    else { score -= 1; dn.push("the forecast path slopes down ~" + fmtPct(muDay, true) + "/day"); }
+  }
+  if (M.hod){
+    const hr = new Date().getUTCHours(), rate = M.hod[hr];
+    if (rate != null){
+      if (rate >= 0.56){ score += 1; up.push("hours starting " + hr + ":00 UTC closed up " + Math.round(rate * 100) + "% of the time over 6 months"); }
+      else if (rate <= 0.44){ score -= 1; dn.push("hours starting " + hr + ":00 UTC closed down " + Math.round((1 - rate) * 100) + "% of the time over 6 months"); }
+    }
+  }
+  const sigR = M.vol ? liveSigma(sym) / M.vol : 1;
+  if (sigR <= 0.8) flat.push("volatility is compressing (" + Math.round(sigR * 100) + "% of the 6-month base)");
+  else if (sigR >= 1.35) notes.push("volatility is running hot (" + Math.round(sigR * 100) + "% of base) — moves can overshoot");
+  if (!up.length && !dn.length && !flat.length && !notes.length) return null;
+  let word;
+  if (score >= 2.5) word = (t && t.state === "JUMPING") || sigR >= 1.3 ? "spike up likely" : "rise likely";
+  else if (score >= 1.5) word = "rise likely";
+  else if (score >= 0.5) word = "leaning up";
+  else if (score <= -2.5) word = (t && t.state === "DROPPING") || sigR >= 1.3 ? "drop risk — a sharp move down is plausible" : "drop likely";
+  else if (score <= -1.5) word = "drop likely";
+  else if (score <= -0.5) word = "leaning down";
+  else word = "staying level";
+  let reasons;
+  if (score >= 0.5) reasons = up.slice(0, 2);
+  else if (score <= -0.5) reasons = dn.slice(0, 2);
+  else reasons = flat.slice(0, 2).concat(up.slice(0, 1), dn.slice(0, 1)).slice(0, 2);
+  const all = reasons.concat(notes).slice(0, 3);
+  return {word: word, score: score, reasons: reasons,
+          text: "Trend read: " + word + (all.length ? " — " + all.join(" · ") : "")};
+}
+function renderTrendRead(sym){
+  const cs = coinState(sym);
+  if (!cs.els.tread) return;
+  const v = trendVerdict(sym, null);
+  if (!v){ cs.els.tread.hidden = true; return; }
+  // The read is the guidance of record when the call itself is
+  // close or NO EDGE — there it renders prominent.
+  let strong = false;
+  if (S.cycle.active && cs.lastPred)
+    strong = !cs.lastCall || Math.abs(cs.lastPred.p - 0.5) < effBand(sym) + 0.03;
+  const cls = "trendread" + (strong ? " strong" : "");
+  if (cs.els.tread.className !== cls) cs.els.tread.className = cls;
+  if (cs.els.tread.textContent !== v.text) cs.els.tread.textContent = v.text;
+  cs.els.tread.hidden = false;
+}
+function renderOddsTrend(){
+  const cs = coinState(ODDS.coin);
+  document.querySelectorAll("[data-trendread]").forEach(el => {
+    const h = +el.getAttribute("data-trendread");
+    if (!cs.closesH.length){
+      el.textContent = "Trend read: warming up — loading this coin's price history…";
+      el.className = "otrend";
+      return;
+    }
+    const v = trendVerdict(ODDS.coin, h);
+    if (!v){ el.textContent = ""; return; }
+    const hz = ODDS.lastHz && ODDS.lastHz[h];
+    const strong = !!hz && (hz.call === "NO EDGE" || Math.abs(hz.p_over - 0.5) < 0.12);
+    el.className = "otrend" + (strong ? " strong" : "");
+    el.textContent = v.text;
+  });
+}
+async function loadOddsHistory(){
+  const coin = ODDS.coin;
+  if (coinState(coin).closesH.length || ODDS._hist === coin) return;
+  ODDS._hist = coin;
+  await loadCoin(coin);
+  if (ODDS.coin === coin) renderOddsTrend();
+}
+
 /* ---------- self-adjustment (learning, flaw-aware) ----------
    Per coin, persisted in localStorage (ph.learn.v2):
    - w.mom / w.reg / w.asym: separate bounded weights (clamp 0..2) for
@@ -1158,6 +1514,18 @@ function learnState(sym){
   // WEB4 additions: 30-day forecast self-grading (fc), adopted-fix
   // adjustments (bucketAdj / bandAdj), and the fix-gate state (gate).
   if (!L.fc) L.fc = {bias: 0, ck: [], pending: null};
+  // WEB5: overlay error accumulation — matched-time actual-vs-forecast
+  // samples taken while a frozen forecast snapshot is open. biasFine
+  // is the fine-grain drift correction they feed (alongside the
+  // daily checkpoint's bias); errN/errSum/errAbs are the running
+  // measured error printed on the graph.
+  const F = L.fc;
+  if (typeof F.bias !== "number") F.bias = 0;
+  if (!Array.isArray(F.ck)) F.ck = [];
+  if (typeof F.biasFine !== "number") F.biasFine = 0;
+  if (typeof F.errN !== "number") F.errN = 0;
+  if (typeof F.errSum !== "number") F.errSum = 0;
+  if (typeof F.errAbs !== "number") F.errAbs = 0;
   if (!L.gate) L.gate = {};
   if (!L.bucketAdj) L.bucketAdj = {};
   if (typeof L.bandAdj !== "number") L.bandAdj = 0;
@@ -1639,9 +2007,12 @@ function predict(sym){
   // snapshot + the closing outcome. NO EDGE at the open (call null)
   // locks in a no-call for the cycle, whatever appears later.
   if (S.cycle.active && (!cs.snap || cs.snap.closeAt !== S.cycle.closeAt)){
+    const tv = trendVerdict(sym, null);
     cs.snap = {closeAt: S.cycle.closeAt, call: cs.lastCall ? cs.lastCall.side : null,
-               p: cs.lastPred.p, line: cs.line, pred: cs.lastPred};
+               p: cs.lastPred.p, line: cs.line, pred: cs.lastPred,
+               trendText: tv ? tv.text : null};
   }
+  renderTrendRead(sym);
   renderLocked(sym);
   drawSpark(sym);
   renderLearn(sym);
@@ -1651,11 +2022,12 @@ function renderLocked(sym){
   if (!cs.els.locked) return;
   const sn = cs.snap;
   if (!S.cycle.active || !sn || sn.closeAt !== S.cycle.closeAt){ cs.els.locked.hidden = true; return; }
-  const txt = sn.call
+  let txt = sn.call
     ? "Locked at open: " + sn.call.toUpperCase() + " " + Math.round((sn.call === "over" ? sn.p : 1 - sn.p) * 100) +
       "% · line " + fmtPrice(sn.line) + " — only this call is graded. The call above is live tracking and never counts."
     : "Locked at open: NO EDGE · line " + fmtPrice(sn.line) +
       " — this cycle grades as a no-call. The call above is live tracking and never counts.";
+  if (sn.trendText) txt += " At the open — " + sn.trendText.replace(/^Trend read: /, "trend read: ");
   if (cs.els.locked.textContent !== txt) cs.els.locked.textContent = txt;
   cs.els.locked.hidden = false;
 }
@@ -1785,6 +2157,17 @@ async function priceTick(){
       cs.price = +t.price;
       cs.ticks.push({t: Date.now(), p: cs.price});
       if (cs.ticks.length > 700) cs.ticks.splice(0, cs.ticks.length - 700);
+      if (cs.fcSnap){
+        // Record the actual travel against the frozen forecast
+        // (thinned to ~15s) for the overlay, and let the sampler
+        // fold matched-time misses into the drift correction.
+        const a = cs.fcSnap.actuals, nowA = Date.now();
+        if (!a.length || nowA - a[a.length - 1].t >= 15000){
+          a.push({t: nowA, p: cs.price});
+          if (a.length > 3000) a.splice(0, a.length - 3000);
+        }
+        fcOverlaySample(sym);
+      }
       cs.els.price.textContent = fmtPrice(cs.price);
       renderReadouts(sym);
       const c = cs.closesH, n = c.length;
@@ -1831,6 +2214,16 @@ setInterval(() => {
   if (S.loopN % 15 === 0 && S.selected.length) loadSources();
   if (S.loopN % 900 === 0) loadGlobal();
 }, 1000);
+/* WEB5: the actual-overlay sweep animation — redraws only the open
+   forecast graphs (the frozen forecast itself never changes; just
+   the sweep head advances). */
+setInterval(() => {
+  if (document.visibilityState === "hidden") return;
+  for (const sym of S.selected){
+    const cs = S.coins[sym];
+    if (cs && cs.fc30on && cs.fcSnap && cs.els.fc30) drawFC30(sym);
+  }
+}, 120);
 
 /* ---------- odds panel (ODDS-SPEC) ----------
    The user picks only a coin and a value; the server (the global
@@ -1839,7 +2232,7 @@ setInterval(() => {
    the % slider sets an offset that rides the live price; the number
    box sets an exact value. Polls every 20s; the numbers are the
    system's own issued predictions, scored by the server. */
-const ODDS = {coin: "BTC", mode: "off", off: 0, line: null, price: null, closes: {}};
+const ODDS = {coin: "BTC", mode: "off", off: 0, line: null, price: null, closes: {}, lastHz: null, _hist: null};
 function oddsLine(){
   if (ODDS.mode === "abs" && ODDS.line > 0) return ODDS.line;
   if (ODDS.price > 0) return ODDS.price * (1 + ODDS.off / 100);
@@ -1864,6 +2257,7 @@ async function refreshOdds(){
     return;
   }
   ODDS.price = j.price;
+  ODDS.lastHz = j.horizons;
   if (ODDS.mode === "off") $("#oddsLine").value = Math.round(oddsLine() * 100) / 100;
   $("#oddsPrice").textContent = ODDS.coin + " live: " + fmtPrice(j.price) + " · line " + fmtPrice(line);
   oddsRenderOff();
@@ -1880,8 +2274,14 @@ async function refreshOdds(){
     return '<div class="ocard"><div class="oh"><span>' + HLBL[h] + '</span><span data-odds-close="' + h + '"></span></div>' +
       '<div class="ocall ' + cls + '">' + hz.call + (hz.weak ? ' <span class="weak">· weak horizon</span>' : "") + '</div>' +
       '<div class="opct">OVER ' + pct(hz.p_over) + ' · UNDER ' + pct(hz.p_under) + '</div>' +
-      '<div class="ostat">Global record: ' + rec + crec + '</div></div>';
+      '<div class="ostat">Global record: ' + rec + crec + '</div>' +
+      '<div class="otrend" data-trendread="' + h + '"></div></div>';
   }).join("");
+  // Trend reads for the odds coin: its candle history loads in the
+  // background (same client-side analysis the watch cards run);
+  // until it lands, the read shows its warming-up state.
+  if (!coinState(ODDS.coin).closesH.length) loadOddsHistory();
+  renderOddsTrend();
   const r = j.record;
   $("#oddsMeta").textContent =
     ODDS.coin + " global record: " + r.scored + " scored predictions" +
@@ -1923,6 +2323,30 @@ async function refreshOdds(){
   setInterval(refreshOdds, 20000);
   oddsSeedPrice().then(refreshOdds);
 })();
+
+/* ---------- WEB5: expanding side menus ----------
+   Setup lives in a drawer sliding in from the RIGHT, the odds
+   board (crypto selection + all prediction cards) in one from the
+   LEFT. The main page keeps the header, the watch panel, and the
+   session scoreboard. Edge tabs open a menu; the backdrop, its
+   close button, or Escape dismisses it. */
+function openDrawer(id){
+  closeDrawers();
+  const d = document.getElementById(id);
+  if (d) d.classList.add("open");
+  const b = $("#drawerBackdrop");
+  if (b) b.hidden = false;
+}
+function closeDrawers(){
+  document.querySelectorAll(".drawer").forEach(d => d.classList.remove("open"));
+  const b = $("#drawerBackdrop");
+  if (b) b.hidden = true;
+}
+{ const t = $("#setupTab"); if (t) t.addEventListener("click", () => openDrawer("setupDrawer")); }
+{ const t = $("#oddsTab"); if (t) t.addEventListener("click", () => openDrawer("oddsDrawer")); }
+{ const b = $("#drawerBackdrop"); if (b) b.addEventListener("click", closeDrawers); }
+document.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", closeDrawers));
+document.addEventListener("keydown", ev => { if (ev.key === "Escape") closeDrawers(); });
 
 /* ---------- pop-out (document picture-in-picture) ---------- */
 $("#pipBtn").addEventListener("click", async () => {
