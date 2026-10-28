@@ -299,6 +299,11 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
         <div id="countdown">—</div>
       </div>
       <div id="cycleStatus">Pick up to 6 cryptos, set each line, then press Start. Prices go live as soon as a coin is picked.</div>
+      <div class="row" style="margin-top:8px;gap:8px;align-items:center">
+        <span class="note">Price updates</span>
+        <div class="zoomseg" id="tickSeg"><button type="button" data-tick="3000" class="on">3s · Standard</button><button type="button" data-tick="1000">1s</button><button type="button" data-tick="500">0.5s · Live</button></div>
+        <span class="note">Live refreshes near-instantly and uses more data.</span>
+      </div>
       <div id="advStrip" class="advstrip" hidden></div>
       <div id="cards"></div>
       <div class="lbl" style="margin-top:18px">System scoreboard — global</div>
@@ -366,7 +371,7 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
   </section>
 </main>
 <footer>
-  Predictions are probabilities built from pattern statistics — barrier distance to your line, volatility, momentum, and each coin's 6-month base rates. They are not guarantees, and short-horizon crypto direction is close to a coin flip: the base models' held-out record is printed on every card, and the scoreboard above shows the system's global record from the shared database — the same numbers every visitor sees, wins and losses alike. The snipe badge uses the hourly setup only, read on a ~4-hour window: on held-out data across all 20 coins, flagged setups produced the big move 23.1% of the time against a 14.4% unflagged base rate (1.61x lift). The 15-minute snipe tested as noise (lift under 1x) and is not used. The forecast chart beside each live chart is an estimate cone — the bands show where the price could plausibly wander given current volatility, and the mean path inside them is built from the coin's own recent swing rhythm: the durations and sizes of its real up and down legs, measured from the last two hours of 1-minute prices and waved forward over the system's drift. It is a rhythm-matched estimate, not a promised path; the tick marks are the times swings have typically arrived, not appointments. All tuning lives in one shared database on the server: the system scores its own predictions as they close and retunes separate weights for momentum, regime, and rise/fall asymmetry; confidence buckets that run hot get shrunk toward 50; a coin whose calls keep flip-flopping gets a wider no-call band and a steadier, dwell-held call; and the volatility inside every probability follows the last few hours of live market, blended with the 6-month base. This page only pulls the current global tuning as it loads and refreshes — each card's Global line shows the shared record it is running on. The Trend read on each call is a plain-language summary of those same pattern signals — trend state, how rises have been running against falls, swing timing, forecast slope, and this coin's hour-of-day habits over the 6-month history — read off the numbers at that moment, not a separate prediction and not a guarantee. The forecast-check graph freezes when you open it and zooms into the forecast's first 5, 10, 15 or 30 minutes: the actual price then draws over the frozen forecast minute by minute, with the system's measured error printed on the graph — so you can see exactly how close the prediction is tracking, and whether it is catching the trend shifts as they happen. The forecast-check graph draws the system's minute-by-minute predicted path — built from the coin's own recent swing rhythm (leg durations and sizes measured from the last two hours of 1-minute prices), waved forward and anchored to the system's drift expectation at the 30-minute mark. Still a rhythm-matched estimate, not a promised path. The system runs its own forecast checks on the server around the clock: it draws this same predicted path for every coin, grades it against the real price at 5, 10, 15 and 30 minutes as the results happen, and logs every result in the shared database that tunes future forecasts. This page only displays that record — there is no account and no sign-in, nothing is uploaded from your browser, and nothing about your visit is saved or used for learning. Data: Coinbase Exchange public feed. Not financial advice.
+  Predictions are probabilities built from pattern statistics — barrier distance to your line, volatility, momentum, and each coin's 6-month base rates. They are not guarantees, and short-horizon crypto direction is close to a coin flip: the base models' held-out record is printed on every card, and the scoreboard above shows the system's global record from the shared database — the same numbers every visitor sees, wins and losses alike. The snipe badge uses the hourly setup only, read on a ~4-hour window: on held-out data across all 20 coins, flagged setups produced the big move 23.1% of the time against a 14.4% unflagged base rate (1.61x lift). The 15-minute snipe tested as noise (lift under 1x) and is not used. Each card's forecast section stays collapsed until you open it — while it is closed, the page runs no forecast rendering or forecast data work at all. Inside it, the Estimate graph is a live prediction feed: the system's current predicted path — built from the coin's own recent swing rhythm, leg durations and sizes measured from the last two hours of 1-minute prices — flows in from the right and scrolls left past the live price bead, which stays centered and leaves a trail behind it. Drawn beside the real trail is the comparison line: what the system predicted for each past moment 1, 5 or 10 minutes before it happened (the graph's chips pick the age), so prediction and reality can be watched tracking or diverging in plain sight. It is a rhythm-matched estimate, not a promised path — and the scoreboard of record for these predictions is the system's own graded forecast-check record, kept on the server, not this picture. All tuning lives in one shared database on the server: the system scores its own predictions as they close and retunes separate weights for momentum, regime, and rise/fall asymmetry; confidence buckets that run hot get shrunk toward 50; a coin whose calls keep flip-flopping gets a wider no-call band and a steadier, dwell-held call; and the volatility inside every probability follows the last few hours of live market, blended with the 6-month base. This page only pulls the current global tuning as it loads and refreshes — each card's Global line shows the shared record it is running on. The Trend read on each call is a plain-language summary of those same pattern signals — trend state, how rises have been running against falls, swing timing, forecast slope, and this coin's hour-of-day habits over the 6-month history — read off the numbers at that moment, not a separate prediction and not a guarantee. The forecast-check graph freezes when you open it and zooms into the forecast's first 5, 10, 15 or 30 minutes: the actual price then draws over the frozen forecast minute by minute, with the system's measured error printed on the graph — so you can see exactly how close the prediction is tracking, and whether it is catching the trend shifts as they happen. The forecast-check graph draws the system's minute-by-minute predicted path — built from the coin's own recent swing rhythm (leg durations and sizes measured from the last two hours of 1-minute prices), waved forward and anchored to the system's drift expectation at the 30-minute mark. Still a rhythm-matched estimate, not a promised path. The system runs its own forecast checks on the server around the clock: it draws this same predicted path for every coin, grades it against the real price at 5, 10, 15 and 30 minutes as the results happen, and logs every result in the shared database that tunes future forecasts. This page only displays that record — there is no account and no sign-in, nothing is uploaded from your browser, and nothing about your visit is saved or used for learning. Data: Coinbase Exchange public feed. Not financial advice.
 </footer>
 <script>
 "use strict";
@@ -440,7 +445,11 @@ const S = {
   // NO scoreboard state of any kind (Shane 2026-10-27): the header
   // scoreboard renders the SYSTEM's global record pulled from the
   // shared database — there is no per-visit tally to keep.
-  loopN: 0
+  loopN: 0,
+  // WEB9 addendum: user-controlled price tick rate (3s Standard /
+  // 1s / 0.5s Live) — drives ONLY the price-tick timer below; the
+  // server-pull cadences (global/advisory/forecast) are separate.
+  tickMs: 3000, tickTimer: null
 };
 
 const LS_ZOOM = "ph.zoom.v1", LS_FC30 = "ph.fc30.v1";
@@ -457,7 +466,14 @@ function coinState(sym){
     snipe: null, line: null, lineSet: false, lineMode: "abs", lineOff: 0, lineMoved: false,
     flips: 0, dispSide: null, dispP: null, dwellSide: null, dwellCount: 0, dragging: false,
     zoom: lsGet(LS_ZOOM, {})[sym] || "live",
-    fc30on: !!lsGet(LS_FC30, {})[sym],
+    // WEB9 addendum (Shane 2026-10-28): the forecast section ALWAYS
+    // starts collapsed — a stored ph.fc30 from an earlier session
+    // must not re-expand it on load (that was burning data on
+    // forecast draws nobody was looking at). Only an explicit
+    // in-session toggle (setFC30) opens it; setFC30 still records
+    // the explicit choice, but the next load starts collapsed again.
+    fc30on: false,
+    predBuf: [], lastPredSnapAt: 0, estL: 5,
     fcSnap: null, fcZoom: FCZ_MIN[lsGet(LS_FCZ, {})[sym]] ? lsGet(LS_FCZ, {})[sym] : "30",
     detailsOpen: !!lsGet(LS_DET, {})[sym],
     hist: [],   // this visit's closes, in memory only — Past strip display
@@ -513,10 +529,16 @@ function setFC30(sym, on){
 }
 function applyFC30(sym){
   const cs = coinState(sym);
-  if (!cs.els.fc30wrap) return;
-  cs.els.fc30wrap.hidden = !cs.fc30on;
+  if (!cs.els.charts) return;
+  // The toggle governs the WHOLE forecast section: the Estimate
+  // graph and the forecast-check graph + stat live and hide
+  // together inside .charts. Collapsed = nothing rendered there
+  // and no forecast data work runs (drawSpark skips both draws,
+  // recordPredSnap and captureFC30 never fire).
+  cs.els.charts.hidden = !cs.fc30on;
+  if (cs.els.fc30wrap) cs.els.fc30wrap.hidden = !cs.fc30on;
   cs.els.charts.classList.toggle("single", !cs.fc30on);
-  cs.els.fc30btn.textContent = "Forecast check: " + (cs.fc30on ? "on" : "off");
+  cs.els.fc30btn.textContent = "Forecast section: " + (cs.fc30on ? "on" : "off");
   if (cs.els.fc30zoombtns) cs.els.fc30zoombtns.forEach(b => b.classList.toggle("on", b.dataset.fczoom === cs.fcZoom));
   if (cs.els.fc30age) cs.els.fc30age.textContent = cs.fc30on && cs.fcSnap
     ? "snapshot " + new Date(cs.fcSnap.t0).toLocaleTimeString() + " — frozen until closed"
@@ -581,11 +603,13 @@ function addCard(sym){
     '<div class="zoomrow"><div class="zoomseg">' +
     '<button type="button" data-zoom="live">Live</button><button type="button" data-zoom="5">5M</button><button type="button" data-zoom="15">15M</button><button type="button" data-zoom="30">30M</button>' +
     '</div><div class="past"></div></div>' +
-    '<div class="charts single"><div><div class="chartlbl">Estimate — forecast</div><canvas class="fc" width="520" height="220"></canvas></div>' +
+    '<div class="charts single" hidden><div><div class="chartlbl">Estimate — live prediction feed</div>' +
+    '<div class="zoomrow"><div class="zoomseg estlseg"><button type="button" data-estl="1">1 Min</button><button type="button" data-estl="5">5 Min</button><button type="button" data-estl="10">10 Min</button></div></div>' +
+    '<canvas class="fc" width="520" height="220"></canvas></div>' +
     '<div class="fc30wrap" hidden><div class="chartlbl">Estimate — forecast check (frozen while open)</div><canvas class="fc30" width="520" height="220"></canvas>' +
     '<div class="zoomrow"><div class="zoomseg fczoomseg"><button type="button" data-fczoom="5">5 Min</button><button type="button" data-fczoom="10">10 Min</button><button type="button" data-fczoom="15">15 Min</button><button type="button" data-fczoom="30">30 Min</button></div><span class="note fc30age"></span></div>' +
     '<div class="fc30stat"></div></div></div>' +
-    '<div class="row" style="margin-top:6px"><button class="fc30btn snap" type="button">Forecast check: off</button></div>' +
+    '<div class="row" style="margin-top:6px"><button class="fc30btn snap" type="button">Forecast section: off</button></div>' +
     '<div class="regime">Loading 6 months of pattern stats…</div>' +
     '<div class="trend"></div>' +
     '<div class="swline"></div>' +
@@ -633,7 +657,8 @@ function addCard(sym){
     fc30stat: el.querySelector(".fc30stat"), fc30btn: el.querySelector(".fc30btn"),
     fc30age: el.querySelector(".fc30age"),
     zoombtns: el.querySelectorAll(".zoomseg:not(.fczoomseg) button"),
-    fc30zoombtns: el.querySelectorAll(".fczoomseg button")
+    fc30zoombtns: el.querySelectorAll(".fczoomseg button"),
+    estlbtns: el.querySelectorAll(".estlseg button")
   };
   cs.els.zoombtns.forEach(b => {
     b.classList.toggle("on", b.dataset.zoom === cs.zoom);
@@ -642,6 +667,10 @@ function addCard(sym){
   cs.els.fc30zoombtns.forEach(b => {
     b.classList.toggle("on", b.dataset.fczoom === cs.fcZoom);
     b.addEventListener("click", () => setFCZoom(sym, b.dataset.fczoom));
+  });
+  cs.els.estlbtns.forEach(b => {
+    b.classList.toggle("on", +b.dataset.estl === cs.estL);
+    b.addEventListener("click", () => setEstL(sym, +b.dataset.estl));
   });
   cs.els.fc30btn.addEventListener("click", () => setFC30(sym, !cs.fc30on));
   cs.els.detBtn.addEventListener("click", () => setDetails(sym, !cs.detailsOpen));
@@ -965,91 +994,176 @@ function drawLive(sym){
     }
   }
 }
-function drawForecast(sym, sc){
+/* ---------- WEB9 addendum: Estimate — live prediction feed -------
+   Shane 2026-10-28: the Estimate graph is a LIVE SCROLLING feed,
+   not a static cone. Prediction feeds in from the right and flows
+   left; the real price bead stays CENTERED and leaves a trail, so
+   the trail can be compared against what the system predicted for
+   each past moment L minutes earlier (L = the 1/5/10 Min chip).
+   Mechanics: while the forecast section is open, each price tick
+   (thinned to ~2s) records an in-memory snapshot {t, path} — the
+   wavy-generator path from that moment, sampled every ~5s out to
+   +10 min. Memory only: never persisted, never posted, and never
+   recorded while the section is collapsed. The frozen
+   forecast-check graph beside it is unchanged. */
+const EST_KEEP_MS = 21 * 60000;   // retention: 2L at L=10, plus slack
+function estX(t, nowMs, lMin, w){
+  // Time -> x on the [now-L, now+L] axis. "now" is always the center.
+  return 4 + (t - (nowMs - lMin * 60000)) / (2 * lMin * 60000) * (w - 8);
+}
+function recordPredSnap(sym){
+  const cs = coinState(sym);
+  if (!cs.fc30on || !cs.price || cs.closes1.length < 20) return;
+  const now = Date.now();
+  if (now - (cs.lastPredSnapAt || 0) < 1900) return;   // at most ~every 2s
+  cs.lastPredSnapAt = now;
+  const pts = wavePath({closes: cs.closes1, anchor: cs.price, coin: sym,
+    openMinute: Math.floor(now / 60000), horizonMin: 10,
+    targetLog: (cs.fcMu || 0) * (10 / 60), volH: liveSigma(sym),
+    swings: cs.swings});
+  const path = [];
+  for (let k = 0; k <= 120; k++){
+    const mf = k * 5 / 60, i = Math.min(9, Math.floor(mf)), fr = mf - i;
+    path.push(pts[i] + (pts[i + 1] - pts[i]) * fr);
+  }
+  cs.predBuf.push({t: now, path: path});
+  while (cs.predBuf.length && cs.predBuf[0].t < now - EST_KEEP_MS) cs.predBuf.shift();
+}
+function snapValueAt(snap, dtMs){
+  const f = dtMs / 5000;
+  if (f <= 0) return snap.path[0];
+  if (f >= 120) return snap.path[120];
+  const i = Math.floor(f), fr = f - i;
+  return snap.path[i] + (snap.path[i + 1] - snap.path[i]) * fr;
+}
+function nearestSnap(buf, tMs){
+  let best = null, bestD = Infinity;
+  for (const s of buf){ const d = Math.abs(s.t - tMs); if (d < bestD){ bestD = d; best = s; } }
+  return bestD <= 45000 ? best : null;
+}
+function comparisonSeries(cs, nowMs, lMin){
+  // For each past time t in [now-L, now]: the value predicted FOR t
+  // by the snapshot taken ~L minutes before t — i.e. that snapshot's
+  // +L-minute value. Points exist only where the buffer actually
+  // reaches; coverage says how much of the window is real.
+  const span = lMin * 60000, N = 40, pts = [];
+  for (let k = 0; k <= N; k++){
+    const t = nowMs - span + span * k / N;
+    const snap = nearestSnap(cs.predBuf, t - span);
+    if (snap) pts.push({t: t, p: snapValueAt(snap, span)});
+  }
+  return {pts: pts, coverage: pts.length / (N + 1)};
+}
+function setEstL(sym, lMin){
+  const cs = coinState(sym);
+  cs.estL = lMin;
+  if (cs.els.estlbtns) cs.els.estlbtns.forEach(b => b.classList.toggle("on", +b.dataset.estl === lMin));
+  drawForecast(sym);
+}
+function drawForecast(sym){
   const cs = coinState(sym), cv = cs.els.fc;
-  if (!cv) return;
+  if (!cv || !cs.fc30on) return;
   const ctx = cv.getContext("2d"), W = cv.width, H = cv.height;
   ctx.clearRect(0, 0, W, H);
-  const volH = liveSigma(sym), hz = cs.fcHorizonH || 0.5, mu = cs.fcMu || 0;
-  const y = p => H - 14 - (p - sc.lo) / (sc.hi - sc.lo) * (H - 26);
-  const N = 48;
-  const path = [];
-  for (let k = 0; k <= N; k++){
-    const t = hz * k / N, x = 4 + (W - 8) * k / N, m = mu * t, s = volH * Math.sqrt(Math.max(t, 1e-9));
-    path.push({x: x, t: t, mean: sc.anchor * Math.exp(m), u68: sc.anchor * Math.exp(m + s),
-               l68: sc.anchor * Math.exp(m - s), u95: sc.anchor * Math.exp(m + 1.96 * s),
-               l95: sc.anchor * Math.exp(m - 1.96 * s)});
-  }
-  // WEB9: the cone's mean line is the rhythm-matched wave path (the
-  // same wavePath generator the forecast check freezes) — the bands
-  // stay the smooth volatility cone; the mean now waves with the
-  // coin's own recent 1-minute swing rhythm and lands on the same
-  // drift endpoint the smooth mean used.
-  const wp = wavePath({closes: cs.closes1, anchor: sc.anchor, coin: sym,
-    openMinute: Math.floor(Date.now() / 60000),
-    horizonMin: Math.max(1, Math.round(hz * 60)), targetLog: mu * hz,
-    volH: volH, swings: cs.swings});
-  const wMean = (tH) => {
-    const mf = tH * 60, H = wp.length - 1;
-    if (mf <= 0) return wp[0];
-    if (mf >= H) return wp[H];
-    const i = Math.floor(mf), fr = mf - i;
-    return wp[i] + (wp[i + 1] - wp[i]) * fr;
-  };
-  path.forEach(q => { q.mean = wMean(q.t); });
-  const band = (up, dn, fill) => {
-    ctx.beginPath();
-    path.forEach((q, i) => i ? ctx.lineTo(q.x, y(q[up])) : ctx.moveTo(q.x, y(q[up])));
-    for (let i = N; i >= 0; i--) ctx.lineTo(path[i].x, y(path[i][dn]));
-    ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
-  };
-  band("u95", "l95", "rgba(124,92,255,0.10)");
-  band("u68", "l68", "rgba(201,162,39,0.13)");
-  ctx.beginPath();
-  path.forEach((q, i) => i ? ctx.lineTo(q.x, y(q.mean)) : ctx.moveTo(q.x, y(q.mean)));
-  ctx.strokeStyle = "#f3d27a"; ctx.lineWidth = 2; ctx.stroke();
-  if (cs.line){
-    const yy = y(cs.line);
-    if (yy > 0 && yy < H){
-      ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(W, yy);
-      ctx.strokeStyle = "#c9a227"; ctx.setLineDash([6, 4]); ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]);
-    }
-  }
-  if (S.cycle.active && S.cycle.closeAt > Date.now()){
-    const frac = (S.cycle.closeAt - Date.now()) / 3600000 / hz;
-    if (frac > 0 && frac < 1){
-      const x = 4 + (W - 8) * frac;
-      ctx.beginPath(); ctx.moveTo(x, 8); ctx.lineTo(x, H - 14);
-      ctx.strokeStyle = "rgba(236,234,244,0.45)"; ctx.setLineDash([3, 4]); ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]);
-      ctx.fillStyle = "#9a96ad"; ctx.font = "15px system-ui"; ctx.fillText("close", x + 4, 22);
-    }
-  }
-  // Expected swing times: ticks on the time axis + dots on the mean path.
-  const med = cs.swings && cs.swings.medDurMin;
-  if (med && med > 0){
-    ctx.fillStyle = "#7c5cff"; ctx.strokeStyle = "#7c5cff";
-    for (let tt = med; tt < hz * 60; tt += med){
-      const f = tt / (hz * 60), x = 4 + (W - 8) * f;
-      ctx.beginPath(); ctx.moveTo(x, H - 14); ctx.lineTo(x, H - 6); ctx.lineWidth = 2; ctx.stroke();
-      const py = y(wMean(tt / 60));
-      ctx.beginPath(); ctx.arc(x, py, 3, 0, 7); ctx.fill();
-    }
-  }
-  ctx.beginPath(); ctx.arc(4, y(sc.anchor), 3.5, 0, 7); ctx.fillStyle = "#eceaf4"; ctx.fill();
+  const now = Date.now(), L = cs.estL || 5, span = L * 60000;
+  const price = cs.price;
+  const X = t => estX(t, now, L, W);
   ctx.fillStyle = "#9a96ad"; ctx.font = "bold 16px system-ui";
-  ctx.fillText("ESTIMATE", 8, 20);
-  ctx.font = "15px system-ui";
-  ctx.fillText("+" + (hz >= 1 ? hz.toFixed(hz % 1 ? 1 : 0) + "h" : Math.round(hz * 60) + "m"), W - 44, H - 18);
-  ctx.fillText(fmtPrice(sc.hi), 5, 38);
-  ctx.fillText(fmtPrice(sc.lo), 5, H - 18);
+  ctx.fillText("Estimate — live prediction feed", 8, 20);
+  if (!(price > 0)){
+    ctx.font = "15px system-ui";
+    ctx.fillText("waiting for the live price…", 8, 44);
+    return;
+  }
+  const trail = cs.ticks.filter(tk => tk.t >= now - span && tk.t <= now);
+  const comp = comparisonSeries(cs, now, L);
+  const cur = cs.predBuf.length ? cs.predBuf[cs.predBuf.length - 1] : null;
+  let lo = Infinity, hi = -Infinity;
+  const eat = p => { if (p > 0 && isFinite(p)){ if (p < lo) lo = p; if (p > hi) hi = p; } };
+  eat(price);
+  for (const tk of trail) eat(tk.p);
+  for (const q of comp.pts) eat(q.p);
+  if (cur){
+    const age0 = now - cur.t;
+    for (let u = 0; u <= Math.min(span, 600000 - age0); u += 10000)
+      eat(snapValueAt(cur, age0 + u));
+  }
+  if (!(lo < hi)){ lo = price * 0.999; hi = price * 1.001; }
+  const pad = (hi - lo) * 0.15 || hi * 0.001; lo -= pad; hi += pad;
+  const y = p => H - 14 - (p - lo) / (hi - lo) * (H - 26);
+  // now-axis: the bead's rail, center of the canvas.
+  ctx.beginPath(); ctx.moveTo(X(now), 8); ctx.lineTo(X(now), H - 14);
+  ctx.strokeStyle = "rgba(236,234,244,0.18)"; ctx.lineWidth = 1; ctx.stroke();
+  if (cs.line && cs.line > lo && cs.line < hi){
+    const yy = y(cs.line);
+    ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(W, yy);
+    ctx.strokeStyle = "#c9a227"; ctx.setLineDash([6, 4]); ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]);
+  }
+  // RIGHT of center: the freshest snapshot's wavy path, feeding in,
+  // with a light ±1σ band. dt is measured from the snapshot's own t.
+  if (cur){
+    const sig = liveSigma(sym), age = now - cur.t;
+    const dtMax = Math.min(span + age, 600000);
+    ctx.beginPath();
+    for (let dt = age; dt <= dtMax; dt += 5000){
+      const x = X(cur.t + dt), yy = y(snapValueAt(cur, dt) * Math.exp(sig * Math.sqrt(dt / 3600000)));
+      dt === age ? ctx.moveTo(x, yy) : ctx.lineTo(x, yy);
+    }
+    for (let dt = dtMax; dt >= age; dt -= 5000){
+      const x = X(cur.t + dt), yy = y(snapValueAt(cur, dt) * Math.exp(-sig * Math.sqrt(dt / 3600000)));
+      ctx.lineTo(x, yy);
+    }
+    ctx.closePath(); ctx.fillStyle = "rgba(201,162,39,0.10)"; ctx.fill();
+    ctx.beginPath();
+    for (let dt = age; dt <= dtMax; dt += 5000){
+      const x = X(cur.t + dt), yy = y(snapValueAt(cur, dt));
+      dt === age ? ctx.moveTo(x, yy) : ctx.lineTo(x, yy);
+    }
+    ctx.strokeStyle = "#f3d27a"; ctx.lineWidth = 2; ctx.stroke();
+  }
+  // LEFT of center: the comparison prediction (violet, dashed) —
+  // what the system predicted L minutes ago for each past moment.
+  if (comp.pts.length > 1){
+    ctx.beginPath();
+    comp.pts.forEach((q, i) => i ? ctx.lineTo(X(q.t), y(q.p)) : ctx.moveTo(X(q.t), y(q.p)));
+    ctx.strokeStyle = "#7c5cff"; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.8; ctx.stroke(); ctx.setLineDash([]);
+  }
+  // LEFT of center: the actual price trail (bright), the bead's path.
+  if (trail.length > 1){
+    ctx.beginPath();
+    trail.forEach((tk, i) => i ? ctx.lineTo(X(tk.t), y(tk.p)) : ctx.moveTo(X(tk.t), y(tk.p)));
+    ctx.strokeStyle = "#eceaf4"; ctx.lineWidth = 2; ctx.stroke();
+  }
+  // The bead: glowing dot at the live price, always dead center.
+  const bx = X(now), by = y(price);
+  ctx.save();
+  ctx.shadowColor = "#f3d27a"; ctx.shadowBlur = 22;
+  ctx.beginPath(); ctx.arc(bx, by, 7, 0, 7); ctx.fillStyle = "#f3d27a"; ctx.fill();
+  ctx.restore();
+  ctx.beginPath(); ctx.arc(bx, by, 3, 0, 7); ctx.fillStyle = "#fff"; ctx.fill();
+  // Labels + honesty.
+  ctx.fillStyle = "#9a96ad"; ctx.font = "15px system-ui";
+  ctx.fillText("-" + L + "m", 5, H - 18);
+  ctx.fillText("+" + L + "m", W - 40, H - 18);
+  ctx.fillText(fmtPrice(hi), 5, 38);
+  ctx.fillText(fmtPrice(lo), 5, H - 34);
+  if (comp.coverage < 0.6){
+    ctx.fillStyle = "#ffd257";
+    ctx.fillText(cs.predBuf.length
+      ? "comparison warming up — the " + L + "-minute-ago prediction trail fills in as snapshots accumulate"
+      : "warming up — prediction snapshots accumulate while this section is open", 8, 44);
+  }
 }
 function drawSpark(sym){
   const cs = coinState(sym);
   if (!cs.els.spark) return;
   drawLive(sym);
-  const sc = chartScale(sym);
-  drawForecast(sym, sc);
-  if (cs.fc30on) drawFC30(sym);
+  // Forecast section collapsed: skip BOTH forecast draws entirely
+  // (Shane 2026-10-28 — no rendering, no forecast data work).
+  if (cs.fc30on){
+    drawForecast(sym);
+    drawFC30(sym);
+  }
 }
 function renderReadouts(sym){
   const cs = coinState(sym);
@@ -2145,7 +2259,7 @@ async function priceTick(){
     if (t && isFinite(+t.price)){
       cs.price = +t.price;
       cs.ticks.push({t: Date.now(), p: cs.price});
-      if (cs.ticks.length > 700) cs.ticks.splice(0, cs.ticks.length - 700);
+      if (cs.ticks.length > 3000) cs.ticks.splice(0, cs.ticks.length - 3000);
       if (cs.fcSnap){
         // Record the actual travel against the frozen forecast
         // (thinned to ~15s) for the overlay DRAW only — display
@@ -2179,9 +2293,26 @@ async function priceTick(){
       }
       drawSpark(sym);
       renderCardAdvice(sym);
+      recordPredSnap(sym);
     }
   }
 }
+/* ---------- WEB9 addendum: price tick-rate control ----------------
+   One timer drives priceTick; setTickRate re-arms it immediately
+   with the chosen period. Only the live price ticks are affected —
+   the /global, advisory and day-forecast pulls keep their own
+   cadences in the 1s housekeeping loop below. */
+function setTickRate(ms){
+  if (![3000, 1000, 500].includes(ms)) ms = 3000;
+  S.tickMs = ms;
+  if (S.tickTimer != null) clearInterval(S.tickTimer);
+  S.tickTimer = setInterval(priceTick, ms);
+  document.querySelectorAll("#tickSeg button").forEach(b =>
+    b.classList.toggle("on", +b.dataset.tick === ms));
+}
+S.tickTimer = setInterval(priceTick, S.tickMs);
+document.querySelectorAll("#tickSeg button").forEach(b =>
+  b.addEventListener("click", () => setTickRate(+b.dataset.tick)));
 setInterval(() => {
   S.loopN++;
   if (S.cycle.active){
@@ -2198,7 +2329,6 @@ setInterval(() => {
   } else {
     for (const sym of S.selected){ const pill = coinState(sym).els.pill; if (pill) pill.hidden = true; }
   }
-  if (S.loopN % 3 === 0 && S.selected.length) priceTick();
   if (S.loopN % 60 === 0) S.selected.forEach(loadCoin);
   if (S.loopN % 15 === 0 && S.selected.length) loadSources();
   if (S.loopN % 900 === 0){ loadGlobal(); loadAdvisory(); loadDayForecast(); }
@@ -2211,6 +2341,10 @@ setInterval(() => {
   for (const sym of S.selected){
     const cs = S.coins[sym];
     if (cs && cs.fc30on && cs.fcSnap && cs.els.fc30) drawFC30(sym);
+    // The live prediction feed scrolls with the clock, not just
+    // with price ticks — redraw it on the same fast sweep, but
+    // only while the forecast section is open.
+    if (cs && cs.fc30on && cs.els.fc) drawForecast(sym);
   }
 }, 120);
 
