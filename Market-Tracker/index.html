@@ -87,6 +87,13 @@ canvas.spark{width:100%;height:150px;display:block}
 .past .up{color:var(--up)} .past .down{color:var(--down)}
 .pastlbl{font-size:11px;color:var(--mut);letter-spacing:.12em;text-transform:uppercase;margin-right:2px}
 .fc30stat{color:var(--mut);font-size:12px;margin-top:4px;line-height:1.5}
+.fclines{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
+.fclegend{color:var(--mut);font-size:12px;display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.fclegend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle}
+.fcadjtog{border:1px solid var(--line);background:#0c0c18;color:var(--mut);border-radius:999px;padding:4px 11px;font-size:12px;cursor:pointer;font-weight:700}
+.fcadjtog.on[data-adj="a"]{border-color:#ff4747;color:#ff8080;background:#2a0d10}
+.fcadjtog.on[data-adj="b"]{border-color:#3f8cff;color:#8dbcff;background:#0d1830}
+.fcadjrec{color:var(--mut);font-size:12px;margin-top:4px;line-height:1.5}
 .gateline{color:#b9b4d6;font-size:12px;margin-top:3px;line-height:1.55}
 .charts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:2px}
 .charts.single{grid-template-columns:1fr}
@@ -511,6 +518,22 @@ const S = {
 
 const LS_ZOOM = "ph.zoom.v1", LS_FC30 = "ph.fc30.v1";
 const LS_DET = "ph.det.v1", LS_FCZ = "ph.fczoom.v1";
+/* FC LINES (Shane 2026-10-28): visibility of the two experimental
+   adjusted forecast lines on the forecast-check graph — a display
+   preference only, persisted like the other ph.* display prefs. */
+const LS_FCADJ = "ph.fcAdj.v1";
+let FC_ADJ_SHOW = (() => { const v = lsGet(LS_FCADJ, {a: true, b: true});
+  return { a: !v || v.a !== false, b: !v || v.b !== false }; })();
+function setFCAdjShow(which, on){
+  FC_ADJ_SHOW[which] = !!on;
+  lsSet(LS_FCADJ, FC_ADJ_SHOW);
+  for (const sym of Object.keys(S.coins)){
+    const cs = S.coins[sym];
+    if (cs.els && cs.els.fcadjbtns)
+      cs.els.fcadjbtns.forEach(b => b.classList.toggle("on", !!FC_ADJ_SHOW[b.dataset.adj]));
+    if (cs.fc30on) drawFC30(sym);
+  }
+}
 /* WEB6 (Shane 2026-10-27): the frozen forecast graph's zooms are
    minute windows only — 5 / 10 / 15 / 30 minutes over the snapshot's
    opening minutes. Any stored WEB5 value (24H/7D/30D) falls back. */
@@ -807,6 +830,9 @@ function addCard(sym){
     '<canvas class="fc" width="520" height="220"></canvas></div>' +
     '<div class="fc30wrap" hidden><div class="chartlbl">Estimate — forecast check (frozen while open)</div><canvas class="fc30" width="520" height="220"></canvas>' +
     '<div class="zoomrow"><div class="zoomseg fczoomseg"><button type="button" data-fczoom="5">5 Min</button><button type="button" data-fczoom="10">10 Min</button><button type="button" data-fczoom="15">15 Min</button><button type="button" data-fczoom="30">30 Min</button></div><span class="note fc30age"></span></div>' +
+    '<div class="fclines"><span class="fclegend">Lines: <i style="background:#eceaf4"></i>Actual <i style="background:#f3d27a"></i>Main <i style="background:#ff4747"></i>Strong adj. <i style="background:#3f8cff"></i>Mild adj.</span>' +
+    '<button type="button" class="fcadjtog on" data-adj="a">Strong adj.</button><button type="button" class="fcadjtog on" data-adj="b">Mild adj.</button></div>' +
+    '<div class="fcadjrec"></div>' +
     '<div class="fc30stat"></div></div></div>' +
     '<div class="row" style="margin-top:6px"><button class="fc30btn snap" type="button">Forecast section: off</button></div>' +
     '<div class="simplrow"><button type="button" class="simplbtn" data-simpl="trend">Simplified</button></div>' +
@@ -890,6 +916,7 @@ function addCard(sym){
     fc30wrap: el.querySelector(".fc30wrap"), fc30: el.querySelector(".fc30"),
     fc30stat: el.querySelector(".fc30stat"), fc30btn: el.querySelector(".fc30btn"),
     fc30age: el.querySelector(".fc30age"),
+    fcadjbtns: el.querySelectorAll(".fcadjtog"), fcadjrec: el.querySelector(".fcadjrec"),
     zoombtns: el.querySelectorAll(".zoomseg:not(.fczoomseg) button"),
     fc30zoombtns: el.querySelectorAll(".fczoomseg button"),
     estlbtns: el.querySelectorAll(".estlseg button")
@@ -905,6 +932,10 @@ function addCard(sym){
   cs.els.estlbtns.forEach(b => {
     b.classList.toggle("on", +b.dataset.estl === cs.estL);
     b.addEventListener("click", () => setEstL(sym, +b.dataset.estl));
+  });
+  cs.els.fcadjbtns.forEach(b => {
+    b.classList.toggle("on", !!FC_ADJ_SHOW[b.dataset.adj]);
+    b.addEventListener("click", () => setFCAdjShow(b.dataset.adj, !FC_ADJ_SHOW[b.dataset.adj]));
   });
   cs.els.fc30btn.addEventListener("click", () => setFC30(sym, !cs.fc30on));
   cs.els.detBtn.addEventListener("click", () => setDetails(sym, !cs.detailsOpen));
@@ -1537,6 +1568,30 @@ function forecast30(sym){
    checks itself, around the clock, and logs the results. */
 function captureFC30(sym){
   const cs = coinState(sym);
+  // FC LINES (Shane 2026-10-28): prefer the SYSTEM's own current
+  // forecast-check snapshot (the server fc engine's frozen slot,
+  // coin.fc.adj.snap on the global payload) — it is the only frozen
+  // snapshot carrying the two experimental adjusted paths beside the
+  // main one, all on one anchor and one clock, and the server paths
+  // never change once opened, so frozen-until-closed still holds.
+  // Without a server snapshot (global not loaded yet) the local
+  // capture below runs exactly as before; the adjusted lines then
+  // have nothing to draw for this snapshot.
+  const gs = GLOBAL_POOL && GLOBAL_POOL[sym] && GLOBAL_POOL[sym].fc &&
+             GLOBAL_POOL[sym].fc.adj && GLOBAL_POOL[sym].fc.adj.snap;
+  if (gs && Array.isArray(gs.pred) && gs.pred.length === 31 && gs.anchor > 0){
+    const f = forecast30(sym);
+    const toPts = (arr) => (Array.isArray(arr) && arr.length === 31)
+      ? arr.map((p, m) => ({min: m, p: p})) : null;
+    cs.fcSnap = { t0: gs.opened_at, anchor: gs.anchor, muDay: 0,
+      dailyVol: f ? f.dailyVol : 0, bias: 0,
+      medDurMin: f ? f.medDurMin : null, actuals: [],
+      pred: toPts(gs.pred), adjA: toPts(gs.adjA), adjB: toPts(gs.adjB),
+      server: true };
+    if (cs.els.fc30age)
+      cs.els.fc30age.textContent = "system snapshot " + new Date(cs.fcSnap.t0).toLocaleTimeString() + " — frozen until closed";
+    return cs.fcSnap;
+  }
   const f = forecast30(sym);
   const t0 = Date.now();
   cs.fcSnap = f ? {t0: t0, anchor: f.anchor, muDay: f.muDay,
@@ -1751,6 +1806,11 @@ function drawFC30(sym){
   let lo = Infinity, hi = -Infinity;
   pts.forEach(q => { lo = Math.min(lo, q.l95); hi = Math.max(hi, q.u95); });
   acts.forEach(a => { if (a.t - sn.t0 <= winMs){ lo = Math.min(lo, a.p); hi = Math.max(hi, a.p); } });
+  // FC LINES: the adjusted paths share the frame — include their
+  // extremes so a strong correction never clips off the top/bottom.
+  for (const arr of [sn.adjA, sn.adjB]){
+    if (arr) for (const q of arr){ if (q.min <= winMin){ lo = Math.min(lo, q.p); hi = Math.max(hi, q.p); } }
+  }
   if (cs.line){ lo = Math.min(lo, cs.line); hi = Math.max(hi, cs.line); }
   if (!isFinite(lo) || hi <= lo){ lo = sn.anchor * 0.99; hi = sn.anchor * 1.01; }
   const pad = (hi - lo) * 0.05 || hi * 0.01; lo -= pad; hi += pad;
@@ -1764,6 +1824,25 @@ function drawFC30(sym){
   };
   band("u95", "l95", "rgba(124,92,255,0.10)");
   band("u68", "l68", "rgba(201,162,39,0.13)");
+  // FC LINES (Shane 2026-10-28): the two experimental adjusted paths
+  // under the main line, toggled per line. The color contract is
+  // fixed: ACTUAL white (#eceaf4, drawn last below), MAIN yellow
+  // (#f3d27a), STRONG adjustment RED (#ff4747), MILD adjustment BLUE
+  // (#3f8cff). Every other color on the graph is unchanged.
+  const drawAdj = (arr, color) => {
+    if (!arr) return;
+    ctx.beginPath();
+    let started = false;
+    for (let k = 0; k <= N; k++){
+      const v = fcPredAt({pred: arr, anchor: sn.anchor, muDay: 0}, winMin * k / N);
+      if (v == null) continue;
+      const x = X(winMin * k / N), y = Y(v);
+      if (!started){ ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    }
+    if (started){ ctx.strokeStyle = color; ctx.lineWidth = 1.8; ctx.stroke(); }
+  };
+  if (FC_ADJ_SHOW.b) drawAdj(sn.adjB, "#3f8cff");
+  if (FC_ADJ_SHOW.a) drawAdj(sn.adjA, "#ff4747");
   ctx.beginPath();
   pts.forEach((q, i) => i ? ctx.lineTo(X(q.min), Y(q.mean)) : ctx.moveTo(X(q.min), Y(q.mean)));
   ctx.strokeStyle = "#f3d27a"; ctx.lineWidth = 2; ctx.stroke();
@@ -1838,6 +1917,26 @@ function renderFC30Stat(sym){
     txt += " System record for " + sym + ": no graded checks logged yet — the server's first checks grade within the hour.";
   }
   if (cs.els.fc30stat.textContent !== txt) cs.els.fc30stat.textContent = txt;
+  renderFCAdjRec(sym);
+}
+function renderFCAdjRec(sym){
+  // FC LINES: each prediction line's recent record, from the server
+  // stats on coin.fc.adj — mean absolute miss at the 30-min mark over
+  // the recent graded checks, plus each adjusted line's direction
+  // record. Honest numbers only; nothing here ranks or recommends.
+  const cs = coinState(sym);
+  if (!cs.els.fcadjrec) return;
+  const adj = GLOBAL_POOL && GLOBAL_POOL[sym] && GLOBAL_POOL[sym].fc && GLOBAL_POOL[sym].fc.adj;
+  let txt = "";
+  if (adj && adj.main30 && adj.main30.n30){
+    const mae = (v) => (v && v.mae30_pct != null) ? "±" + (+v.mae30_pct).toFixed(2) + "%" : "—";
+    txt = "Prediction lines at the 30-min mark (last " + adj.main30.n30 + " graded checks): Main " + mae(adj.main30) +
+      " · Strong adj. " + mae(adj.a) + " (" + adj.a.correct + "✓/" + adj.a.incorrect + "✗)" +
+      " · Mild adj. " + mae(adj.b) + " (" + adj.b.correct + "✓/" + adj.b.incorrect + "✗)";
+  } else if (adj) {
+    txt = "Prediction lines: Main, Strong adj. and Mild adj. are graded on the same server checks — the 30-min record builds as checks complete.";
+  }
+  if (cs.els.fcadjrec.textContent !== txt) cs.els.fcadjrec.textContent = txt;
 }
 /* ---------- trend state, swings, forecast ---------- */
 function median(a){
