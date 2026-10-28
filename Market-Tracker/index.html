@@ -139,6 +139,7 @@ canvas.spark{width:100%;height:150px;display:block}
 .legend{color:var(--mut);font-size:11px;margin-top:5px;line-height:1.5}
 .snap{background:none;border:none;color:var(--gold2);cursor:pointer;font-size:12px;padding:0}
 .rec{color:var(--mut);font-size:12px;margin-top:9px}
+.fcrec{color:var(--mut);font-size:12px;margin-top:3px;line-height:1.55}
 .flashmsg{font-size:13px;font-weight:700;margin-top:7px;min-height:16px}
 .flashmsg.right{color:var(--up)} .flashmsg.wrong{color:var(--down)}
 #scoreTable{width:100%;border-collapse:collapse;font-size:14px}
@@ -257,7 +258,7 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
   </div>
 </main>
 <footer>
-  Predictions are probabilities built from pattern statistics — barrier distance to your line, volatility, momentum, and each coin's 6-month base rates. They are not guarantees, and short-horizon crypto direction is close to a coin flip: the base models' held-out record is printed on every card, and the scoreboard above shows this page's real record, wins and losses alike. The snipe badge uses the hourly setup only, read on a ~4-hour window: on held-out data across all 20 coins, flagged setups produced the big move 23.1% of the time against a 14.4% unflagged base rate (1.61x lift). The 15-minute snipe tested as noise (lift under 1x) and is not used. The forecast chart beside each live chart is an estimate cone — the mean path and bands show where the price could plausibly wander given current volatility and drift, not a promised path; the tick marks are the times swings have typically arrived, not appointments. The page also audits its own flaws, live: every scored close retunes separate weights for momentum, regime, and rise/fall asymmetry; confidence buckets that run hot get shrunk toward 50; a coin whose call keeps flip-flopping gets a wider no-call band and a steadier, dwell-held call; and the volatility inside every probability follows the last few hours of live market, blended with the 6-month base. The current state of all of it is printed on each card's Learning line. The Trend read on each call is a plain-language summary of those same pattern signals — trend state, how rises have been running against falls, swing timing, forecast slope, and this coin's hour-of-day habits over the 6-month history — read off the numbers at that moment, not a separate prediction and not a guarantee. The forecast-check graph freezes when you open it and zooms into the forecast's first 5, 10, 15 or 30 minutes: the actual price then draws over the frozen forecast minute by minute, and the running miss between the two feeds back into the forecast's drift correction, with the measured error printed on the graph — so you can see exactly how close the prediction is tracking, and whether it is catching the trend shifts as they happen. Data: Coinbase Exchange public feed. Not financial advice.
+  Predictions are probabilities built from pattern statistics — barrier distance to your line, volatility, momentum, and each coin's 6-month base rates. They are not guarantees, and short-horizon crypto direction is close to a coin flip: the base models' held-out record is printed on every card, and the scoreboard above shows this page's real record, wins and losses alike. The snipe badge uses the hourly setup only, read on a ~4-hour window: on held-out data across all 20 coins, flagged setups produced the big move 23.1% of the time against a 14.4% unflagged base rate (1.61x lift). The 15-minute snipe tested as noise (lift under 1x) and is not used. The forecast chart beside each live chart is an estimate cone — the mean path and bands show where the price could plausibly wander given current volatility and drift, not a promised path; the tick marks are the times swings have typically arrived, not appointments. The page also audits its own flaws, live: every scored close retunes separate weights for momentum, regime, and rise/fall asymmetry; confidence buckets that run hot get shrunk toward 50; a coin whose call keeps flip-flopping gets a wider no-call band and a steadier, dwell-held call; and the volatility inside every probability follows the last few hours of live market, blended with the 6-month base. The current state of all of it is printed on each card's Learning line. The Trend read on each call is a plain-language summary of those same pattern signals — trend state, how rises have been running against falls, swing timing, forecast slope, and this coin's hour-of-day habits over the 6-month history — read off the numbers at that moment, not a separate prediction and not a guarantee. The forecast-check graph freezes when you open it and zooms into the forecast's first 5, 10, 15 or 30 minutes: the actual price then draws over the frozen forecast minute by minute, and the running miss between the two feeds back into the forecast's drift correction, with the measured error printed on the graph — so you can see exactly how close the prediction is tracking, and whether it is catching the trend shifts as they happen. The forecast-check graph now draws the system's minute-by-minute predicted path (drift plus the expected swing pattern), grades it against the real price at 5, 10, 15 and 30 minutes, and every visitor's graded results feed the global record that tunes future forecasts. Data: Coinbase Exchange public feed. Not financial advice.
 </footer>
 <script>
 "use strict";
@@ -327,7 +328,7 @@ function coinState(sym){
     flips: 0, dispSide: null, dispP: null, dwellSide: null, dwellCount: 0, dragging: false,
     zoom: lsGet(LS_ZOOM, {})[sym] || "live",
     fc30on: !!lsGet(LS_FC30, {})[sym],
-    fcSnap: null, fcZoom: FCZ_MIN[lsGet(LS_FCZ, {})[sym]] ? lsGet(LS_FCZ, {})[sym] : "30", fcErrLast: 0,
+    fcSnap: null, fcZoom: FCZ_MIN[lsGet(LS_FCZ, {})[sym]] ? lsGet(LS_FCZ, {})[sym] : "30", fcErrLast: 0, fcFlushAt: 0,
     detailsOpen: !!lsGet(LS_DET, {})[sym],
     lastCall: null, lastPred: null, els: {},
     snap: null, lastPredAt: 0
@@ -468,6 +469,7 @@ function addCard(sym){
     '<div class="linemoved" hidden></div></div>' +
     '<div class="flashmsg"></div>' +
     '<div class="rec"></div>' +
+    '<div class="fcrec"></div>' +
     '<div class="learnline"></div>' +
     '<div class="pooline"></div>' +
     '<div class="srcline" hidden></div>' +
@@ -485,7 +487,7 @@ function addCard(sym){
     sval: el.querySelector(".slider-val"), lmoved: el.querySelector(".linemoved"),
     locked: el.querySelector(".lockedline"),
     detBtn: el.querySelector(".detbtn"), details: el.querySelector(".carddetails"),
-    rec: el.querySelector(".rec"), learn: el.querySelector(".learnline"),
+    rec: el.querySelector(".rec"), fcrec: el.querySelector(".fcrec"), learn: el.querySelector(".learnline"),
     pool: el.querySelector(".pooline"), src: el.querySelector(".srcline"), gate: el.querySelector(".gateline"),
     roCur: el.querySelector(".ro-cur"),
     roDist: el.querySelector(".ro-dist"), pill: el.querySelector(".pill"),
@@ -520,6 +522,7 @@ function addCard(sym){
   cs.els.lineIn.addEventListener("change", () => setLineFromHeader(sym, cs.els.lineIn.value));
   el.querySelector(".snapbtn").addEventListener("click", () => snapLineToPrice(sym));
   renderRec(sym);
+  renderFCRec(sym);
   renderLearn(sym);
   updateLineUI(sym);
 }
@@ -977,10 +980,75 @@ function captureFC30(sym){
   const f = forecast30(sym);
   cs.fcSnap = f ? {t0: Date.now(), anchor: f.anchor, muDay: f.muDay,
                    dailyVol: f.dailyVol, bias: f.bias,
-                   medDurMin: f.medDurMin, actuals: []} : null;
+                   medDurMin: f.medDurMin, actuals: [],
+                   pred: buildFCPred(sym, f), graded: {}} : null;
+  cs.fcFlushAt = Date.now();
   if (cs.els.fc30age && cs.fcSnap)
     cs.els.fc30age.textContent = "snapshot " + new Date(cs.fcSnap.t0).toLocaleTimeString() + " — frozen until closed";
   return cs.fcSnap;
+}
+/* ---------- WEB7: the system's graphed-out predicted path ----------
+   The old yellow line was a smooth drift exponential — it never bent
+   with the expected swing pattern, so overlaying the actual price
+   tested almost nothing. buildFCPred instead projects, at capture
+   time, the path the system's own signals actually expect over the
+   next 30 minutes, minute by minute, and freezes it in the snapshot:
+   - drift: muDay (already includes the learned bias) per minute;
+   - swing wave: from the measured swing stats (24h preferred) — the
+     current leg (direction lastLegDir, age lastPivotMinAgo) runs for
+     the rest of its typical duration (medDurMin), then legs
+     alternate every ~med minutes, each leg's per-minute logret =
+     its measured amplitude (avgUp/avgDn) spread over the leg;
+   - momentum blend: 0.5 x the 15m trend's per-minute logret,
+     weighted toward the early minutes (linear decay to 0 at min 30);
+   - each minute's total logret clamped to ±3 x the per-minute vol.
+   With no swing/trend data the path reduces to the drift path. */
+function buildFCPred(sym, f){
+  const cs = coinState(sym), anchor = f.anchor;
+  const driftPerMin = f.muDay / 1440;
+  const volH = f.dailyVol / Math.sqrt(24);
+  const clampMin = 3 * volH / Math.sqrt(60);
+  const sw = cs.swings, s = sw && (sw.h24 || sw.d7);
+  const med = (sw && sw.medDurMin) || (s && s.medDurMin) || null;
+  const ago = sw && sw.lastPivotMinAgo != null ? sw.lastPivotMinAgo
+            : (s && s.lastPivotMinAgo != null ? s.lastPivotMinAgo : null);
+  let dir = (sw && sw.lastLegDir) || (s && s.lastLegDir) || 0;
+  const tw15 = cs.trend && cs.trend.w15;
+  if (!dir){
+    if (tw15 && tw15.logret) dir = Math.sign(tw15.logret);
+    else if (f.muDay) dir = Math.sign(f.muDay);
+  }
+  const momPerMin = tw15 && tw15.winHours ? tw15.logret / (tw15.winHours * 60) : 0;
+  const pts = [{min: 0, p: anchor}];
+  let cum = 0, curDir = dir;
+  let legLeft = med ? Math.max(1, med - (ago || 0)) : Infinity;
+  for (let m = 1; m <= 30; m++){
+    let r = driftPerMin;
+    if (med && curDir && s && ((s.avgUp || 0) + (s.avgDn || 0)) > 0){
+      r += curDir > 0 ? Math.log(1 + (s.avgUp || 0)) / med
+                      : Math.log(1 - Math.min(s.avgDn || 0, 0.9)) / med;
+      legLeft--;
+      if (legLeft <= 0){ curDir = -curDir; legLeft = med; }
+    }
+    r += 0.5 * momPerMin * (1 - (m - 1) / 30);
+    r = clamp(r, -clampMin, clampMin);
+    cum += r;
+    pts.push({min: m, p: anchor * Math.exp(cum)});
+  }
+  return pts;
+}
+function fcPredAt(sn, minFloat){
+  // The frozen predicted path at an arbitrary elapsed minute
+  // (linear interpolation between the 1-minute steps). Falls back to
+  // the plain drift path if a snapshot somehow has no pred path.
+  if (!sn) return null;
+  if (!sn.pred || !sn.pred.length)
+    return sn.anchor * Math.exp(sn.muDay * (minFloat / 1440));
+  const pr = sn.pred;
+  if (minFloat <= 0) return pr[0].p;
+  if (minFloat >= pr[pr.length - 1].min) return pr[pr.length - 1].p;
+  const i = Math.floor(minFloat), fr = minFloat - i;
+  return pr[i].p + (pr[i + 1].p - pr[i].p) * fr;
 }
 function fcActualSeries(sym, sn){
   // Actual prices since the snapshot: live ticks + the actuals the
@@ -1002,16 +1070,30 @@ function fcActualSeries(sym, sn){
   }
   return [...byT.entries()].map(([t, p]) => ({t: t, p: p})).sort((a, b) => a.t - b.t);
 }
+function fcTabVisible(){
+  // WEB7 ACTIVE-USER GATE (Shane's resource rule): the self-tests —
+  // overlay sampling and mark grading — run only while the user is
+  // actually active on the page. A hidden tab does no test work and
+  // sends no contributions; the work is distributed across visitors'
+  // browsers instead of eating server resources.
+  return typeof document === "undefined" || !document.visibilityState ||
+    document.visibilityState === "visible";
+}
 function fcOverlaySample(sym, now){
   // One matched-time error sample: the actual price vs the FROZEN
-  // forecast's mean at the same elapsed time. WEB6: throttled to one
+  // predicted path at the same elapsed time. WEB6: throttled to one
   // per minute per snapshot (the graph's zooms are minute windows
   // now, so the learning samples land on the same scale), with a
   // smaller per-sample step so the effective learning rate per hour
   // matches the old 5-minute cadence. The log-error nudges
   // fc.biasFine — the fine-grain sibling of the daily checkpoint's
   // bias — and forecast30() adds it into the next forecast's drift,
-  // so the misses genuinely retrain it.
+  // so the misses genuinely retrain it. WEB7: the comparison target
+  // is the frozen PREDICTED PATH (fcPredAt — drift + expected swing
+  // pattern), not the old drift exponential, and each sample also
+  // batches into the pending global aggregates flushed to
+  // /api/perp/fc-contribute with the next grade or ~every 5 minutes.
+  if (!fcTabVisible()) return false;
   const cs = coinState(sym), sn = cs.fcSnap;
   if (!sn || !cs.price) return false;
   now = now || Date.now();
@@ -1019,7 +1101,7 @@ function fcOverlaySample(sym, now){
   if (elapsed < 60000) return false;
   if (now - (cs.fcErrLast || 0) < 60000) return false;
   cs.fcErrLast = now;
-  const meanAt = sn.anchor * Math.exp(sn.muDay * (elapsed / 86400000));
+  const meanAt = fcPredAt(sn, elapsed / 60000);
   if (!(meanAt > 0)) return false;
   const err = Math.log(cs.price / meanAt);
   const F = learnState(sym).fc;
@@ -1027,9 +1109,88 @@ function fcOverlaySample(sym, now){
   F.errSum = (F.errSum || 0) + err;
   F.errAbs = (F.errAbs || 0) + Math.abs(err);
   F.biasFine = clamp((F.biasFine || 0) + 0.01 * err, -0.01, 0.01);
+  F.pendN = (F.pendN || 0) + 1;
+  F.pendAbs = (F.pendAbs || 0) + Math.abs(err);
   saveLearn();
   renderFC30Stat(sym);
+  if (now - (cs.fcFlushAt || 0) >= 300000){ cs.fcFlushAt = now; fcFlushErr(sym); }
   return true;
+}
+/* ---------- WEB7: global forecast-check contributions ----------
+   Every graded mark and every batched error sample goes up to the
+   auth service's global pool (POST /api/perp/fc-contribute), so the
+   forecast record aggregates across ALL visitors — every bit of
+   trend data gets used to tune future forecasts. Fire-and-forget:
+   a failed send restores the pending error aggregates for the next
+   flush and never blocks the page. */
+async function fcContribute(sym, correct, incorrect, takePending){
+  const F = learnState(sym).fc;
+  let errN = 0, errAbs = 0;
+  if (takePending){
+    errN = F.pendN || 0; errAbs = F.pendAbs || 0;
+    F.pendN = 0; F.pendAbs = 0; saveLearn();
+  }
+  try {
+    const r = await fetch(AUTH + "/api/perp/fc-contribute", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({coin: sym, correct: correct | 0, incorrect: incorrect | 0,
+                            err_n: errN, err_abs_sum: Math.round(errAbs * 1e6) / 1e6})
+    });
+    if (!r || !r.ok) throw new Error("fc-contribute rejected");
+    return true;
+  } catch (e) {
+    if (takePending){ F.pendN = errN; F.pendAbs = errAbs; saveLearn(); }
+    return false;
+  }
+}
+function fcFlushErr(sym){
+  const F = learnState(sym).fc;
+  if (!(F.pendN > 0)) return false;
+  fcContribute(sym, 0, 0, true);
+  renderFCRec(sym);
+  return true;
+}
+/* ---------- WEB7: correct vs incorrect, graded at the zoom marks --
+   Each snapshot grades ONCE at 5 / 10 / 15 / 30 minutes after it
+   opens: predicted = the frozen path's value at the mark vs the
+   anchor; a path still sitting on the anchor (within 0.005%) is a
+   no-call and is not counted. Otherwise the mark is correct iff the
+   live price moved the same direction from the anchor as the path
+   said it would. Grades persist locally (L.fc.fcC / fcI) and the
+   delta is contributed to the global pool immediately. */
+const FC_MARKS = [5, 10, 15, 30];
+function fcGradeMarks(sym, now){
+  if (!fcTabVisible()) return 0;
+  const cs = coinState(sym), sn = cs.fcSnap;
+  if (!sn || !cs.price || !sn.pred) return 0;
+  if (!sn.graded) sn.graded = {};
+  now = now || Date.now();
+  const elapsedMin = (now - sn.t0) / 60000;
+  let graded = 0;
+  for (const mark of FC_MARKS){
+    if (elapsedMin < mark || sn.graded[mark]) continue;
+    sn.graded[mark] = true;   // consumed exactly once, no-call included
+    const pred = fcPredAt(sn, mark);
+    if (Math.abs(pred - sn.anchor) / sn.anchor <= 0.00005) continue;
+    const correct = Math.sign(cs.price - sn.anchor) === Math.sign(pred - sn.anchor);
+    const F = learnState(sym).fc;
+    if (correct) F.fcC = (F.fcC || 0) + 1; else F.fcI = (F.fcI || 0) + 1;
+    saveLearn();
+    fcContribute(sym, correct ? 1 : 0, correct ? 0 : 1, true);
+    graded++;
+  }
+  if (graded) renderFCRec(sym);
+  return graded;
+}
+function renderFCRec(sym){
+  const cs = coinState(sym);
+  if (!cs.els.fcrec) return;
+  const F = learnState(sym).fc;
+  const g = GLOBAL_POOL && GLOBAL_POOL[sym] && GLOBAL_POOL[sym].fc;
+  const txt = "Forecast check record — this browser: " + (F.fcC || 0) + " correct · " + (F.fcI || 0) + " incorrect" +
+    " · avg miss " + (F.errN ? "±" + (F.errAbs / F.errN * 100).toFixed(2) + "%" : "—") + " (" + (F.errN || 0) + " samples)" +
+    " · Global (all visitors): " + (g ? g.correct + " correct · " + g.incorrect + " incorrect" : "not loaded yet");
+  if (cs.els.fcrec.textContent !== txt) cs.els.fcrec.textContent = txt;
 }
 function drawFC30(sym){
   const cs = coinState(sym), cv = cs.els.fc30;
@@ -1043,10 +1204,14 @@ function drawFC30(sym){
   const winMin = FCZ_MIN[cs.fcZoom] || 30, winMs = winMin * 60000;
   const N = 64, pts = [];
   for (let k = 0; k <= N; k++){
-    const min = winMin * k / N, d = min / 1440, m = sn.muDay * d, sd = sn.dailyVol * Math.sqrt(d);
-    pts.push({min: min, mean: sn.anchor * Math.exp(m), u68: sn.anchor * Math.exp(m + sd),
-              l68: sn.anchor * Math.exp(m - sd), u95: sn.anchor * Math.exp(m + 1.96 * sd),
-              l95: sn.anchor * Math.exp(m - 1.96 * sd)});
+    // WEB7: the yellow line IS the frozen predicted path (drift +
+    // expected swing pattern, interpolated); the cones are the vol
+    // bands ± dailyVol·sqrt(min/1440) around the path at that minute.
+    const min = winMin * k / N, sd = sn.dailyVol * Math.sqrt(min / 1440);
+    const mean = fcPredAt(sn, min);
+    pts.push({min: min, mean: mean, u68: mean * Math.exp(sd),
+              l68: mean * Math.exp(-sd), u95: mean * Math.exp(1.96 * sd),
+              l95: mean * Math.exp(-1.96 * sd)});
   }
   const acts = fcActualSeries(sym, sn);
   let lo = Infinity, hi = -Infinity;
@@ -1536,6 +1701,13 @@ function learnState(sym){
   if (typeof F.errN !== "number") F.errN = 0;
   if (typeof F.errSum !== "number") F.errSum = 0;
   if (typeof F.errAbs !== "number") F.errAbs = 0;
+  // WEB7: forecast-check correct/incorrect record for this browser
+  // (fcC/fcI, graded at the 5/10/15/30-min marks) plus the pending
+  // error aggregates waiting to flush into the global pool.
+  if (typeof F.fcC !== "number") F.fcC = 0;
+  if (typeof F.fcI !== "number") F.fcI = 0;
+  if (typeof F.pendN !== "number") F.pendN = 0;
+  if (typeof F.pendAbs !== "number") F.pendAbs = 0;
   if (!L.gate) L.gate = {};
   if (!L.bucketAdj) L.bucketAdj = {};
   if (typeof L.bandAdj !== "number") L.bandAdj = 0;
@@ -1618,7 +1790,7 @@ async function loadGlobal(){
   const j = await fetchJSON(AUTH + "/api/perp/global");
   if (!j || !j.ok || !j.coins) return;
   GLOBAL_POOL = j.coins; GLOBAL_TOTALS = j.totals || null;
-  S.selected.forEach(sym => { renderLearn(sym); if (S.cycle.active) predict(sym); });
+  S.selected.forEach(sym => { renderLearn(sym); renderFCRec(sym); if (S.cycle.active) predict(sym); });
 }
 /* Multi-source view (MULTISOURCE): one server call covers every
    watched coin. Pure enhancement layer — if the endpoint is
@@ -2177,6 +2349,7 @@ async function priceTick(){
           if (a.length > 3000) a.splice(0, a.length - 3000);
         }
         fcOverlaySample(sym);
+        fcGradeMarks(sym);
       }
       cs.els.price.textContent = fmtPrice(cs.price);
       renderReadouts(sym);
