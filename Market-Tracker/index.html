@@ -21,13 +21,13 @@ body{
   min-height:100vh;
 }
 a{color:var(--gold2)}
-header{max-width:1800px;margin:0 auto;padding:28px 18px 6px}
+header{max-width:none;margin:0 auto;padding:28px 18px 6px}
 .wordmark{font-size:15px;letter-spacing:.35em;text-transform:uppercase;color:var(--mut)}
 .wordmark b{color:#fff;font-weight:700}
 .wordmark i{color:var(--gold);font-style:normal;font-weight:700}
 h1{margin:6px 0 4px;font-size:34px;line-height:1.1;background:linear-gradient(90deg,var(--gold2),var(--gold) 55%,var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
 .sub{color:var(--mut);max-width:760px;font-size:15px;line-height:1.5}
-main{max-width:1800px;margin:0 auto;padding:14px 18px 30px;display:grid;gap:16px}
+main{max-width:none;margin:0 auto;padding:14px 18px 30px;display:grid;gap:16px}
 .card{
   background:linear-gradient(180deg,var(--card) 0%,var(--card2) 100%);
   border:1px solid var(--line);border-radius:20px;padding:18px;position:relative;overflow:hidden;
@@ -152,7 +152,7 @@ canvas.spark{width:100%;height:150px;display:block}
 #scoreTable{width:100%;border-collapse:collapse;font-size:14px}
 #scoreTable th,#scoreTable td{border-bottom:1px solid var(--line);padding:7px 6px;text-align:left}
 #scoreTable th{color:var(--mut);font-weight:600;font-size:12px;letter-spacing:.1em;text-transform:uppercase}
-footer{max-width:1800px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-size:13px;line-height:1.6}
+footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-size:13px;line-height:1.6}
 .err{color:var(--down);font-size:12px}
 /* ---------- WEB5 ---------- */
 .ro-line-in{background:#0c0c18;border:1px solid var(--line);border-radius:8px;color:var(--txt);
@@ -283,6 +283,25 @@ footer{max-width:1800px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
   .cpad-disp{font-size:38px}
 }
 @media (min-width:1750px){.cardpad{flex-basis:240px}}
+/* ---------- WEB14 wide-screen pass (Shane 2026-10-28): on desktop /
+   landscape / wide aspect ratios the page uses ALL the screen it is
+   given — the shell cap is gone (header/main/footer above), and the
+   card grid keeps adding columns as width allows instead of leaving
+   dead gutters beside a 3-up grid. Portrait and narrow rules are
+   untouched (the base styles below these breakpoints rule). */
+@media (min-width:2100px){
+  #cards{grid-template-columns:repeat(4,1fr)}
+  .cardpad{flex-basis:250px}
+}
+@media (min-width:2900px){
+  #cards{grid-template-columns:repeat(6,1fr)}
+}
+/* WEB14: the per-card perpetual outlook lives in the pad column
+   under ENTER — the system's call + estimated end value for every
+   perpetual horizon, filling what was blank card space. */
+.cpad-calls table{width:100%;border-collapse:collapse;font-size:13px;margin-top:2px}
+.cpad-calls th,.cpad-calls td{text-align:left;padding:3px 4px;border-bottom:1px solid var(--line)}
+.cpad-calls th{color:var(--mut);font-weight:600;font-size:11.5px;letter-spacing:.04em;text-transform:uppercase}
 /* ---------- WEB13: "Simplified" explainer pop-outs (Shane
    2026-10-28) — one small button in the top-pick banner and in
    each card's advisory / chart / trend sections; a single shared
@@ -822,8 +841,9 @@ applyPreset(S.preset, true);
    When a market preset is active, the target line is NOT a local
    reconstruction: it is the chosen market's own published target
    for the window, fetched through the app's same-origin proxy
-   (/Market-Tracker/api/pm/* and /api/kalshi/*, entitled sessions
-   only). Polymarket: its crypto-price endpoint returns the official
+   (/Market-Tracker/api/pm/* for Polymarket; Kalshi rides the
+   standard /api/perp/* proxy to the auth service's Kalshi route —
+   entitled sessions only). Polymarket: its crypto-price endpoint returns the official
    price to beat (openPrice) per window start + variant — Chainlink
    TWAP-60 for 5m/15m/4h on the coins it runs (BTC/ETH/SOL/XRP/DOGE),
    the Binance candle open for 1h on every coin. Kalshi: the open
@@ -844,7 +864,12 @@ async function pmPrice(sym, openAtMs, variant){
 async function kalshiMarkets(sym){
   const series = KX_SERIES[sym];
   if (!series) return null;
-  const j = await fetchJSON(AUTH + "/api/kalshi/markets?series=" + series);
+  // Kalshi is served by the AUTH service (GET /api/perp/kalshi,
+  // paywall-gated like every perp route, carried by the same
+  // /Market-Tracker proxy): the Pages edge itself cannot reach
+  // Kalshi's hosts reliably (intermittent edge 502s, verified
+  // 2026-10-28), while the auth service's egress answers cleanly.
+  const j = await fetchJSON(AUTH + "/api/perp/kalshi?series=" + series);
   return j && Array.isArray(j.markets) ? j.markets : null;
 }
 /* The chosen market's target for the window opening at openAtMs:
@@ -993,6 +1018,7 @@ function addCard(sym){
     '<button class="btn ghost cpad-snap" type="button" style="width:100%;margin-top:9px">Set target to current market</button>' +
     '<button class="btn primary cpad-enter" type="button" style="width:100%;margin-top:9px;padding:12px;font-size:15px">ENTER — run the numbers</button>' +
     '<div class="cpad-out"></div>' +
+    '<div class="cpad-calls"></div>' +
     '</aside>' +
     '</div>';   /* .cardrow */
   $("#cards").appendChild(el);
@@ -1012,6 +1038,7 @@ function addCard(sym){
     padDisp: el.querySelector(".cpad-disp"), padInfo: el.querySelector(".cpad-info"),
     padBtns: el.querySelectorAll(".cpad-btn"), padSnap: el.querySelector(".cpad-snap"),
     padEnter: el.querySelector(".cpad-enter"), padOut: el.querySelector(".cpad-out"),
+    padCalls: el.querySelector(".cpad-calls"),
     pbar: el.querySelector(".pbar > div"), lineIn: el.querySelector(".ro-line-in"),
     slider: el.querySelector(".line-slider"), flash: el.querySelector(".flashmsg"),
     sval: el.querySelector(".slider-val"), lmoved: el.querySelector(".linemoved"),
@@ -1502,6 +1529,59 @@ function setEstL(sym, lMin){
   if (cs.els.estlbtns) cs.els.estlbtns.forEach(b => b.classList.toggle("on", +b.dataset.estl === lMin));
   drawForecast(sym);
 }
+/* ---------- WEB14: experimental lines on the Estimate graph ------
+   Shane 2026-10-28: the experimental lines were missing from this
+   graph entirely (they only existed on the frozen forecast-check
+   graph). fcAdjInfo reads the system's experiment state off the
+   global payload (coin.fc.adj: diag + exp slots); expTransformPath
+   mirrors the server's buildExpPath (src/perp-fc-exp.js) over
+   sampled {m, v} points, so the Estimate graph draws the SAME two
+   candidates the forecast-check engine freezes and grades. */
+function fcAdjInfo(sym){
+  const adj = GLOBAL_POOL && GLOBAL_POOL[sym] && GLOBAL_POOL[sym].fc && GLOBAL_POOL[sym].fc.adj;
+  if (!adj) return null;
+  const diag = adj.diag || null;
+  let slots = null;
+  if (adj.exp && Array.isArray(adj.exp.slots) && adj.exp.slots.length === 2)
+    slots = adj.exp.slots.map(s => ({line: s.line, kind: s.kind, params: s.params || {}}));
+  else if (diag) slots = [
+    {line: "A", kind: "corr", params: {k: diag.ka != null ? diag.ka : 1.35}},
+    {line: "B", kind: "corrflip", params: {k: Math.abs(diag.kb != null ? diag.kb : 0.35)}}];
+  return {diag: diag, slots: slots};
+}
+function expTransformPath(pts, anchor, cand, diag){
+  if (!pts || !pts.length || !cand || !(anchor > 0)) return null;
+  const p = cand.params || {};
+  if (cand.kind === "shrink" && typeof p.s === "number")
+    return pts.map(q => ({m: q.m, v: anchor * Math.exp(p.s * Math.log(q.v / anchor))}));
+  if (cand.kind === "warp" && typeof p.p === "number" && p.p > 0){
+    const H = pts[pts.length - 1].m;
+    if (!(H > 0)) return null;
+    const at = (mf) => {
+      if (mf <= 0) return pts[0].v;
+      if (mf >= H) return pts[pts.length - 1].v;
+      for (let i = 1; i < pts.length; i++){
+        if (pts[i].m >= mf){
+          const fr = (mf - pts[i - 1].m) / (pts[i].m - pts[i - 1].m);
+          return pts[i - 1].v + (pts[i].v - pts[i - 1].v) * fr;
+        }
+      }
+      return pts[pts.length - 1].v;
+    };
+    return pts.map(q => ({m: q.m, v: at(H * Math.pow(q.m / H, p.p))}));
+  }
+  if ((cand.kind === "corr" || cand.kind === "corrflip") && diag && !diag.collapsed &&
+      typeof diag.a === "number" && typeof diag.b === "number" && typeof p.k === "number" &&
+      typeof diag.n === "number"){
+    let k = p.k * (diag.n / (diag.n + 6));
+    if (cand.kind === "corrflip" && diag.flip) k = -k;
+    return pts.map(q => {
+      const corr = clamp((q.m / 30) * k * (diag.a + diag.b * q.m), -0.02, 0.02);
+      return {m: q.m, v: q.v * Math.exp(-corr)};
+    });
+  }
+  return null;   // collapsed corr family == main: nothing extra to draw
+}
 function drawForecast(sym){
   const cs = coinState(sym), cv = cs.els.fc;
   if (!cv || !cs.fc30on) return;
@@ -1525,10 +1605,26 @@ function drawForecast(sym){
   eat(price);
   for (const tk of trail) eat(tk.p);
   for (const q of comp.pts) eat(q.p);
+  let expDraw = [];
   if (cur){
     const age0 = now - cur.t;
     for (let u = 0; u <= Math.min(span, 600000 - age0); u += 10000)
       eat(snapValueAt(cur, age0 + u));
+    // WEB14: transform the SAME future path the yellow line will
+    // draw into the two experimental lines, and count them in the
+    // frame so they can never clip off the top/bottom.
+    const info = fcAdjInfo(sym);
+    if (info && info.slots && cur.path && cur.path[0] > 0){
+      const mPts = [];
+      for (let dt = age0; dt <= Math.min(span + age0, 600000); dt += 5000)
+        mPts.push({m: dt / 60000, v: snapValueAt(cur, dt)});
+      for (const s of info.slots){
+        if (s.line === "A" && !FC_ADJ_SHOW.a) continue;
+        if (s.line === "B" && !FC_ADJ_SHOW.b) continue;
+        const tp = expTransformPath(mPts, cur.path[0], s, info.diag);
+        if (tp){ expDraw.push({line: s.line, pts: tp}); for (const q of tp) eat(q.v); }
+      }
+    }
   }
   if (!(lo < hi)){ lo = price * 0.999; hi = price * 1.001; }
   const pad = (hi - lo) * 0.15 || hi * 0.001; lo -= pad; hi += pad;
@@ -1562,6 +1658,23 @@ function drawForecast(sym){
       dt === age ? ctx.moveTo(x, yy) : ctx.lineTo(x, yy);
     }
     ctx.strokeStyle = "#f3d27a"; ctx.lineWidth = 2; ctx.stroke();
+    // WEB14: the experimental lines ride the same future path (A red,
+    // B blue — the fixed color contract), drawn over the main line
+    // so they stay visible even where they nearly overlap it.
+    for (const e of expDraw){
+      ctx.beginPath();
+      e.pts.forEach((q, i) => {
+        const x = X(cur.t + q.m * 60000), yy = y(q.v);
+        i ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy);
+      });
+      ctx.strokeStyle = e.line === "A" ? "#ff4747" : "#3f8cff"; ctx.lineWidth = 2; ctx.stroke();
+      const last = e.pts[e.pts.length - 1];
+      if (last){
+        ctx.font = "bold 13px system-ui";
+        ctx.fillStyle = e.line === "A" ? "#ff4747" : "#3f8cff";
+        ctx.fillText(e.line, clamp(X(cur.t + last.m * 60000) - 12, 4, W - 16), clamp(y(last.v) - 6, 14, H - 20));
+      }
+    }
   }
   // LEFT of center: the comparison prediction (violet, dashed) —
   // what the system predicted L minutes ago for each past moment.
@@ -1938,28 +2051,38 @@ function drawFC30(sym){
   };
   band("u95", "l95", "rgba(124,92,255,0.10)");
   band("u68", "l68", "rgba(201,162,39,0.13)");
-  // FC LINES (Shane 2026-10-28): the two experimental adjusted paths
-  // under the main line, toggled per line. The color contract is
-  // fixed: ACTUAL white (#eceaf4, drawn last below), MAIN yellow
-  // (#f3d27a), STRONG adjustment RED (#ff4747), MILD adjustment BLUE
-  // (#3f8cff). Every other color on the graph is unchanged.
-  const drawAdj = (arr, color) => {
+  // FC LINES (Shane 2026-10-28): the two experimental adjusted paths,
+  // toggled per line. The color contract is fixed: ACTUAL white
+  // (#eceaf4, drawn last below), MAIN yellow (#f3d27a), STRONG
+  // adjustment RED (#ff4747), MILD adjustment BLUE (#3f8cff). Every
+  // other color on the graph is unchanged.
+  const drawAdj = (arr, color, label) => {
     if (!arr) return;
     ctx.beginPath();
-    let started = false;
+    let started = false, lx = 0, ly = 0;
     for (let k = 0; k <= N; k++){
       const v = fcPredAt({pred: arr, anchor: sn.anchor, muDay: 0}, winMin * k / N);
       if (v == null) continue;
       const x = X(winMin * k / N), y = Y(v);
       if (!started){ ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      lx = x; ly = y;
     }
-    if (started){ ctx.strokeStyle = color; ctx.lineWidth = 1.8; ctx.stroke(); }
+    if (started){
+      ctx.strokeStyle = color; ctx.lineWidth = 2.2; ctx.stroke();
+      // End label: the line stays identifiable even where it runs
+      // on top of the main line (thin diagnostics, small zooms).
+      ctx.font = "bold 13px system-ui"; ctx.fillStyle = color;
+      ctx.fillText(label, clamp(lx - 12, 4, Wd - 16), clamp(ly - 6, 14, H - 20));
+    }
   };
-  if (FC_ADJ_SHOW.b) drawAdj(sn.adjB, "#3f8cff");
-  if (FC_ADJ_SHOW.a) drawAdj(sn.adjA, "#ff4747");
+  // Draw order (WEB14 fix): main FIRST, experimental lines ON TOP of
+  // it, actual last — previously the main line was stroked over the
+  // adjusted lines and hid them wherever they ran close together.
   ctx.beginPath();
   pts.forEach((q, i) => i ? ctx.lineTo(X(q.min), Y(q.mean)) : ctx.moveTo(X(q.min), Y(q.mean)));
   ctx.strokeStyle = "#f3d27a"; ctx.lineWidth = 2; ctx.stroke();
+  if (FC_ADJ_SHOW.b) drawAdj(sn.adjB, "#3f8cff", "B");
+  if (FC_ADJ_SHOW.a) drawAdj(sn.adjA, "#ff4747", "A");
   if (cs.line){
     const yy = Y(cs.line);
     if (yy > 0 && yy < H){
@@ -2047,6 +2170,24 @@ function renderFCAdjRec(sym){
     txt = "Prediction lines at the 30-min mark (last " + adj.main30.n30 + " graded checks): Main " + mae(adj.main30) +
       " · Strong adj. " + mae(adj.a) + " (" + adj.a.correct + "✓/" + adj.a.incorrect + "✗)" +
       " · Mild adj. " + mae(adj.b) + " (" + adj.b.correct + "✓/" + adj.b.incorrect + "✗)";
+    // EXPERIMENT LOOP (Shane 2026-10-28): name the candidates the
+    // two lines currently ARE and where each stands — a line that
+    // beats Main runs a 48h probation, then is promoted into Main;
+    // the worse of two non-beating lines is scrapped and replaced.
+    if (adj.exp && Array.isArray(adj.exp.slots)){
+      const parts = adj.exp.slots.map(s => {
+        let st = s.state;
+        if (s.state === "probation" && s.probation_ends_at){
+          const hrs = Math.max(0, (s.probation_ends_at - Date.now()) / 3600000);
+          st = "on probation — " + (hrs >= 1 ? Math.round(hrs) + "h" : Math.round(hrs * 60) + "m") + " left before it can be promoted";
+        }
+        return "Line " + s.line + " is currently “" + s.label + "” (" + st + ", its own record: " +
+          (s.mae30_pct != null ? "±" + (+s.mae30_pct).toFixed(2) + "%" : "—") + " over " + (s.n || 0) + " graded)";
+      });
+      txt += ". Experiment loop: " + parts.join(" · ") + ".";
+      if (adj.exp.main_adj)
+        txt += " The main line currently runs the promoted adjustment “" + adj.exp.main_adj.label + "”.";
+    }
   } else if (adj) {
     txt = "Prediction lines: Main, Strong adj. and Mild adj. are graded on the same server checks — the 30-min record builds as checks complete.";
   }
@@ -2883,6 +3024,7 @@ async function priceTick(){
       }
       cs.els.price.textContent = fmtPrice(cs.price);
       renderReadouts(sym);
+      renderPadCalls(sym);
       const c = cs.closesH, n = c.length;
       if (n > 24){
         const chg = cs.price / c[n - 25] - 1;
@@ -3376,6 +3518,49 @@ async function cardPadEnter(sym){
   }
   refreshPadsFor(tsym);
   return {sym: tsym, price: price, line: line, rows: rows, head: head, advice: advice};
+}
+/* ---------- WEB14: per-card perpetual outlook (Shane 2026-10-28) --
+   The pad column under ENTER shows, for THIS card's coin, the
+   system's suggested prediction for every perpetual horizon (the
+   PAD_HZ closes) AND the estimated end value for each one — the
+   drift-projected close, price * exp(driftTotal) from the same
+   probOverAt core that produces the probability, so the estimate
+   and the call can never disagree. The reference line is the
+   coin's own line when one is set (a cycle line, a hand-set line,
+   or a market target in mimic mode); with no line set the calls
+   run against the live price and the heading says so. Updates on
+   the price ticks; display only, like everything on this page. */
+function padCallsRows(sym){
+  const cs = coinState(sym);
+  if (!(cs.price > 0)) return null;
+  const line = (cs.lineSet && cs.line > 0) ? cs.line : cs.price;
+  const band = effBand(sym);
+  return PAD_HZ.map(h => {
+    const r = probOverAt(sym, cs.price, line, h * 60);
+    const call = Math.abs(r.p - 0.5) >= band ? (r.p > 0.5 ? "OVER" : "UNDER") : null;
+    return {h: h, p: r.p, call: call,
+            winP: call ? (call === "OVER" ? r.p : 1 - r.p) : null,
+            est: cs.price * Math.exp(r.driftTotal)};
+  });
+}
+function renderPadCalls(sym){
+  const cs = coinState(sym), out = cs.els && cs.els.padCalls;
+  if (!out) return;
+  const rows = padCallsRows(sym);
+  if (!rows){ if (out.innerHTML) out.innerHTML = ""; return; }
+  const lineRef = (cs.lineSet && cs.line > 0)
+    ? "vs line " + fmtPrice(cs.line) + (cs.lineSrc ? " (" + cs.lineSrc + ")" : "")
+    : "vs live price — no line set";
+  const html =
+    '<div class="lbl" style="margin:12px 0 4px">Perpetual outlook — ' + lineRef + '</div>' +
+    '<table><thead><tr><th>Perpetual</th><th>System call</th><th>Est. end value</th></tr></thead><tbody>' +
+    rows.map(r => "<tr><td>" + (r.h === 60 ? "1 hour" : r.h + " min") + "</td><td>" +
+      (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + " " + Math.round(r.winP * 100) + "%</span>"
+              : '<span class="note">NO EDGE</span>') +
+      "</td><td>" + fmtPrice(r.est) + "</td></tr>").join("") +
+    "</tbody></table>" +
+    '<div class="note" style="margin-top:4px">Est. end value = the model\'s projected close for that perpetual, from the live price and the same math as the call.</div>';
+  if (out.innerHTML !== html) out.innerHTML = html;
 }
 /* Hardware keyboard: drives the pad of the card the user most
    recently touched (pointer or button), exactly like the old
