@@ -535,6 +535,16 @@ export async function onRequest(context) {
     return acctRoute(context, request, rest);
   }
 
+  // Bare /reset and /forgot: the password-reset email link points at
+  // /Market-Tracker/reset?token=... — redirect to the canonical acct page
+  // (query preserved) so emailed links land on the real form.
+  if (rest === '/reset' || rest === '/forgot') {
+    return new Response(null, {
+      status: 302,
+      headers: { Location: '/Market-Tracker/acct' + rest + url.search, 'Cache-Control': 'no-store' },
+    });
+  }
+
   // Page gate — the tracker and the Learn page are the product.
   if (rest === '' || rest === '/' || rest === '/index.html' ||
       rest === '/learn' || rest === '/learn/' || rest === '/learn/index.html') {
