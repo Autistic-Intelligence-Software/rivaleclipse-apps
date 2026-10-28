@@ -197,7 +197,10 @@ async function kalshiRoute(context, request, url) {
   if (!(await requireEntitled(context, request))) return jsonRes({ error: 'unauthorized' }, 401);
   const series = (url.searchParams.get('series') || '').toUpperCase();
   if (!/^KX[A-Z0-9]{2,20}$/.test(series)) return jsonRes({ error: 'bad_params' }, 400);
-  const up = 'https://api.elections.kalshi.com/trade-api/v2/markets?status=open&limit=10&series_ticker=' +
+  // external-api.kalshi.com is Kalshi's documented public API host;
+  // the elections host intermittently 502s when fetched from the
+  // Pages edge (verified 2026-10-28), this one answers cleanly.
+  const up = 'https://external-api.kalshi.com/trade-api/v2/markets?status=open&limit=10&series_ticker=' +
     encodeURIComponent(series);
   let r;
   try {
