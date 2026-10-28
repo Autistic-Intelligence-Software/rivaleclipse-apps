@@ -21,13 +21,13 @@ body{
   min-height:100vh;
 }
 a{color:var(--gold2)}
-header{max-width:1180px;margin:0 auto;padding:28px 18px 6px}
+header{max-width:1800px;margin:0 auto;padding:28px 18px 6px}
 .wordmark{font-size:15px;letter-spacing:.35em;text-transform:uppercase;color:var(--mut)}
 .wordmark b{color:#fff;font-weight:700}
 .wordmark i{color:var(--gold);font-style:normal;font-weight:700}
 h1{margin:6px 0 4px;font-size:34px;line-height:1.1;background:linear-gradient(90deg,var(--gold2),var(--gold) 55%,var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
 .sub{color:var(--mut);max-width:760px;font-size:15px;line-height:1.5}
-main{max-width:1180px;margin:0 auto;padding:14px 18px 30px;display:grid;gap:16px}
+main{max-width:1800px;margin:0 auto;padding:14px 18px 30px;display:grid;gap:16px}
 .card{
   background:linear-gradient(180deg,var(--card) 0%,var(--card2) 100%);
   border:1px solid var(--line);border-radius:20px;padding:18px;position:relative;overflow:hidden;
@@ -145,7 +145,7 @@ canvas.spark{width:100%;height:150px;display:block}
 #scoreTable{width:100%;border-collapse:collapse;font-size:14px}
 #scoreTable th,#scoreTable td{border-bottom:1px solid var(--line);padding:7px 6px;text-align:left}
 #scoreTable th{color:var(--mut);font-weight:600;font-size:12px;letter-spacing:.1em;text-transform:uppercase}
-footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-size:13px;line-height:1.6}
+footer{max-width:1800px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-size:13px;line-height:1.6}
 .err{color:var(--down);font-size:12px}
 /* ---------- WEB5 ---------- */
 .ro-line-in{background:#0c0c18;border:1px solid var(--line);border-radius:8px;color:var(--txt);
@@ -243,7 +243,39 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
 .boardbtn{background:none;border:1px solid var(--line);border-radius:999px;color:var(--gold2);
   cursor:pointer;font-size:12.5px;font-weight:700;padding:5px 14px}
 #scoreBoard[hidden]{display:none}
-
+/* ---------- WEB12: wide-screen layout (Shane 2026-10-28) ----------
+   The page used to cap at 1180px, stranding wide screens with
+   empty gutters. Now the shell runs to 1800px centered, the coin
+   cards tile 2-up on landscape phones / small tablets and 3-up on
+   wide desktops (6 watched coins = a clean 3x2), and the day
+   forecast + system scoreboard share a two-column row under the
+   cards. Portrait stacking and every narrower rule are untouched:
+   below these breakpoints the base styles rule exactly as before. */
+.duo{display:grid;gap:16px}
+#scoreCard .boardhead{margin-top:0}
+@media (min-width:1200px){header,main,footer{padding-left:26px;padding-right:26px}}
+@media (min-width:700px) and (orientation:landscape){
+  #cards{grid-template-columns:repeat(2,1fr)}
+  .cardpad{flex-basis:185px}
+}
+@media (min-width:900px){
+  #cards{grid-template-columns:repeat(2,1fr)}
+  .cardpad{flex-basis:185px}
+}
+@media (min-width:1100px){
+  .duo{grid-template-columns:1fr 1fr;align-items:start}
+}
+@media (min-width:1500px){
+  #cards{grid-template-columns:repeat(3,1fr)}
+  .cardpad{flex-basis:215px}
+  .wcard{padding:18px}
+  .price{font-size:32px}
+  .pred .call{font-size:24px}
+  .pred .conf{font-size:14px}
+  .cardadvice{font-size:14.5px}
+  .cpad-disp{font-size:38px}
+}
+@media (min-width:1750px){.cardpad{flex-basis:240px}}
 </style>
 </head>
 <body>
@@ -323,6 +355,10 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
       </div>
       <div id="advStrip" class="advstrip" hidden></div>
       <div id="cards"></div>
+    </section>
+  </div>
+  <div class="duo">
+  <section class="card" id="scoreCard">
       <div class="boardhead"><span class="lbl" style="margin:0">System scoreboard — global</span><button class="boardbtn" id="scoreBtn" type="button">Scoreboard ▸</button></div>
       <div id="scoreBoard" hidden>
       <div class="note">every visitor sees these same numbers · updated from the shared database</div>
@@ -332,14 +368,14 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
         <tbody id="scoreBody"><tr><td colspan="6" class="note">loading system record…</td></tr></tbody>
       </table>
       </div>
-    </section>
-  </div>
+  </section>
   <section class="card" id="forecastCard">
     <h2>Day forecast — when each market tends to move</h2>
     <p class="note" style="margin-top:0">From the last 30+ days of hourly candles the server already tracks: for every coin and every hour of the day, how much it typically moves, how often that hour closed up, and an opportunity score blending the two with the coin's own hour-of-day habits. These are statistical tendencies from history — the hours when a coin has been lively and one-directional are simply the hours its patterns have been easiest to read. Cell hours are Eastern Time; hover any cell for its UTC hour and numbers.</p>
     <div id="fcBest"><div class="note">Loading the day forecast…</div></div>
     <div id="fcCoins"></div>
   </section>
+  </div>
   <section class="card" id="alertsCard">
     <h2>Wave alerts</h2>
     <p class="note" style="margin-top:0">The system grades its own forecast record. When a pattern family — snipe setup, wave, or trend — lands 4 predictions in a row whose predicted closing value came within $1.00 of the actual close (value accuracy, not just picking the right side), and a fresh instance of that same pattern opens, the alert lands here with the system's suggested side.</p>
