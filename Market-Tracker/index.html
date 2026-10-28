@@ -379,7 +379,13 @@ const MODELS = {"ADA":{"hod":[0.444,0.528,0.469,0.441,0.486,0.48,0.503,0.483,0.4
 const SNIPE_PARAMS = {"squeeze_window_bars":6,"squeeze_pct_max":0.2,"pressure_min_z":1.0,"shock_mult":2.5,"vol_z_min":1.5,"move_multiple":1.5,"adverse_multiple":0.75};
 const ORDER = ["BTC","ETH","SOL","XRP","DOGE","ADA","LINK","AVAX","DOT","LTC","BCH","NEAR","UNI","ATOM","XLM","ETC","FIL","HBAR","SUI","PEPE"];
 const CB = "https://api.exchange.coinbase.com";
-const AUTH = "https://auth.rivaleclipse.dev";
+/* PAYWALL (Shane 2026-10-28): the tracker is members-only. All perp
+   API calls go through the same-origin paywall proxy at
+   /Market-Tracker/api/* — the Pages Function injects the session
+   cookie's Bearer token server-side; the browser never holds a JWT.
+   A 401 from that proxy means the session died mid-visit: the fetch
+   helpers below send the visitor back to the sign-in page. */
+const AUTH = "/Market-Tracker";
 /* WEB8 (Shane 2026-10-27): ONE database. The only localStorage keys
    left are pure display preferences (watchlist picks, cycle length,
    chart zooms, which Details sections are open, and — WEB9 — the
@@ -430,8 +436,13 @@ function fmtClock(ms){
   const mm = String(m).padStart(2, "0"), sss = String(ss).padStart(2, "0");
   return h > 0 ? h + ":" + mm + ":" + sss : mm + ":" + sss;
 }
+function acctGone(){
+  try { location.href = "/Market-Tracker/acct/sign-in"; } catch (e) {}
+}
 async function fetchJSON(url){
-  try { const r = await fetch(url, {cache: "no-store"}); if (!r.ok) return null; return await r.json(); }
+  try { const r = await fetch(url, {cache: "no-store"});
+    if (r && r.status === 401 && typeof url === "string" && url.indexOf(AUTH) === 0) acctGone();
+    if (!r.ok) return null; return await r.json(); }
   catch (e) { return null; }
 }
 function lsGet(k, dflt){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : dflt; } catch (e) { return dflt; } }
@@ -2502,6 +2513,7 @@ async function smsPost(path, phone){
   try {
     const r = await fetch(AUTH + path, {method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({phone: phone})});
+    if (r && r.status === 401) acctGone();
     if (!r || !r.ok) return false;
     const j = await r.json().catch(() => null);
     return !!(j && j.ok);
