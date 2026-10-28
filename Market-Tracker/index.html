@@ -214,6 +214,15 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
 .padside{flex:1 1 200px;border:1px solid var(--line);background:#0c0c18;color:var(--txt);border-radius:12px;
   padding:14px;font-size:16px;font-weight:800;cursor:pointer}
 .padside.on{border-color:var(--gold);color:#14100a;background:linear-gradient(90deg,var(--gold2),var(--gold))}
+.posbtns{display:flex;gap:8px;margin-top:10px}
+.posbtn{flex:1;border:1px solid var(--line);background:#0c0c18;color:var(--txt);border-radius:12px;
+  padding:11px 6px;font-size:14px;font-weight:800;cursor:pointer}
+.posbtn.up{border-color:rgba(61,220,132,.5)}
+.posbtn.down{border-color:rgba(255,94,122,.5)}
+.posbtn.up.on{background:var(--up);border-color:var(--up);color:#08130c}
+.posbtn.down.on{background:var(--down);border-color:var(--down);color:#17060b}
+.cardadvice{margin-top:8px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;
+  background:rgba(124,92,255,.05);font-size:13.5px;line-height:1.55}
 #padOut table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
 #padOut th,#padOut td{border-bottom:1px solid var(--line);padding:6px;text-align:left}
 #padOut th{color:var(--mut);font-size:12px;letter-spacing:.1em;text-transform:uppercase}
@@ -357,7 +366,7 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
   </section>
 </main>
 <footer>
-  Predictions are probabilities built from pattern statistics — barrier distance to your line, volatility, momentum, and each coin's 6-month base rates. They are not guarantees, and short-horizon crypto direction is close to a coin flip: the base models' held-out record is printed on every card, and the scoreboard above shows the system's global record from the shared database — the same numbers every visitor sees, wins and losses alike. The snipe badge uses the hourly setup only, read on a ~4-hour window: on held-out data across all 20 coins, flagged setups produced the big move 23.1% of the time against a 14.4% unflagged base rate (1.61x lift). The 15-minute snipe tested as noise (lift under 1x) and is not used. The forecast chart beside each live chart is an estimate cone — the mean path and bands show where the price could plausibly wander given current volatility and drift, not a promised path; the tick marks are the times swings have typically arrived, not appointments. All tuning lives in one shared database on the server: the system scores its own predictions as they close and retunes separate weights for momentum, regime, and rise/fall asymmetry; confidence buckets that run hot get shrunk toward 50; a coin whose calls keep flip-flopping gets a wider no-call band and a steadier, dwell-held call; and the volatility inside every probability follows the last few hours of live market, blended with the 6-month base. This page only pulls the current global tuning as it loads and refreshes — each card's Global line shows the shared record it is running on. The Trend read on each call is a plain-language summary of those same pattern signals — trend state, how rises have been running against falls, swing timing, forecast slope, and this coin's hour-of-day habits over the 6-month history — read off the numbers at that moment, not a separate prediction and not a guarantee. The forecast-check graph freezes when you open it and zooms into the forecast's first 5, 10, 15 or 30 minutes: the actual price then draws over the frozen forecast minute by minute, with the system's measured error printed on the graph — so you can see exactly how close the prediction is tracking, and whether it is catching the trend shifts as they happen. The forecast-check graph draws the system's minute-by-minute predicted path (drift plus the expected swing pattern). The system runs its own forecast checks on the server around the clock: it draws this same predicted path for every coin, grades it against the real price at 5, 10, 15 and 30 minutes as the results happen, and logs every result in the shared database that tunes future forecasts. This page only displays that record — there is no account and no sign-in, nothing is uploaded from your browser, and nothing about your visit is saved or used for learning. Data: Coinbase Exchange public feed. Not financial advice.
+  Predictions are probabilities built from pattern statistics — barrier distance to your line, volatility, momentum, and each coin's 6-month base rates. They are not guarantees, and short-horizon crypto direction is close to a coin flip: the base models' held-out record is printed on every card, and the scoreboard above shows the system's global record from the shared database — the same numbers every visitor sees, wins and losses alike. The snipe badge uses the hourly setup only, read on a ~4-hour window: on held-out data across all 20 coins, flagged setups produced the big move 23.1% of the time against a 14.4% unflagged base rate (1.61x lift). The 15-minute snipe tested as noise (lift under 1x) and is not used. The forecast chart beside each live chart is an estimate cone — the bands show where the price could plausibly wander given current volatility, and the mean path inside them is built from the coin's own recent swing rhythm: the durations and sizes of its real up and down legs, measured from the last two hours of 1-minute prices and waved forward over the system's drift. It is a rhythm-matched estimate, not a promised path; the tick marks are the times swings have typically arrived, not appointments. All tuning lives in one shared database on the server: the system scores its own predictions as they close and retunes separate weights for momentum, regime, and rise/fall asymmetry; confidence buckets that run hot get shrunk toward 50; a coin whose calls keep flip-flopping gets a wider no-call band and a steadier, dwell-held call; and the volatility inside every probability follows the last few hours of live market, blended with the 6-month base. This page only pulls the current global tuning as it loads and refreshes — each card's Global line shows the shared record it is running on. The Trend read on each call is a plain-language summary of those same pattern signals — trend state, how rises have been running against falls, swing timing, forecast slope, and this coin's hour-of-day habits over the 6-month history — read off the numbers at that moment, not a separate prediction and not a guarantee. The forecast-check graph freezes when you open it and zooms into the forecast's first 5, 10, 15 or 30 minutes: the actual price then draws over the frozen forecast minute by minute, with the system's measured error printed on the graph — so you can see exactly how close the prediction is tracking, and whether it is catching the trend shifts as they happen. The forecast-check graph draws the system's minute-by-minute predicted path — built from the coin's own recent swing rhythm (leg durations and sizes measured from the last two hours of 1-minute prices), waved forward and anchored to the system's drift expectation at the 30-minute mark. Still a rhythm-matched estimate, not a promised path. The system runs its own forecast checks on the server around the clock: it draws this same predicted path for every coin, grades it against the real price at 5, 10, 15 and 30 minutes as the results happen, and logs every result in the shared database that tunes future forecasts. This page only displays that record — there is no account and no sign-in, nothing is uploaded from your browser, and nothing about your visit is saved or used for learning. Data: Coinbase Exchange public feed. Not financial advice.
 </footer>
 <script>
 "use strict";
@@ -368,9 +377,26 @@ const CB = "https://api.exchange.coinbase.com";
 const AUTH = "https://auth.rivaleclipse.dev";
 /* WEB8 (Shane 2026-10-27): ONE database. The only localStorage keys
    left are pure display preferences (watchlist picks, cycle length,
-   chart zooms, which Details sections are open) — they feed nothing:
-   no learning store, no score persistence, no contribution queue. */
+   chart zooms, which Details sections are open, and — WEB9 — the
+   side the user says they hold on each card, ph.side.v1) — they
+   feed nothing: no learning store, no score persistence, no
+   contribution queue. */
 const LS_SEL = "ph.sel.v1", LS_LEN = "ph.len.v1";
+const LS_SIDE = "ph.side.v1";
+let SIDES = {};
+try { SIDES = JSON.parse(localStorage.getItem(LS_SIDE) || "{}") || {}; } catch (e) { SIDES = {}; }
+if (!SIDES || typeof SIDES !== "object" || Array.isArray(SIDES)) SIDES = {};
+function cardSide(sym){
+  const s = SIDES[sym];
+  return s === "up" || s === "down" ? s : null;
+}
+function setCardSide(sym, side){
+  // Toggle: tapping the lit side again clears it. Display state
+  // only — stored locally like the watchlist prefs, sent nowhere.
+  if (cardSide(sym) === side) delete SIDES[sym]; else SIDES[sym] = side;
+  try { localStorage.setItem(LS_SIDE, JSON.stringify(SIDES)); } catch (e) {}
+  renderCardAdvice(sym);
+}
 const $ = s => document.querySelector(s);
 
 function clamp(x, a, b){ return Math.min(b, Math.max(a, x)); }
@@ -565,6 +591,8 @@ function addCard(sym){
     '<div class="swline"></div>' +
     '<div class="snipe" hidden></div>' +
     '<div class="pred"><div class="call noedge">NO CYCLE RUNNING</div><div class="conf">Set your line, then press Start — every call is for the close vs your line, never for right now.</div><div class="trendread" hidden></div><div class="pbar"><div style="width:0%"></div></div></div>' +
+    '<div class="posbtns"><button type="button" class="posbtn up">(+) Up — I hold OVER</button><button type="button" class="posbtn down">(-) Down — I hold UNDER</button></div>' +
+    '<div class="cardadvice" hidden></div>' +
     '<div class="lockedline" hidden></div>' +
     '<button class="detbtn" type="button">Details ▸</button>' +
     '<div class="carddetails" hidden>' +
@@ -589,6 +617,8 @@ function addCard(sym){
     snipe: el.querySelector(".snipe"), pred: el.querySelector(".pred"),
     call: el.querySelector(".pred .call"), conf: el.querySelector(".pred .conf"),
     tread: el.querySelector(".trendread"),
+    posUp: el.querySelector(".posbtn.up"), posDn: el.querySelector(".posbtn.down"),
+    cardadvice: el.querySelector(".cardadvice"),
     pbar: el.querySelector(".pbar > div"), lineIn: el.querySelector(".ro-line-in"),
     slider: el.querySelector(".line-slider"), flash: el.querySelector(".flashmsg"),
     sval: el.querySelector(".slider-val"), lmoved: el.querySelector(".linemoved"),
@@ -615,6 +645,8 @@ function addCard(sym){
   });
   cs.els.fc30btn.addEventListener("click", () => setFC30(sym, !cs.fc30on));
   cs.els.detBtn.addEventListener("click", () => setDetails(sym, !cs.detailsOpen));
+  cs.els.posUp.addEventListener("click", () => setCardSide(sym, "up"));
+  cs.els.posDn.addEventListener("click", () => setCardSide(sym, "down"));
   setDetails(sym, cs.detailsOpen);
   applyFC30(sym);
   cs.els.slider.addEventListener("input", () => {
@@ -632,6 +664,7 @@ function addCard(sym){
   renderFCRec(sym);
   renderGlobalLine(sym);
   renderAdvCard(sym);
+  renderCardAdvice(sym);
   updateLineUI(sym);
 }
 function removeCard(sym){
@@ -943,10 +976,27 @@ function drawForecast(sym, sc){
   const path = [];
   for (let k = 0; k <= N; k++){
     const t = hz * k / N, x = 4 + (W - 8) * k / N, m = mu * t, s = volH * Math.sqrt(Math.max(t, 1e-9));
-    path.push({x: x, mean: sc.anchor * Math.exp(m), u68: sc.anchor * Math.exp(m + s),
+    path.push({x: x, t: t, mean: sc.anchor * Math.exp(m), u68: sc.anchor * Math.exp(m + s),
                l68: sc.anchor * Math.exp(m - s), u95: sc.anchor * Math.exp(m + 1.96 * s),
                l95: sc.anchor * Math.exp(m - 1.96 * s)});
   }
+  // WEB9: the cone's mean line is the rhythm-matched wave path (the
+  // same wavePath generator the forecast check freezes) — the bands
+  // stay the smooth volatility cone; the mean now waves with the
+  // coin's own recent 1-minute swing rhythm and lands on the same
+  // drift endpoint the smooth mean used.
+  const wp = wavePath({closes: cs.closes1, anchor: sc.anchor, coin: sym,
+    openMinute: Math.floor(Date.now() / 60000),
+    horizonMin: Math.max(1, Math.round(hz * 60)), targetLog: mu * hz,
+    volH: volH, swings: cs.swings});
+  const wMean = (tH) => {
+    const mf = tH * 60, H = wp.length - 1;
+    if (mf <= 0) return wp[0];
+    if (mf >= H) return wp[H];
+    const i = Math.floor(mf), fr = mf - i;
+    return wp[i] + (wp[i + 1] - wp[i]) * fr;
+  };
+  path.forEach(q => { q.mean = wMean(q.t); });
   const band = (up, dn, fill) => {
     ctx.beginPath();
     path.forEach((q, i) => i ? ctx.lineTo(q.x, y(q[up])) : ctx.moveTo(q.x, y(q[up])));
@@ -981,8 +1031,7 @@ function drawForecast(sym, sc){
     for (let tt = med; tt < hz * 60; tt += med){
       const f = tt / (hz * 60), x = 4 + (W - 8) * f;
       ctx.beginPath(); ctx.moveTo(x, H - 14); ctx.lineTo(x, H - 6); ctx.lineWidth = 2; ctx.stroke();
-      const t = tt / 60, m = mu * t, s = volH * Math.sqrt(t);
-      const py = y(sc.anchor * Math.exp(m));
+      const py = y(wMean(tt / 60));
       ctx.beginPath(); ctx.arc(x, py, 3, 0, 7); ctx.fill();
     }
   }
@@ -1078,63 +1127,137 @@ function forecast30(sym){
 function captureFC30(sym){
   const cs = coinState(sym);
   const f = forecast30(sym);
-  cs.fcSnap = f ? {t0: Date.now(), anchor: f.anchor, muDay: f.muDay,
+  const t0 = Date.now();
+  cs.fcSnap = f ? {t0: t0, anchor: f.anchor, muDay: f.muDay,
                    dailyVol: f.dailyVol, bias: f.bias,
                    medDurMin: f.medDurMin, actuals: [],
-                   pred: buildFCPred(sym, f)} : null;
+                   pred: buildFCPred(sym, f, t0)} : null;
   if (cs.els.fc30age && cs.fcSnap)
     cs.els.fc30age.textContent = "snapshot " + new Date(cs.fcSnap.t0).toLocaleTimeString() + " — frozen until closed";
   return cs.fcSnap;
 }
-/* ---------- WEB7: the system's graphed-out predicted path ----------
-   The old yellow line was a smooth drift exponential — it never bent
-   with the expected swing pattern, so overlaying the actual price
-   tested almost nothing. buildFCPred instead projects, at capture
-   time, the path the system's own signals actually expect over the
-   next 30 minutes, minute by minute, and freezes it in the snapshot:
-   - drift: muDay (from the coin's global tuning params) per minute;
-   - swing wave: from the measured swing stats (24h preferred) — the
-     current leg (direction lastLegDir, age lastPivotMinAgo) runs for
-     the rest of its typical duration (medDurMin), then legs
-     alternate every ~med minutes, each leg's per-minute logret =
-     its measured amplitude (avgUp/avgDn) spread over the leg;
-   - momentum blend: 0.5 x the 15m trend's per-minute logret,
-     weighted toward the early minutes (linear decay to 0 at min 30);
-   - each minute's total logret clamped to ±3 x the per-minute vol.
-   With no swing/trend data the path reduces to the drift path. */
-function buildFCPred(sym, f){
-  const cs = coinState(sym), anchor = f.anchor;
-  const driftPerMin = f.muDay / 1440;
-  const volH = f.dailyVol / Math.sqrt(24);
-  const clampMin = 3 * volH / Math.sqrt(60);
-  const sw = cs.swings, s = sw && (sw.h24 || sw.d7);
-  const med = (sw && sw.medDurMin) || (s && s.medDurMin) || null;
-  const ago = sw && sw.lastPivotMinAgo != null ? sw.lastPivotMinAgo
-            : (s && s.lastPivotMinAgo != null ? s.lastPivotMinAgo : null);
-  let dir = (sw && sw.lastLegDir) || (s && s.lastLegDir) || 0;
-  const tw15 = cs.trend && cs.trend.w15;
-  if (!dir){
-    if (tw15 && tw15.logret) dir = Math.sign(tw15.logret);
-    else if (f.muDay) dir = Math.sign(f.muDay);
+/* ---------- WEB9: the rhythm-matched wave path (SHARED) ----------
+   Shane 2026-10-28: the predicted path must WAVE the way the real
+   1-minute chart above it waves. The old generator walked legs
+   measured on 15m/hourly swings (typical leg ~1-2 hours), so over a
+   30-minute window it produced a smooth near-monotonic curve —
+   zero direction changes where the real chart had several.
+   wavePath replaces it, here AND in the server's perp-fc.js (the
+   two implementations are the same code, held to a recorded-fixture
+   parity test): the wave is synthesized from the coin's OWN
+   micro-swing rhythm — a zigzag over the last ~120 1-minute closes
+   with threshold 1.5 x the median absolute 1-minute return gives
+   the typical leg duration D and leg size A; the first leg
+   continues the current real leg for its remaining expected life,
+   then legs alternate with durations/sizes varied ±30% by a PRNG
+   seeded from (coin, open minute) so both engines derive the same
+   wave from the same candles. The signed legs are tilted so the
+   path's endpoint lands exactly on the drift expectation (the
+   fcMu-based endpoint) — the wave IS the path, the drift only
+   anchors its end — and every minute is clamped to ±3 x the coin's
+   1-minute sigma. Thin data falls back to the coarser swing stats,
+   then to the plain drift path. */
+function waveRand(coin, openMinute){
+  let h = 0x811c9dc5;
+  const s = String(coin) + "@" + Math.floor(openMinute);
+  for (let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  let a = h >>> 0;
+  return function(){
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function waveMicroStats(closes){
+  const c = (closes || []).slice(-120);
+  if (c.length < 20) return null;
+  const rets = [];
+  for (let i = 1; i < c.length; i++) rets.push(c[i] / c[i - 1] - 1);
+  const medAbs = median(rets.map(r => Math.abs(r)));
+  if (!(medAbs > 0)) return null;
+  const sw = zigzagSwings(c, 1 / 60, 1.5 * medAbs);
+  if (!sw || sw.length < 2) return null;
+  const D = median(sw.map(s => s.durMin));
+  const A = median(sw.map(s => Math.abs(s.pct)));
+  if (!(D >= 1) || !(A > 0)) return null;
+  return {D: D, A: A,
+          dir: Math.sign(c[c.length - 1] - sw.lastPivotP),
+          age: c.length - 1 - sw.lastPivotI,
+          sigma1: Math.sqrt(mean(rets.map(r => r * r)))};
+}
+function waveFallbackStats(volH, swings){
+  const s = swings && (swings.h24 || swings.d7);
+  if (!s) return null;
+  const D = (swings && swings.medDurMin) || s.medDurMin || null;
+  const A = ((s.avgUp || 0) + (s.avgDn || 0)) / 2;
+  if (!(D >= 1) || !(A > 0)) return null;
+  return {D: D, A: A,
+          dir: (swings && swings.lastLegDir) || s.lastLegDir || 0,
+          age: swings && swings.lastPivotMinAgo != null ? swings.lastPivotMinAgo
+             : (s.lastPivotMinAgo != null ? s.lastPivotMinAgo : 0),
+          sigma1: volH > 0 ? volH / Math.sqrt(60) : 0};
+}
+function wavePath(o){
+  // o: {closes, anchor, coin, openMinute, horizonMin, targetLog,
+  //     volH, swings} -> horizonMin+1 prices, index = elapsed minute.
+  const H = Math.max(1, Math.round(o.horizonMin));
+  const anchor = o.anchor, drift = o.targetLog / H;
+  const pts = [anchor];
+  const st = waveMicroStats(o.closes) || waveFallbackStats(o.volH, o.swings);
+  if (!st){
+    let cum = 0;
+    for (let m = 1; m <= H; m++){ cum += drift; pts.push(anchor * Math.exp(cum)); }
+    return pts;
   }
-  const momPerMin = tw15 && tw15.winHours ? tw15.logret / (tw15.winHours * 60) : 0;
-  const pts = [{min: 0, p: anchor}];
-  let cum = 0, curDir = dir;
-  let legLeft = med ? Math.max(1, med - (ago || 0)) : Infinity;
-  for (let m = 1; m <= 30; m++){
-    let r = driftPerMin;
-    if (med && curDir && s && ((s.avgUp || 0) + (s.avgDn || 0)) > 0){
-      r += curDir > 0 ? Math.log(1 + (s.avgUp || 0)) / med
-                      : Math.log(1 - Math.min(s.avgDn || 0, 0.9)) / med;
-      legLeft--;
-      if (legLeft <= 0){ curDir = -curDir; legLeft = med; }
+  const rand = waveRand(o.coin, o.openMinute);
+  const logMag = Math.log(1 + st.A);
+  const dir0 = st.dir || (o.targetLog ? Math.sign(o.targetLog) : 1);
+  const varF = () => 0.7 + 0.6 * rand();
+  const legs = [];
+  const rem = Math.max(1, st.D - (st.age || 0));
+  legs.push({dur: rem, size: dir0 * logMag * (rem / st.D)});
+  let covered = rem, curDir = -dir0;
+  while (covered < H){
+    const dur = Math.max(1, st.D * varF());
+    legs.push({dur: dur, size: curDir * logMag * varF()});
+    covered += dur; curDir = -curDir;
+  }
+  const rets = new Array(H).fill(0);
+  let legStart = 0;
+  for (const leg of legs){
+    const legEnd = legStart + leg.dur, per = leg.size / leg.dur;
+    for (let m = Math.floor(legStart); m < Math.min(H, Math.ceil(legEnd)); m++){
+      const ov = Math.min(legEnd, m + 1) - Math.max(legStart, m);
+      if (ov > 0) rets[m] += per * ov;
     }
-    r += 0.5 * momPerMin * (1 - (m - 1) / 30);
-    r = clamp(r, -clampMin, clampMin);
-    cum += r;
-    pts.push({min: m, p: anchor * Math.exp(cum)});
+    legStart = legEnd;
+    if (legStart >= H) break;
   }
+  const sig1 = st.sigma1 > 0 ? st.sigma1 : (o.volH > 0 ? o.volH / Math.sqrt(60) : 0);
+  const clampMin = sig1 > 0 ? 3 * sig1 : Infinity;
+  for (let pass = 0; pass < 2; pass++){
+    let tot = 0; for (const r of rets) tot += r;
+    const tilt = (o.targetLog - tot) / H;
+    for (let m = 0; m < H; m++) rets[m] = clamp(rets[m] + tilt, -clampMin, clampMin);
+  }
+  let cum = 0;
+  for (let m = 0; m < H; m++){ cum += rets[m]; pts.push(anchor * Math.exp(cum)); }
   return pts;
+}
+/* ---------- WEB9: the system's graphed-out predicted path ----------
+   The frozen 30-minute path is wavePath over the coin's live 1m
+   closes, its endpoint anchored to the drift expectation from
+   forecast30 (muDay). The server runs the identical generator for
+   its own forecast checks — same candles in, same wave out. */
+function buildFCPred(sym, f, t0){
+  const cs = coinState(sym);
+  const prices = wavePath({closes: cs.closes1, anchor: f.anchor, coin: sym,
+    openMinute: Math.floor((t0 || Date.now()) / 60000), horizonMin: 30,
+    targetLog: f.muDay * 30 / 1440, volH: f.dailyVol / Math.sqrt(24),
+    swings: cs.swings});
+  return prices.map((p, m) => ({min: m, p: p}));
 }
 function fcPredAt(sn, minFloat){
   // The frozen predicted path at an arbitrary elapsed minute
@@ -1863,6 +1986,7 @@ function predict(sym){
   renderLocked(sym);
   drawSpark(sym);
   renderGlobalLine(sym);
+  renderCardAdvice(sym);
 }
 function renderLocked(sym){
   const cs = coinState(sym);
@@ -2054,6 +2178,7 @@ async function priceTick(){
         if (S.cycle.active && Date.now() - (cs.lastPredAt || 0) >= 10000) predict(sym);
       }
       drawSpark(sym);
+      renderCardAdvice(sym);
     }
   }
 }
@@ -2319,37 +2444,105 @@ async function padSetCoin(sym){
   if (!cs.closesH.length) loadCoin(sym);
   padRender();
 }
-function padAdvice(price, line, head){
+/* positionAdvice(side, price, line, p, band, closePhrase, intro) —
+   THE position-advice builder, shared by the Line & Position Pad
+   and the per-card Up/Down buttons (WEB9, Shane 2026-10-28) so the
+   two surfaces can never contradict: same probOverAt probability,
+   same NO EDGE band, same branches. side is "up"/"down"/null;
+   closePhrase names the close the probability is for ("at the 30m
+   close", "at the close (07:32 left)", "at the 30m close if you
+   opened now"); intro replaces the no-position opener when a
+   surface needs its own (the cards' tap invite). Probabilities are
+   the system's; nothing here places trades. */
+function positionAdvice(side, price, line, p, band, closePhrase, intro){
   const pct = x => Math.round(x * 100) + "%";
-  const pOver = head.p, pUnder = 1 - head.p;
-  if (!PAD.side){
-    if (head.call) return "No position picked above. Numbers first: at the 30-minute close the system gives OVER " + pct(pOver) +
-      " / UNDER " + pct(pUnder) + " against this line, and its call is " + head.call + " (" + pct(head.winP) +
-      "). If you were entering now, the numbers favor the " + head.call + " side — the other side means betting against that " +
-      pct(head.winP) + "/" + pct(1 - head.winP) + " split. Likelihood, never a guarantee.";
-    return "No position picked above — and the system has NO EDGE at this line: OVER " + pct(pOver) + " / UNDER " + pct(pUnder) +
-      " at 30 minutes sits inside the no-call band. The honest move is to pass and wait for a line, or a market, where the numbers actually lean.";
+  const pOver = p, pUnder = 1 - p;
+  const call = Math.abs(p - 0.5) >= band ? (p > 0.5 ? "OVER" : "UNDER") : null;
+  const winP = call ? (call === "OVER" ? pOver : pUnder) : null;
+  if (!side){
+    const head = intro || "No position picked.";
+    if (call) return head + " Numbers first: " + closePhrase + " the system gives OVER " + pct(pOver) +
+      " / UNDER " + pct(pUnder) + " against this line, and its call is " + call + " (" + pct(winP) +
+      "). If you were entering now, the numbers favor the " + call + " side — the other side means betting against that " +
+      pct(winP) + "/" + pct(1 - winP) + " split. Likelihood, never a guarantee.";
+    return head + " And the system has NO EDGE at this line: OVER " + pct(pOver) + " / UNDER " + pct(pUnder) +
+      " " + closePhrase + " sits inside the no-call band. The honest move is to pass and wait for a line, or a market, where the numbers actually lean.";
   }
-  const mine = PAD.side === "up" ? "OVER" : "UNDER", other = PAD.side === "up" ? "UNDER" : "OVER";
-  const pMine = PAD.side === "up" ? pOver : pUnder, pOther = 1 - pMine;
+  const mine = side === "up" ? "OVER" : "UNDER", other = side === "up" ? "UNDER" : "OVER";
+  const pMine = side === "up" ? pOver : pUnder, pOther = 1 - pMine;
   const winNow = price > line ? "up" : price < line ? "down" : null;
-  if (winNow === PAD.side){
-    const tail = pMine >= 0.62
+  if (!call){
+    // NO EDGE: state where the position stands as a fact, but the
+    // model has no lean — advice says so instead of inventing one.
+    const state = winNow === null
+      ? "the live price is sitting exactly ON your line " + fmtPrice(line) + " — neither side is winning yet"
+      : winNow === side
+      ? "your side is ahead on price right now (live " + fmtPrice(price) + " vs your line " + fmtPrice(line) + ")"
+      : "your side is behind on price right now (live " + fmtPrice(price) + " vs your line " + fmtPrice(line) + ")";
+    return "You're holding " + mine + " and " + state + ". The system has NO EDGE at this line — OVER " + pct(pOver) +
+      " / UNDER " + pct(pUnder) + " " + closePhrase + " sits inside the no-call band, so there is no model lean to advise from. " +
+      "Holding, flipping or cashing out from here is your own call, not the numbers'.";
+  }
+  if (winNow === side){
+    const tail = pMine >= 0.58
       ? "Suggested action: HOLD — the model still backs your side clearly at the close. Cashing out early only makes sense if the contract price already pays you nearly the full win."
       : pMine >= 0.52
-      ? "Suggested action: HOLD, but the edge is thin — if the contract price already offers most of the win, taking profit early (selling now) is the disciplined move instead of sweating the close."
+      ? "Suggested action: HOLD, but the edge is thin — the lead is fragile. If the contract price already offers most of the win, taking profit early (selling now, locking in) is the disciplined move instead of sweating the close."
       : "Suggested action: your side leads on price, but the model gives it under 52% at the close — the lead is fragile. Cashing out early locks in what the market pays now instead of gambling on the close.";
     return "You're holding " + mine + " and it is the WINNING side right now — live price " + fmtPrice(price) +
-      " vs your line " + fmtPrice(line) + ". At the 30m close the model gives your side " + pct(pMine) +
+      " vs your line " + fmtPrice(line) + ". The model gives your side " + pct(pMine) + " " + closePhrase +
       " (the other side " + pct(pOther) + "). " + tail;
   }
   if (winNow === null) return "You're holding " + mine + " and the live price is sitting exactly ON your line " + fmtPrice(line) +
-    " — neither side is winning yet. The model gives your side " + pct(pMine) + " at the 30m close vs " + pct(pOther) + " for " + other + ". " +
-    (head.call ? "The system's own call at this line is " + head.call + " (" + pct(head.winP) + ")." : "The system has NO EDGE here — no strong reason to add to either side.");
+    " — neither side is winning yet. The model gives your side " + pct(pMine) + " " + closePhrase + " vs " + pct(pOther) + " for " + other + ". " +
+    "The system's own call at this line is " + call + " (" + pct(winP) + ").";
   return "You're holding " + mine + " and it is the LOSING side right now — live price " + fmtPrice(price) +
-    " vs your line " + fmtPrice(line) + ". The model gives your side only " + pct(pMine) + " at the 30m close; flipping to " + other +
+    " vs your line " + fmtPrice(line) + ". The model gives your side only " + pct(pMine) + " " + closePhrase + "; flipping to " + other +
     " puts you on the side it favors at " + pct(pOther) + ". Your two exits, with the numbers: FLIP — close this side and take " + other +
     " at " + pct(pOther) + "; or CASH OUT — sell now and cap the loss instead of risking the full contract at the close. Holding is a bet on a reversal the numbers don't currently support.";
+}
+function padAdvice(price, line, head){
+  return positionAdvice(PAD.side, price, line, head.p, effBand(PAD.coin),
+    "at the 30m close", PAD.side ? null : "No position picked above.");
+}
+/* ---------- WEB9: per-card position buttons + advice -------------
+   Every watch card carries its own (+)/(-) side buttons so the
+   system knows what the user might need advising on (Shane
+   2026-10-28). The advice line under them runs the SAME
+   positionAdvice builder as the Pad over probOverAt: against the
+   LOCKED line with the time remaining while a cycle runs, else
+   against the card's current line at the 30-minute horizon,
+   labeled as if opening now. The picked side is the user's own
+   display state (localStorage ph.side.v1, like the watchlist
+   prefs) — it feeds nothing and is sent nowhere. */
+function renderCardAdvice(sym){
+  const cs = coinState(sym);
+  if (!cs.els.cardadvice) return;
+  const side = cardSide(sym);
+  if (cs.els.posUp) cs.els.posUp.classList.toggle("on", side === "up");
+  if (cs.els.posDn) cs.els.posDn.classList.toggle("on", side === "down");
+  const invite = "Tap (+) Up or (-) Down to tell the system your side — advice tunes to your position.";
+  let txt = null;
+  if (cs.price){
+    if (S.cycle.active && cs.snap && cs.snap.closeAt === S.cycle.closeAt){
+      const T = Math.max(1, (S.cycle.closeAt - Date.now()) / 1000);
+      const r = probOverAt(sym, cs.price, cs.snap.line, T);
+      txt = positionAdvice(side, cs.price, cs.snap.line, r.p, effBand(sym),
+        "at the close (" + fmtClock(S.cycle.closeAt - Date.now()) + " left)",
+        side ? null : invite);
+    } else if (cs.line){
+      const r = probOverAt(sym, cs.price, cs.line, 1800);
+      txt = positionAdvice(side, cs.price, cs.line, r.p, effBand(sym),
+        "at the 30m close if you opened now", side ? null : invite);
+    }
+  }
+  if (txt == null){
+    txt = side
+      ? "Your side: " + (side === "up" ? "OVER (Up)" : "UNDER (Down)") + " — waiting on a live price to run the numbers."
+      : invite + " The numbers appear once the live price lands.";
+  }
+  if (cs.els.cardadvice.textContent !== txt) cs.els.cardadvice.textContent = txt;
+  cs.els.cardadvice.hidden = false;
 }
 async function padEnter(){
   const out = $("#padOut");
