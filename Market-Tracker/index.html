@@ -248,16 +248,18 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
       </div>
       <div id="cycleStatus">Pick up to 6 cryptos, set each line, then press Start. Prices go live as soon as a coin is picked.</div>
       <div id="cards"></div>
-      <div class="lbl" style="margin-top:18px">Session scoreboard — this visit only (nothing is saved or uploaded; the system's record lives in the shared database)</div>
+      <div class="lbl" style="margin-top:18px">System scoreboard — global</div>
+      <div class="note">every visitor sees these same numbers · updated from the shared database</div>
+      <div class="note" id="scoreSummary" style="margin-top:6px">loading system record…</div>
       <table id="scoreTable">
-        <thead><tr><th>Coin</th><th>Right</th><th>Wrong</th><th>No call</th><th>Hit rate</th></tr></thead>
-        <tbody id="scoreBody"><tr><td colspan="5" class="note">No closes scored yet.</td></tr></tbody>
+        <thead><tr><th>Coin</th><th>Scored</th><th>Calls</th><th>Hit rate</th><th>Forecast ✓</th><th>Forecast ✗</th></tr></thead>
+        <tbody id="scoreBody"><tr><td colspan="6" class="note">loading system record…</td></tr></tbody>
       </table>
     </section>
   </div>
 </main>
 <footer>
-  Predictions are probabilities built from pattern statistics — barrier distance to your line, volatility, momentum, and each coin's 6-month base rates. They are not guarantees, and short-horizon crypto direction is close to a coin flip: the base models' held-out record is printed on every card, and the scoreboard above shows this session's record, wins and losses alike — it lives only while this page is open. The snipe badge uses the hourly setup only, read on a ~4-hour window: on held-out data across all 20 coins, flagged setups produced the big move 23.1% of the time against a 14.4% unflagged base rate (1.61x lift). The 15-minute snipe tested as noise (lift under 1x) and is not used. The forecast chart beside each live chart is an estimate cone — the mean path and bands show where the price could plausibly wander given current volatility and drift, not a promised path; the tick marks are the times swings have typically arrived, not appointments. All tuning lives in one shared database on the server: the system scores its own predictions as they close and retunes separate weights for momentum, regime, and rise/fall asymmetry; confidence buckets that run hot get shrunk toward 50; a coin whose calls keep flip-flopping gets a wider no-call band and a steadier, dwell-held call; and the volatility inside every probability follows the last few hours of live market, blended with the 6-month base. This page only pulls the current global tuning as it loads and refreshes — each card's Global line shows the shared record it is running on. The Trend read on each call is a plain-language summary of those same pattern signals — trend state, how rises have been running against falls, swing timing, forecast slope, and this coin's hour-of-day habits over the 6-month history — read off the numbers at that moment, not a separate prediction and not a guarantee. The forecast-check graph freezes when you open it and zooms into the forecast's first 5, 10, 15 or 30 minutes: the actual price then draws over the frozen forecast minute by minute, with the system's measured error printed on the graph — so you can see exactly how close the prediction is tracking, and whether it is catching the trend shifts as they happen. The forecast-check graph draws the system's minute-by-minute predicted path (drift plus the expected swing pattern). The system runs its own forecast checks on the server around the clock: it draws this same predicted path for every coin, grades it against the real price at 5, 10, 15 and 30 minutes as the results happen, and logs every result in the shared database that tunes future forecasts. This page only displays that record — there is no account and no sign-in, nothing is uploaded from your browser, and nothing about your visit is saved or used for learning. Data: Coinbase Exchange public feed. Not financial advice.
+  Predictions are probabilities built from pattern statistics — barrier distance to your line, volatility, momentum, and each coin's 6-month base rates. They are not guarantees, and short-horizon crypto direction is close to a coin flip: the base models' held-out record is printed on every card, and the scoreboard above shows the system's global record from the shared database — the same numbers every visitor sees, wins and losses alike. The snipe badge uses the hourly setup only, read on a ~4-hour window: on held-out data across all 20 coins, flagged setups produced the big move 23.1% of the time against a 14.4% unflagged base rate (1.61x lift). The 15-minute snipe tested as noise (lift under 1x) and is not used. The forecast chart beside each live chart is an estimate cone — the mean path and bands show where the price could plausibly wander given current volatility and drift, not a promised path; the tick marks are the times swings have typically arrived, not appointments. All tuning lives in one shared database on the server: the system scores its own predictions as they close and retunes separate weights for momentum, regime, and rise/fall asymmetry; confidence buckets that run hot get shrunk toward 50; a coin whose calls keep flip-flopping gets a wider no-call band and a steadier, dwell-held call; and the volatility inside every probability follows the last few hours of live market, blended with the 6-month base. This page only pulls the current global tuning as it loads and refreshes — each card's Global line shows the shared record it is running on. The Trend read on each call is a plain-language summary of those same pattern signals — trend state, how rises have been running against falls, swing timing, forecast slope, and this coin's hour-of-day habits over the 6-month history — read off the numbers at that moment, not a separate prediction and not a guarantee. The forecast-check graph freezes when you open it and zooms into the forecast's first 5, 10, 15 or 30 minutes: the actual price then draws over the frozen forecast minute by minute, with the system's measured error printed on the graph — so you can see exactly how close the prediction is tracking, and whether it is catching the trend shifts as they happen. The forecast-check graph draws the system's minute-by-minute predicted path (drift plus the expected swing pattern). The system runs its own forecast checks on the server around the clock: it draws this same predicted path for every coin, grades it against the real price at 5, 10, 15 and 30 minutes as the results happen, and logs every result in the shared database that tunes future forecasts. This page only displays that record — there is no account and no sign-in, nothing is uploaded from your browser, and nothing about your visit is saved or used for learning. Data: Coinbase Exchange public feed. Not financial advice.
 </footer>
 <script>
 "use strict";
@@ -311,10 +313,9 @@ const S = {
   selected: [],
   coins: {},
   cycle: {active: false, closeAt: 0},
-  // Session tally for the scoreboard: in-memory ONLY (WEB8) — it is
-  // a display of this visit, never persisted, never uploaded, and it
-  // feeds no tuning. The system's own record lives in the database.
-  score: {},
+  // NO scoreboard state of any kind (Shane 2026-10-27): the header
+  // scoreboard renders the SYSTEM's global record pulled from the
+  // shared database — there is no per-visit tally to keep.
   loopN: 0
 };
 
@@ -1554,6 +1555,7 @@ async function loadGlobal(){
   const j = await fetchJSON(AUTH + "/api/perp/global");
   if (!j || !j.ok || !j.coins) return;
   GLOBAL_POOL = j.coins; GLOBAL_TOTALS = j.totals || null;
+  renderGlobalScore();
   S.selected.forEach(sym => { renderGlobalLine(sym); renderFCRec(sym); renderFC30Stat(sym); if (S.cycle.active) predict(sym); });
 }
 /* Multi-source view (MULTISOURCE): one server call covers every
@@ -1734,8 +1736,8 @@ function predict(sym){
   // in a cycle is that cycle's prediction of record — call, p, and
   // the line as set at the open, frozen for the life of the cycle.
   // Everything after is live tracking only: it may flip every 10s
-  // and follow mid-cycle line moves, but grading, the scoreboard,
-  // the close display consumes ONLY this
+  // and follow mid-cycle line moves, but the close display (the
+  // outcome flash + Past strip) consumes ONLY this
   // snapshot + the closing outcome. NO EDGE at the open (call null)
   // locks in a no-call for the cycle, whatever appears later.
   if (S.cycle.active && (!cs.snap || cs.snap.closeAt !== S.cycle.closeAt)){
@@ -1808,15 +1810,16 @@ async function scoreCycle(){
     const snap = (cs.snap && cs.snap.closeAt === S.cycle.closeAt) ? cs.snap : null;
     const gradeLine = snap ? snap.line : cs.line;
     const closedOver = final > gradeLine;
-    const sc = S.score[sym] || (S.score[sym] = {hit: 0, miss: 0, nocall: 0});
+    // The flash below is a transient display of THIS cycle's outcome
+    // only — it is not a tally; no score of any kind is kept here.
+    // The scoreboard is the system's global record (renderGlobalScore).
     let cls, msg;
     if (!snap || !snap.call){
-      sc.nocall++; cls = "";
+      cls = "";
       msg = "Closed " + (closedOver ? "OVER" : "UNDER") + " the opening line at " + fmtPrice(final) +
         " — no call was locked at the open (no edge), so this grades as a no-call.";
     } else {
       const right = (snap.call === "over") === closedOver;
-      if (right) sc.hit++; else sc.miss++;
       cls = right ? "right" : "wrong";
       msg = (right ? "RIGHT — " : "WRONG — ") + "locked at open: " + snap.call.toUpperCase() + " " +
         Math.round((snap.call === "over" ? snap.p : 1 - snap.p) * 100) + "%, closed " +
@@ -1828,7 +1831,7 @@ async function scoreCycle(){
     setTimeout(((el, f) => () => { el.classList.remove("flash-right", "flash-wrong"); f.textContent = ""; })(cs.els.root, cs.els.flash), 12000);
     if (snap && snap.pred){
       // WEB8: the close is kept ONLY as this visit's in-memory
-      // display history (Past strip + session scoreboard). Nothing
+      // display history (Past strip). Nothing
       // is learned from it here, nothing is persisted, and nothing
       // is uploaded — the system logs and learns from its own
       // predictions in the shared database, server-side.
@@ -1838,7 +1841,6 @@ async function scoreCycle(){
     }
     renderPast(sym);
   }
-  renderScore();
   const now = Date.now();
   while (S.cycle.closeAt <= now) S.cycle.closeAt += L;
   S.selected.forEach(sym => {
@@ -1850,20 +1852,53 @@ async function scoreCycle(){
     predict(sym);
   });
 }
-function renderScore(){
-  const tb = $("#scoreBody");
-  const rows = Object.keys(S.score).filter(s => { const x = S.score[s]; return x.hit + x.miss + x.nocall > 0; });
-  if (!rows.length){ tb.innerHTML = '<tr><td colspan="5" class="note">No closes scored yet.</td></tr>'; return; }
-  tb.innerHTML = rows.sort().map(s => {
-    const x = S.score[s], tot = x.hit + x.miss;
-    return "<tr><td>" + s + "</td><td>" + x.hit + "</td><td>" + x.miss + "</td><td>" + x.nocall + "</td><td>" +
-      (tot ? (x.hit / tot * 100).toFixed(1) + "%" : "—") + "</td></tr>";
-  }).join("");
+/* ---------- System scoreboard — global (Shane 2026-10-27) ----------
+   The header scoreboard is the SYSTEM's record, pulled from the one
+   shared database (GET /api/perp/global): totals scored/calls, the
+   overall accuracy (hit rate weighted by each coin's calls), and the
+   forecast-check totals summed across coins. Every visitor sees the
+   same numbers. Until the payload lands, the board shows a neutral
+   loading state — never zeros dressed up as a real record. It
+   re-renders on every loadGlobal refresh. */
+function renderGlobalScore(){
+  const sum = $("#scoreSummary"), tb = $("#scoreBody");
+  if (!sum || !tb) return;
+  if (!GLOBAL_POOL){
+    sum.textContent = "loading system record…";
+    tb.innerHTML = '<tr><td colspan="6" class="note">loading system record…</td></tr>';
+    return;
+  }
+  let scored = 0, calls = 0, wHits = 0, fcC = 0, fcI = 0;
+  const rows = [];
+  for (const sym of ORDER){
+    const g = GLOBAL_POOL[sym];
+    if (!g) continue;
+    const sc = +g.scored || 0, ca = +g.calls || 0;
+    scored += sc; calls += ca;
+    if (g.hitRate != null && ca > 0) wHits += g.hitRate * ca;
+    const fc = g.fc || {}, c = +fc.correct || 0, ic = +fc.incorrect || 0;
+    fcC += c; fcI += ic;
+    if (sc || ca || c || ic){
+      rows.push("<tr><td>" + sym + "</td><td>" + sc + "</td><td>" + ca + "</td><td>" +
+        (g.hitRate != null && ca ? (g.hitRate * 100).toFixed(1) + "%" : "—") +
+        "</td><td>" + c + "</td><td>" + ic + "</td></tr>");
+    }
+  }
+  const tScored = GLOBAL_TOTALS && GLOBAL_TOTALS.scored != null ? GLOBAL_TOTALS.scored : scored;
+  const tCalls = GLOBAL_TOTALS && GLOBAL_TOTALS.calls != null ? GLOBAL_TOTALS.calls : calls;
+  const acc = calls > 0 ? (wHits / calls * 100).toFixed(1) + "%" : "—";
+  const fcN = fcC + fcI;
+  const fcAcc = fcN > 0 ? (fcC / fcN * 100).toFixed(1) + "%" : "—";
+  sum.textContent = "Predictions: " + Number(tScored).toLocaleString("en-US") + " scored · " +
+    Number(tCalls).toLocaleString("en-US") + " calls · accuracy " + acc +
+    " — Forecast checks: " + fcC + " correct · " + fcI + " incorrect · accuracy " + fcAcc;
+  tb.innerHTML = rows.length ? rows.join("") :
+    '<tr><td colspan="6" class="note">No scored predictions yet.</td></tr>';
 }
 $("#startBtn").addEventListener("click", startCycle);
 $("#stopBtn").addEventListener("click", stopCycle);
-// WEB8: no reset button — there is nothing stored to reset. The
-// session tally lives in memory and dies with the page.
+// No reset button and no local tally — the scoreboard is global and
+// lives in the shared database; this page only displays it.
 
 /* ---------- main loop ---------- */
 async function priceTick(){
@@ -2044,7 +2079,7 @@ async function refreshOdds(){
    Setup lives in a drawer sliding in from the RIGHT, the odds
    board (crypto selection + all prediction cards) in one from the
    LEFT. The main page keeps the header, the watch panel, and the
-   session scoreboard. Edge tabs open a menu; the backdrop, its
+   global scoreboard. Edge tabs open a menu; the backdrop, its
    close button, or Escape dismisses it. */
 function openDrawer(id){
   closeDrawers();
@@ -2098,7 +2133,7 @@ buildCoinGrid();
     const box = document.querySelector('#coinGrid input[value="' + sym + '"]');
     if (box){ box.checked = true; toggleCoin(sym, true, box); }
   });
-  renderScore();
+  renderGlobalScore();
   loadGlobal();
   loadSources();
 })();
