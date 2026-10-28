@@ -221,7 +221,7 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
   <div class="drawerhead"><span>Odds board</span><button class="dclose" type="button" data-close aria-label="Close odds board">✕</button></div>
   <section class="card" id="oddsCard">
     <h2>Odds — the system's own calls</h2>
-    <p class="note" style="margin-top:0">Pick any crypto and a value. The system — the same global brain the watch panel learns into — returns its OVER / UNDER odds for the close at each horizon, computed server-side. It scores only its own predictions: every card shows that horizon's real global record, and a horizon running at coin-flip gets flagged weak instead of hiding behind the average.</p>
+    <p class="note" style="margin-top:0">Pick any crypto and a value. The system — the same global brain the watch panel runs on — returns its OVER / UNDER odds for the close at each horizon, computed server-side. It scores only its own predictions: every card shows that horizon's real global record, and a horizon running at coin-flip gets flagged weak instead of hiding behind the average.</p>
     <div class="row" style="margin-top:10px">
       <label class="note" for="oddsCoin">Crypto</label>
       <select id="oddsCoin"></select>
@@ -248,17 +248,16 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
       </div>
       <div id="cycleStatus">Pick up to 6 cryptos, set each line, then press Start. Prices go live as soon as a coin is picked.</div>
       <div id="cards"></div>
-      <div class="lbl" style="margin-top:18px">Session scoreboard (saved on this device)</div>
+      <div class="lbl" style="margin-top:18px">Session scoreboard — this visit only (nothing is saved or uploaded; the system's record lives in the shared database)</div>
       <table id="scoreTable">
         <thead><tr><th>Coin</th><th>Right</th><th>Wrong</th><th>No call</th><th>Hit rate</th></tr></thead>
         <tbody id="scoreBody"><tr><td colspan="5" class="note">No closes scored yet.</td></tr></tbody>
       </table>
-      <div class="row"><button class="btn ghost" id="resetScore">Reset scoreboard</button></div>
     </section>
   </div>
 </main>
 <footer>
-  Predictions are probabilities built from pattern statistics — barrier distance to your line, volatility, momentum, and each coin's 6-month base rates. They are not guarantees, and short-horizon crypto direction is close to a coin flip: the base models' held-out record is printed on every card, and the scoreboard above shows this page's real record, wins and losses alike. The snipe badge uses the hourly setup only, read on a ~4-hour window: on held-out data across all 20 coins, flagged setups produced the big move 23.1% of the time against a 14.4% unflagged base rate (1.61x lift). The 15-minute snipe tested as noise (lift under 1x) and is not used. The forecast chart beside each live chart is an estimate cone — the mean path and bands show where the price could plausibly wander given current volatility and drift, not a promised path; the tick marks are the times swings have typically arrived, not appointments. The page also audits its own flaws, live: every scored close retunes separate weights for momentum, regime, and rise/fall asymmetry; confidence buckets that run hot get shrunk toward 50; a coin whose call keeps flip-flopping gets a wider no-call band and a steadier, dwell-held call; and the volatility inside every probability follows the last few hours of live market, blended with the 6-month base. The current state of all of it is printed on each card's Learning line. The Trend read on each call is a plain-language summary of those same pattern signals — trend state, how rises have been running against falls, swing timing, forecast slope, and this coin's hour-of-day habits over the 6-month history — read off the numbers at that moment, not a separate prediction and not a guarantee. The forecast-check graph freezes when you open it and zooms into the forecast's first 5, 10, 15 or 30 minutes: the actual price then draws over the frozen forecast minute by minute, and the running miss between the two feeds back into the forecast's drift correction, with the measured error printed on the graph — so you can see exactly how close the prediction is tracking, and whether it is catching the trend shifts as they happen. The forecast-check graph now draws the system's minute-by-minute predicted path (drift plus the expected swing pattern), grades it against the real price at 5, 10, 15 and 30 minutes, and every visitor's graded results feed the global record that tunes future forecasts. Data: Coinbase Exchange public feed. Not financial advice.
+  Predictions are probabilities built from pattern statistics — barrier distance to your line, volatility, momentum, and each coin's 6-month base rates. They are not guarantees, and short-horizon crypto direction is close to a coin flip: the base models' held-out record is printed on every card, and the scoreboard above shows this session's record, wins and losses alike — it lives only while this page is open. The snipe badge uses the hourly setup only, read on a ~4-hour window: on held-out data across all 20 coins, flagged setups produced the big move 23.1% of the time against a 14.4% unflagged base rate (1.61x lift). The 15-minute snipe tested as noise (lift under 1x) and is not used. The forecast chart beside each live chart is an estimate cone — the mean path and bands show where the price could plausibly wander given current volatility and drift, not a promised path; the tick marks are the times swings have typically arrived, not appointments. All tuning lives in one shared database on the server: the system scores its own predictions as they close and retunes separate weights for momentum, regime, and rise/fall asymmetry; confidence buckets that run hot get shrunk toward 50; a coin whose calls keep flip-flopping gets a wider no-call band and a steadier, dwell-held call; and the volatility inside every probability follows the last few hours of live market, blended with the 6-month base. This page only pulls the current global tuning as it loads and refreshes — each card's Global line shows the shared record it is running on. The Trend read on each call is a plain-language summary of those same pattern signals — trend state, how rises have been running against falls, swing timing, forecast slope, and this coin's hour-of-day habits over the 6-month history — read off the numbers at that moment, not a separate prediction and not a guarantee. The forecast-check graph freezes when you open it and zooms into the forecast's first 5, 10, 15 or 30 minutes: the actual price then draws over the frozen forecast minute by minute, with the system's measured error printed on the graph — so you can see exactly how close the prediction is tracking, and whether it is catching the trend shifts as they happen. The forecast-check graph draws the system's minute-by-minute predicted path (drift plus the expected swing pattern). The system runs its own forecast checks on the server around the clock: it draws this same predicted path for every coin, grades it against the real price at 5, 10, 15 and 30 minutes as the results happen, and logs every result in the shared database that tunes future forecasts. This page only displays that record — there is no account and no sign-in, nothing is uploaded from your browser, and nothing about your visit is saved or used for learning. Data: Coinbase Exchange public feed. Not financial advice.
 </footer>
 <script>
 "use strict";
@@ -267,7 +266,11 @@ const SNIPE_PARAMS = {"squeeze_window_bars":6,"squeeze_pct_max":0.2,"pressure_mi
 const ORDER = ["BTC","ETH","SOL","XRP","DOGE","ADA","LINK","AVAX","DOT","LTC","BCH","NEAR","UNI","ATOM","XLM","ETC","FIL","HBAR","SUI","PEPE"];
 const CB = "https://api.exchange.coinbase.com";
 const AUTH = "https://auth.rivaleclipse.dev";
-const LS_SEL = "ph.sel.v1", LS_LEN = "ph.len.v1", LS_SCORE = "ph.score.v1", LS_LEARN = "ph.learn.v1";
+/* WEB8 (Shane 2026-10-27): ONE database. The only localStorage keys
+   left are pure display preferences (watchlist picks, cycle length,
+   chart zooms, which Details sections are open) — they feed nothing:
+   no learning store, no score persistence, no contribution queue. */
+const LS_SEL = "ph.sel.v1", LS_LEN = "ph.len.v1";
 const $ = s => document.querySelector(s);
 
 function clamp(x, a, b){ return Math.min(b, Math.max(a, x)); }
@@ -308,8 +311,10 @@ const S = {
   selected: [],
   coins: {},
   cycle: {active: false, closeAt: 0},
-  score: lsGet(LS_SCORE, {}),
-  learn: lsGet(LS_LEARN, {}),
+  // Session tally for the scoreboard: in-memory ONLY (WEB8) — it is
+  // a display of this visit, never persisted, never uploaded, and it
+  // feeds no tuning. The system's own record lives in the database.
+  score: {},
   loopN: 0
 };
 
@@ -328,8 +333,9 @@ function coinState(sym){
     flips: 0, dispSide: null, dispP: null, dwellSide: null, dwellCount: 0, dragging: false,
     zoom: lsGet(LS_ZOOM, {})[sym] || "live",
     fc30on: !!lsGet(LS_FC30, {})[sym],
-    fcSnap: null, fcZoom: FCZ_MIN[lsGet(LS_FCZ, {})[sym]] ? lsGet(LS_FCZ, {})[sym] : "30", fcErrLast: 0, fcFlushAt: 0,
+    fcSnap: null, fcZoom: FCZ_MIN[lsGet(LS_FCZ, {})[sym]] ? lsGet(LS_FCZ, {})[sym] : "30",
     detailsOpen: !!lsGet(LS_DET, {})[sym],
+    hist: [],   // this visit's closes, in memory only — Past strip display
     lastCall: null, lastPred: null, els: {},
     snap: null, lastPredAt: 0
   };
@@ -468,12 +474,10 @@ function addCard(sym){
     '<div class="legend">Slider = the line\'s offset from the live price — a slider-set line rides the ticks at that offset. Type an exact price in the Line field at the top of the card to pin the line (it can go past ±10%; the slider then pins at the end and the readout shows the true offset). "snap to price" pins the line at the current live market price.</div>' +
     '<div class="linemoved" hidden></div></div>' +
     '<div class="flashmsg"></div>' +
-    '<div class="rec"></div>' +
     '<div class="fcrec"></div>' +
     '<div class="learnline"></div>' +
     '<div class="pooline"></div>' +
-    '<div class="srcline" hidden></div>' +
-    '<div class="gateline"></div></div>';
+    '<div class="srcline" hidden></div></div>';
   $("#cards").appendChild(el);
   cs.els = {
     root: el, chg: el.querySelector(".chg"), price: el.querySelector(".price"),
@@ -487,8 +491,8 @@ function addCard(sym){
     sval: el.querySelector(".slider-val"), lmoved: el.querySelector(".linemoved"),
     locked: el.querySelector(".lockedline"),
     detBtn: el.querySelector(".detbtn"), details: el.querySelector(".carddetails"),
-    rec: el.querySelector(".rec"), fcrec: el.querySelector(".fcrec"), learn: el.querySelector(".learnline"),
-    pool: el.querySelector(".pooline"), src: el.querySelector(".srcline"), gate: el.querySelector(".gateline"),
+    fcrec: el.querySelector(".fcrec"), learn: el.querySelector(".learnline"),
+    pool: el.querySelector(".pooline"), src: el.querySelector(".srcline"),
     roCur: el.querySelector(".ro-cur"),
     roDist: el.querySelector(".ro-dist"), pill: el.querySelector(".pill"),
     past: el.querySelector(".past"), charts: el.querySelector(".charts"),
@@ -521,9 +525,9 @@ function addCard(sym){
   cs.els.slider.addEventListener("change", () => { cs.dragging = false; });
   cs.els.lineIn.addEventListener("change", () => setLineFromHeader(sym, cs.els.lineIn.value));
   el.querySelector(".snapbtn").addEventListener("click", () => snapLineToPrice(sym));
-  renderRec(sym);
+  renderPast(sym);
   renderFCRec(sym);
-  renderLearn(sym);
+  renderGlobalLine(sym);
   updateLineUI(sym);
 }
 function removeCard(sym){
@@ -554,8 +558,8 @@ function noteLineChange(sym){
   // the live prediction is rescored against the new line and the flip
   // counter absorbs any side change the move caused. The prediction
   // LOCKED at the cycle open (cs.snap) is never touched by a move —
-  // grading, learning, and the pool contribution all consume the
-  // opening snapshot only (SCORING-LOCK-SPEC).
+  // the close display consumes the opening snapshot only
+  // (SCORING-LOCK-SPEC).
   const cs = coinState(sym);
   if (!S.cycle.active || cs.lineMoved) return;
   cs.lineMoved = true;
@@ -569,7 +573,7 @@ function noteLineChange(sym){
                    lineMoved: true};
     if (cs.lastCall){
       const p = cs.lastPred.p;
-      if (Math.abs(p - 0.5) < bandFor(sym)) { cs.lastCall = null; cs.flips++; }
+      if (Math.abs(p - 0.5) < effBand(sym)) { cs.lastCall = null; cs.flips++; }
       else {
         const side = p > 0.5 ? "over" : "under";
         if (side !== cs.lastCall.side) cs.flips++;
@@ -629,7 +633,6 @@ async function loadCoin(sym){
     cs.closes1 = m1.slice().reverse().map(r => r[4]);
   }
   computeAnalysis(sym);
-  fcCheckpoint(sym);
 }
 function computeFeatures(sym){
   const cs = coinState(sym), c = cs.closesH, n = c.length;
@@ -915,22 +918,21 @@ function renderReadouts(sym){
 function renderPast(sym){
   const cs = coinState(sym);
   if (!cs.els.past) return;
-  const log = learnState(sym).log.slice(-8);
+  // This visit's closes only (in-memory cs.hist) — display, not a record.
+  const log = (cs.hist || []).slice(-8);
   if (!log.length){ cs.els.past.innerHTML = '<span class="pastlbl">Past</span><span class="tothers">no scored closes yet</span>'; return; }
   cs.els.past.innerHTML = '<span class="pastlbl">Past</span>' + log.map(e =>
     '<span class="' + (e.over ? "up" : "down") + '" title="closed ' + (e.over ? "OVER" : "UNDER") + " the line at " + fmtPrice(e.close) + '">' +
     (e.over ? "▲" : "▼") + "</span>").join("");
 }
 
-/* ---------- WEB4: 30-day forecast + self-grading checkpoints ------
-   30 daily expected-path points from the same tuned brain: regime
-   slope + learned component drift + rise/fall asymmetry, anchored
-   at the current price, cones from the coin's daily vol. Each day
-   the 1-day-ahead point projected yesterday is graded against the
-   actual price; the error accumulates per coin, is displayed under
-   the graph, and nudges the forecast drift (fc.bias) through the
-   same tuning loop — a coin whose checkpoints keep missing gets its
-   drift corrected instead of repeating the miss. */
+/* ---------- 30-day forecast (display math) ----------
+   30 daily expected-path points from the same globally-tuned brain:
+   regime slope + component drift + rise/fall asymmetry, anchored at
+   the current price, cones from the coin's daily vol. WEB8: the
+   drift weights come from the shared database only (effW) — there
+   is no page-side checkpoint grading and no local drift correction;
+   the system grades its own forecasts server-side. */
 function forecast30(sym){
   const cs = coinState(sym), M = MODELS[sym];
   const anchor = cs.price || (cs.closesH.length ? cs.closesH[cs.closesH.length - 1] : null);
@@ -944,12 +946,7 @@ function forecast30(sym){
   const dailyVol = volH * Math.sqrt(24);
   let muDay = 24 * (W.mom * 0.5 * slopePH + W.reg * (M.slope / 24) + W.asym * asym * volH);
   muDay = clamp(muDay, -3 * dailyVol, 3 * dailyVol);
-  const L = learnState(sym);
-  // Drift correction = the daily checkpoints' bias PLUS the WEB5
-  // overlay fine correction — both are measured forecast misses,
-  // folded back into the next forecast's drift.
-  const bias = ((L.fc && L.fc.bias) || 0) + ((L.fc && L.fc.biasFine) || 0);
-  muDay += bias;
+  const bias = 0;   // WEB8: no local drift correction — kept for snapshot shape
   const pts = [];
   for (let d = 0; d <= 30; d++){
     const m = muDay * d, sd = dailyVol * Math.sqrt(d);
@@ -960,10 +957,10 @@ function forecast30(sym){
   return {pts: pts, anchor: anchor, muDay: muDay, dailyVol: dailyVol, bias: bias,
           medDurMin: (cs.swings && cs.swings.medDurMin) || null};
 }
-/* ---------- WEB5/WEB6: forecast snapshot, actual overlay, learning ----
+/* ---------- WEB5/WEB6/WEB8: forecast snapshot + actual overlay ----
    Opening the forecast check captures a snapshot — anchor, drift,
-   vol, bias as of that moment — and FREEZES it. While open, the
-   graph renders only the snapshot (the zooms re-slice it; nothing
+   vol as of that moment — and FREEZES it. While open, the graph
+   renders only the snapshot (the zooms re-slice it; nothing
    recomputes it). WEB6 (Shane 2026-10-27): the zooms are minute
    windows ONLY — 5 / 10 / 15 / 30 minutes over the snapshot's
    opening minutes — so the user watches the frozen prediction
@@ -971,18 +968,16 @@ function forecast30(sym){
    close it tracks the trend shifts. The real price draws over the
    frozen forecast in a left-to-right sweep that loops, from the
    prices recorded since the snapshot (live ticks + 1m candles).
-   Matched-time samples of actual vs the frozen mean accumulate
-   into the learning store and feed its drift correction
-   (fc.biasFine), so leaving a forecast open literally trains the
-   next one. */
+   WEB8: this is a DISPLAY of the system's method — the page grades
+   nothing and stores nothing; the server runs the same forecast
+   checks itself, around the clock, and logs the results. */
 function captureFC30(sym){
   const cs = coinState(sym);
   const f = forecast30(sym);
   cs.fcSnap = f ? {t0: Date.now(), anchor: f.anchor, muDay: f.muDay,
                    dailyVol: f.dailyVol, bias: f.bias,
                    medDurMin: f.medDurMin, actuals: [],
-                   pred: buildFCPred(sym, f), graded: {}} : null;
-  cs.fcFlushAt = Date.now();
+                   pred: buildFCPred(sym, f)} : null;
   if (cs.els.fc30age && cs.fcSnap)
     cs.els.fc30age.textContent = "snapshot " + new Date(cs.fcSnap.t0).toLocaleTimeString() + " — frozen until closed";
   return cs.fcSnap;
@@ -993,7 +988,7 @@ function captureFC30(sym){
    tested almost nothing. buildFCPred instead projects, at capture
    time, the path the system's own signals actually expect over the
    next 30 minutes, minute by minute, and freezes it in the snapshot:
-   - drift: muDay (already includes the learned bias) per minute;
+   - drift: muDay (from the coin's global tuning params) per minute;
    - swing wave: from the measured swing stats (24h preferred) — the
      current leg (direction lastLegDir, age lastPivotMinAgo) runs for
      the rest of its typical duration (medDurMin), then legs
@@ -1070,126 +1065,27 @@ function fcActualSeries(sym, sn){
   }
   return [...byT.entries()].map(([t, p]) => ({t: t, p: p})).sort((a, b) => a.t - b.t);
 }
-function fcTabVisible(){
-  // WEB7 ACTIVE-USER GATE (Shane's resource rule): the self-tests —
-  // overlay sampling and mark grading — run only while the user is
-  // actually active on the page. A hidden tab does no test work and
-  // sends no contributions; the work is distributed across visitors'
-  // browsers instead of eating server resources.
-  return typeof document === "undefined" || !document.visibilityState ||
-    document.visibilityState === "visible";
-}
-function fcOverlaySample(sym, now){
-  // One matched-time error sample: the actual price vs the FROZEN
-  // predicted path at the same elapsed time. WEB6: throttled to one
-  // per minute per snapshot (the graph's zooms are minute windows
-  // now, so the learning samples land on the same scale), with a
-  // smaller per-sample step so the effective learning rate per hour
-  // matches the old 5-minute cadence. The log-error nudges
-  // fc.biasFine — the fine-grain sibling of the daily checkpoint's
-  // bias — and forecast30() adds it into the next forecast's drift,
-  // so the misses genuinely retrain it. WEB7: the comparison target
-  // is the frozen PREDICTED PATH (fcPredAt — drift + expected swing
-  // pattern), not the old drift exponential, and each sample also
-  // batches into the pending global aggregates flushed to
-  // /api/perp/fc-contribute with the next grade or ~every 5 minutes.
-  if (!fcTabVisible()) return false;
-  const cs = coinState(sym), sn = cs.fcSnap;
-  if (!sn || !cs.price) return false;
-  now = now || Date.now();
-  const elapsed = now - sn.t0;
-  if (elapsed < 60000) return false;
-  if (now - (cs.fcErrLast || 0) < 60000) return false;
-  cs.fcErrLast = now;
-  const meanAt = fcPredAt(sn, elapsed / 60000);
-  if (!(meanAt > 0)) return false;
-  const err = Math.log(cs.price / meanAt);
-  const F = learnState(sym).fc;
-  F.errN = (F.errN || 0) + 1;
-  F.errSum = (F.errSum || 0) + err;
-  F.errAbs = (F.errAbs || 0) + Math.abs(err);
-  F.biasFine = clamp((F.biasFine || 0) + 0.01 * err, -0.01, 0.01);
-  F.pendN = (F.pendN || 0) + 1;
-  F.pendAbs = (F.pendAbs || 0) + Math.abs(err);
-  saveLearn();
-  renderFC30Stat(sym);
-  if (now - (cs.fcFlushAt || 0) >= 300000){ cs.fcFlushAt = now; fcFlushErr(sym); }
-  return true;
-}
-/* ---------- WEB7: global forecast-check contributions ----------
-   Every graded mark and every batched error sample goes up to the
-   auth service's global pool (POST /api/perp/fc-contribute), so the
-   forecast record aggregates across ALL visitors — every bit of
-   trend data gets used to tune future forecasts. Fire-and-forget:
-   a failed send restores the pending error aggregates for the next
-   flush and never blocks the page. */
-async function fcContribute(sym, correct, incorrect, takePending){
-  const F = learnState(sym).fc;
-  let errN = 0, errAbs = 0;
-  if (takePending){
-    errN = F.pendN || 0; errAbs = F.pendAbs || 0;
-    F.pendN = 0; F.pendAbs = 0; saveLearn();
-  }
-  try {
-    const r = await fetch(AUTH + "/api/perp/fc-contribute", {
-      method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({coin: sym, correct: correct | 0, incorrect: incorrect | 0,
-                            err_n: errN, err_abs_sum: Math.round(errAbs * 1e6) / 1e6})
-    });
-    if (!r || !r.ok) throw new Error("fc-contribute rejected");
-    return true;
-  } catch (e) {
-    if (takePending){ F.pendN = errN; F.pendAbs = errAbs; saveLearn(); }
-    return false;
-  }
-}
-function fcFlushErr(sym){
-  const F = learnState(sym).fc;
-  if (!(F.pendN > 0)) return false;
-  fcContribute(sym, 0, 0, true);
-  renderFCRec(sym);
-  return true;
-}
-/* ---------- WEB7: correct vs incorrect, graded at the zoom marks --
-   Each snapshot grades ONCE at 5 / 10 / 15 / 30 minutes after it
-   opens: predicted = the frozen path's value at the mark vs the
-   anchor; a path still sitting on the anchor (within 0.005%) is a
-   no-call and is not counted. Otherwise the mark is correct iff the
-   live price moved the same direction from the anchor as the path
-   said it would. Grades persist locally (L.fc.fcC / fcI) and the
-   delta is contributed to the global pool immediately. */
-const FC_MARKS = [5, 10, 15, 30];
-function fcGradeMarks(sym, now){
-  if (!fcTabVisible()) return 0;
-  const cs = coinState(sym), sn = cs.fcSnap;
-  if (!sn || !cs.price || !sn.pred) return 0;
-  if (!sn.graded) sn.graded = {};
-  now = now || Date.now();
-  const elapsedMin = (now - sn.t0) / 60000;
-  let graded = 0;
-  for (const mark of FC_MARKS){
-    if (elapsedMin < mark || sn.graded[mark]) continue;
-    sn.graded[mark] = true;   // consumed exactly once, no-call included
-    const pred = fcPredAt(sn, mark);
-    if (Math.abs(pred - sn.anchor) / sn.anchor <= 0.00005) continue;
-    const correct = Math.sign(cs.price - sn.anchor) === Math.sign(pred - sn.anchor);
-    const F = learnState(sym).fc;
-    if (correct) F.fcC = (F.fcC || 0) + 1; else F.fcI = (F.fcI || 0) + 1;
-    saveLearn();
-    fcContribute(sym, correct ? 1 : 0, correct ? 0 : 1, true);
-    graded++;
-  }
-  if (graded) renderFCRec(sym);
-  return graded;
-}
+/* ---------- WEB8: no page-side forecast testing ----------
+   WEB7 had this page sample overlay errors, grade the 5/10/15/30-min
+   marks in the visitor's browser, and POST the results to the pool.
+   Shane's one-database correction removed all of it: the system runs
+   the forecast checks on the server, sees each result as it happens,
+   and logs it in the shared database. This page only draws the graph
+   (a display of the system's method) and shows the system's record —
+   it grades nothing, stores nothing, and sends nothing. */
+
 function renderFCRec(sym){
+  // WEB8: ONLY the system record, pulled from the shared database
+  // (coin.fc on /api/perp/global). The checks run server-side; there
+  // is no per-visitor record anywhere on this page.
   const cs = coinState(sym);
   if (!cs.els.fcrec) return;
-  const F = learnState(sym).fc;
   const g = GLOBAL_POOL && GLOBAL_POOL[sym] && GLOBAL_POOL[sym].fc;
-  const txt = "Forecast check record — this browser: " + (F.fcC || 0) + " correct · " + (F.fcI || 0) + " incorrect" +
-    " · avg miss " + (F.errN ? "±" + (F.errAbs / F.errN * 100).toFixed(2) + "%" : "—") + " (" + (F.errN || 0) + " samples)" +
-    " · Global (all visitors): " + (g ? g.correct + " correct · " + g.incorrect + " incorrect" : "not loaded yet");
+  const txt = "Forecast check record (system, all coins' checks run server-side): " +
+    (g ? g.correct + " correct · " + g.incorrect + " incorrect" +
+         " · avg miss " + (g.avg_err_pct != null ? "±" + (+g.avg_err_pct).toFixed(2) + "%" : "—") +
+         " (" + (g.err_n || 0) + " samples)"
+       : "not loaded yet");
   if (cs.els.fcrec.textContent !== txt) cs.els.fcrec.textContent = txt;
 }
 function drawFC30(sym){
@@ -1282,61 +1178,30 @@ function drawFC30(sym){
   ctx.fillText("+" + winMin + "m", Wd - 44, H - 18);
   ctx.fillText(fmtPrice(hi), 5, 38);
   ctx.fillText(fmtPrice(lo), 5, H - 18);
-  const F = learnState(sym).fc;
-  if (F.errN){
+  const gfc = GLOBAL_POOL && GLOBAL_POOL[sym] && GLOBAL_POOL[sym].fc;
+  if (gfc && gfc.err_n){
     ctx.font = "14px system-ui"; ctx.fillStyle = "#b9b4d6";
-    ctx.fillText("forecast vs actual so far: ±" + (F.errAbs / F.errN * 100).toFixed(2) + "% over " + F.errN + " samples", 8, H - 18);
+    ctx.fillText("system's graded record vs actual: ±" + (+gfc.avg_err_pct).toFixed(2) + "% avg miss over " + gfc.err_n + " samples (server-side)", 8, H - 18);
   }
 }
 function renderFC30Stat(sym){
+  // WEB8: the stat line under the graph shows the SYSTEM's record
+  // from the shared database — the server runs these same forecast
+  // checks itself, around the clock. This graph is only a display;
+  // opening it starts nothing and grades nothing.
   const cs = coinState(sym);
   if (!cs.els.fc30stat) return;
-  const L = learnState(sym), ck = (L.fc && L.fc.ck) || [];
-  let txt;
-  if (!ck.length){
-    txt = "Checkpoints: none yet — the first 1-day-ahead projection grades tomorrow, and its error starts correcting this forecast's drift.";
-  } else {
-    const avg = mean(ck.map(c => Math.abs(c.errPct)));
-    txt = "Checkpoints: " + ck.length + " · avg error " + (avg * 100).toFixed(1) + "%" +
-      (Math.abs(L.fc.bias) > 0.0001 ? " · drift corrected " + (L.fc.bias * 100).toFixed(2) + "%/day by checkpoint misses" : "");
-  }
-  const F = L.fc;
-  if (F.errN){
-    txt += " · Overlay vs actual: " + F.errN + " samples · avg miss ±" + (F.errAbs / F.errN * 100).toFixed(2) + "%" +
-      " · signed " + (F.errSum / F.errN * 100).toFixed(2) + "%" +
-      (Math.abs(F.biasFine) > 0.00005 ? " · fine drift " + (F.biasFine * 100).toFixed(2) + "%/day now fed into new forecasts from those misses" : "");
-  } else if (cs.fcSnap) {
-    txt += " · Overlay vs actual: sampling — the first error sample lands about a minute after the snapshot, then one every minute while this stays open.";
+  const g = GLOBAL_POOL && GLOBAL_POOL[sym] && GLOBAL_POOL[sym].fc;
+  let txt = "Forecast checks run on the server around the clock — this graph just displays the method on live prices.";
+  if (g && (g.err_n || g.correct || g.incorrect)){
+    txt += " System record for " + sym + ": " + g.correct + " correct · " + g.incorrect + " incorrect" +
+      (g.err_n ? " · avg miss ±" + (+g.avg_err_pct).toFixed(2) + "% over " + g.err_n + " samples" : "");
+  } else if (g) {
+    txt += " System record for " + sym + ": no graded checks logged yet — the server's first checks grade within the hour.";
   }
   if (cs.els.fc30stat.textContent !== txt) cs.els.fc30stat.textContent = txt;
 }
-function fcCheckpoint(sym){
-  const cs = coinState(sym);
-  const actual = cs.price || (cs.closesH.length ? cs.closesH[cs.closesH.length - 1] : null);
-  if (!actual) return;
-  const L = learnState(sym);
-  const today = new Date().toISOString().slice(0, 10);
-  const pend = L.fc.pending;
-  if (pend && pend.date <= today){
-    const errPct = actual / pend.proj - 1;
-    L.fc.ck.push({date: pend.date, proj: pend.proj, actual: actual, errPct: errPct});
-    if (L.fc.ck.length > 60) L.fc.ck.splice(0, L.fc.ck.length - 60);
-    L.fc.bias = clamp((L.fc.bias || 0) + 0.3 * Math.log(actual / pend.proj), -0.01, 0.01);
-    L.fc.pending = null;
-    saveLearn();
-  }
-  if (!L.fc.pending){
-    const f = forecast30(sym);
-    if (f){
-      const tmr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-      L.fc.pending = {date: tmr, proj: f.pts[1].mean, anchor: f.anchor};
-      saveLearn();
-    }
-  }
-  renderFC30Stat(sym);
-}
-
-/* ---------- trend state, swings, forecast, learning ---------- */
+/* ---------- trend state, swings, forecast ---------- */
 function median(a){
   if (!a.length) return 0;
   const s = a.slice().sort((x, y) => x - y), m = Math.floor(s.length / 2);
@@ -1498,7 +1363,7 @@ function computeForecast(sym){
   const s = cs.swings && (cs.swings.h24 || cs.swings.d7);
   if (s && (s.avgUp + s.avgDn) > 0) asym = (s.avgUp - s.avgDn) / (s.avgUp + s.avgDn);
   // Same three drift components the barrier math uses, with the same
-  // learned per-component weights — one brain, consistently tuned.
+  // globally-tuned per-component weights — one brain, one database.
   // Momentum carries the trend-state slope; asymmetry (in [-1,1]) scales
   // to at most +-1 sigma/hour of drift before its weight applies.
   const W = effW(sym);
@@ -1649,124 +1514,23 @@ async function loadOddsHistory(){
   if (ODDS.coin === coin) renderOddsTrend();
 }
 
-/* ---------- self-adjustment (learning, flaw-aware) ----------
-   Per coin, persisted in localStorage (ph.learn.v2):
-   - w.mom / w.reg / w.asym: separate bounded weights (clamp 0..2) for
-     the momentum, regime-slope and rise/fall-asymmetry drift
-     components. Each scored close steps only the components that were
-     in the prediction, along their own log-loss gradients, so a
-     component that has been hurting is down-weighted toward 0
-     without dragging the others down with it.
-   - buckets: per-confidence-bucket counts + hits (buckets in
-     |p-50| points: 7-15, 15-25, 25+). With >= 10 scored in a bucket,
-     realized accuracy below the bucket's claimed confidence shrinks
-     that bucket's probabilities toward 50 by the measured gap
-     (factor clamp 0.5..1.05) — "confident and wrong" gets fixed
-     specifically, not globally.
-   - flip control: within-cycle side flips of the displayed call are
-     counted per coin. A rolling flip rate over the last 20 scored
-     cycles above 1.5/cycle widens that coin's NO EDGE band (from
-     +/-7 up to +/-12 points) and enables call-dwell: the displayed
-     call changes side only when the new side leads the old by >= 4
-     points on 2 consecutive ticks. The band relaxes as flips recover.
-   - sigma: the barrier math and the forecast cone use an EMA-style
-     blend of the model's base sigma with the realized vol of the
-     last few hours of candles (liveSigma), so a wilder live market
-     widens probabilities honestly.
-   Every value is printed on the card's Learning line — no invisible
-   tweaks. The v1 store (ph.learn.v1, single drift weight + global
-   calibration) migrates forward: scored history carries over and the
-   old drift weight seeds all three component weights. */
-const LS_LEARN2 = "ph.learn.v2";
-const LS_LEARN3 = "ph.learn.v3";
-const BAND_BASE = 0.07, BAND_MAX = 0.12, FLIP_HI = 1.5;
-function learnState(sym){
-  let L = S.learn[sym];
-  if (!L) L = S.learn[sym] = {w: {mom: 1, reg: 1, asym: 1}, buckets: {}, log: []};
-  if (!L.w) L.w = {mom: 1, reg: 1, asym: 1};
-  if (!L.buckets) L.buckets = {};
-  if (!Array.isArray(L.log)) L.log = [];
-  // WEB4 additions: 30-day forecast self-grading (fc), adopted-fix
-  // adjustments (bucketAdj / bandAdj), and the fix-gate state (gate).
-  if (!L.fc) L.fc = {bias: 0, ck: [], pending: null};
-  // WEB5: overlay error accumulation — matched-time actual-vs-forecast
-  // samples taken while a frozen forecast snapshot is open. biasFine
-  // is the fine-grain drift correction they feed (alongside the
-  // daily checkpoint's bias); errN/errSum/errAbs are the running
-  // measured error printed on the graph.
-  const F = L.fc;
-  if (typeof F.bias !== "number") F.bias = 0;
-  if (!Array.isArray(F.ck)) F.ck = [];
-  if (typeof F.biasFine !== "number") F.biasFine = 0;
-  if (typeof F.errN !== "number") F.errN = 0;
-  if (typeof F.errSum !== "number") F.errSum = 0;
-  if (typeof F.errAbs !== "number") F.errAbs = 0;
-  // WEB7: forecast-check correct/incorrect record for this browser
-  // (fcC/fcI, graded at the 5/10/15/30-min marks) plus the pending
-  // error aggregates waiting to flush into the global pool.
-  if (typeof F.fcC !== "number") F.fcC = 0;
-  if (typeof F.fcI !== "number") F.fcI = 0;
-  if (typeof F.pendN !== "number") F.pendN = 0;
-  if (typeof F.pendAbs !== "number") F.pendAbs = 0;
-  if (!L.gate) L.gate = {};
-  if (!L.bucketAdj) L.bucketAdj = {};
-  if (typeof L.bandAdj !== "number") L.bandAdj = 0;
-  return L;
-}
-function migrateLearn(){
-  const v3 = lsGet(LS_LEARN3, null);
-  if (v3 && typeof v3 === "object"){ S.learn = v3; return; }
-  const v2 = lsGet(LS_LEARN2, null);
-  if (v2 && typeof v2 === "object"){
-    S.learn = v2;
-    for (const sym of Object.keys(S.learn)) learnState(sym);   // add WEB4 fields
-    lsSet(LS_LEARN3, S.learn);
-    return;
-  }
-  const v1 = lsGet(LS_LEARN, {});
-  const out = {};
-  for (const sym of Object.keys(v1 || {})){
-    const o = v1[sym] || {};
-    const w0 = clamp(typeof o.w === "number" ? o.w : 1, 0, 2);
-    out[sym] = {w: {mom: w0, reg: w0, asym: w0}, buckets: {}, log: Array.isArray(o.log) ? o.log : []};
-  }
-  S.learn = out;
-  for (const sym of Object.keys(S.learn)) learnState(sym);
-  lsSet(LS_LEARN3, out);
-}
-function saveLearn(){ lsSet(LS_LEARN3, S.learn); }
+/* ---------- global tuning accessors (WEB8 one-database model) ----
+   There is NO local learning system anymore: no ph.learn store, no
+   per-device weights, no local calibration, no fix gate, no local
+   forecast counters. Predictions use the tuning params the server
+   publishes from the ONE shared database (GET /api/perp/global) —
+   the system scores its own predictions server-side and retunes
+   there. While a coin's global evidence is still warming up, or the
+   global fetch hasn't landed, predictions run on the base params
+   (weights 1, factor 1, band ±7, no dwell) — never on anything this
+   browser learned, because this browser learns nothing. */
+const BAND_BASE = 0.07;
 function bucketKey(p){
   const d = Math.abs(p - 0.5) * 100;
   return d < 15 ? "b1" : d < 25 ? "b2" : "b3";
 }
-const BUCKET_MID = {b1: 0.61, b2: 0.70, b3: 0.85};
-function bucketFactor(L, key){
-  const b = L.buckets[key];
-  let f = 1;
-  if (b && b.n >= 10){
-    const gap = BUCKET_MID[key] - b.hit / b.n;
-    f = gap <= 0 ? 1 : clamp(1 - gap, 0.5, 1.05);
-  }
-  const adj = (L.bucketAdj || {})[key];
-  return adj ? clamp(f * adj, 0.5, 1.05) : f;
-}
 function applyCalib(sym, pRaw){
   return 0.5 + (pRaw - 0.5) * effBucketFactor(sym, bucketKey(pRaw));
-}
-function flipStats(L){
-  const scored = L.log.slice(-20).filter(e => typeof e.flips === "number");
-  return {cycles: scored.length,
-          rate: scored.length ? scored.reduce((s, e) => s + e.flips, 0) / scored.length : 0};
-}
-function bandFor(sym){
-  const L = learnState(sym), fs = flipStats(L);
-  let band = BAND_BASE;
-  if (fs.cycles >= 5 && fs.rate > FLIP_HI) band = BAND_BASE + (BAND_MAX - BAND_BASE) * clamp((fs.rate - FLIP_HI) / FLIP_HI, 0, 1);
-  return clamp(band + (L.bandAdj || 0), BAND_BASE, BAND_MAX + 0.03);
-}
-function dwellOn(sym){
-  const fs = flipStats(learnState(sym));
-  return fs.cycles >= 5 && fs.rate > FLIP_HI;
 }
 function liveSigma(sym){
   const cs = coinState(sym), base = MODELS[sym].vol;
@@ -1775,22 +1539,22 @@ function liveSigma(sym){
   return clamp(s, base * 0.4, base * 3);
 }
 
-/* ---------- global learning pool (GLOBAL-SPEC) ----------
-   One shared brain: the auth service pools every user's scored
-   predictions (anonymous aggregates only) and publishes global tuning
-   per coin. Effective tuning here = global blended with this device's
-   own: local weight = min(0.5, own_scored/400) per coin, so a fresh
-   visitor runs ~fully on the crowd and a veteran keeps up to half
-   personal tuning. While a coin's pool is still warming up (< 200
-   pooled scored) the server publishes base params, so blending is a
-   no-op and behavior is exactly the local-only tuning. If the global
-   fetch fails, everything degrades to local-only, unchanged. */
+/* ---------- the ONE shared database (GLOBAL-SPEC + WEB8) ----------
+   The auth service's database is the single source of truth: the
+   system generates, watches, grades, and logs every prediction
+   itself, server-side, and publishes the global tuning + records
+   per coin. This page only PULLS (GET /api/perp/global) — it sends
+   nothing and keeps no learning data. Effective tuning = the global
+   params exactly as published (evidence-gated server-side: while a
+   coin is warming up the server publishes base params). If the
+   global fetch hasn't landed or fails, predictions run on the same
+   base params — there is no local fallback tuning to degrade to. */
 let GLOBAL_POOL = null, GLOBAL_TOTALS = null;
 async function loadGlobal(){
   const j = await fetchJSON(AUTH + "/api/perp/global");
   if (!j || !j.ok || !j.coins) return;
   GLOBAL_POOL = j.coins; GLOBAL_TOTALS = j.totals || null;
-  S.selected.forEach(sym => { renderLearn(sym); renderFCRec(sym); if (S.cycle.active) predict(sym); });
+  S.selected.forEach(sym => { renderGlobalLine(sym); renderFCRec(sym); renderFC30Stat(sym); if (S.cycle.active) predict(sym); });
 }
 /* Multi-source view (MULTISOURCE): one server call covers every
    watched coin. Pure enhancement layer — if the endpoint is
@@ -1830,29 +1594,28 @@ function globalCoin(sym){
   const g = GLOBAL_POOL && GLOBAL_POOL[sym];
   return g && g.evidence === "live" ? g : null;
 }
-function ownScored(sym){ return learnState(sym).log.length; }
-function localWeight(sym){ return Math.min(0.5, ownScored(sym) / 400); }
+const BASE_W = {mom: 1, reg: 1, asym: 1};
 function effW(sym){
-  const L = learnState(sym), g = globalCoin(sym);
-  if (!g) return L.w;
-  const lw = localWeight(sym), out = {};
-  for (const k of ["mom", "reg", "asym"]) out[k] = clamp((1 - lw) * g.w[k] + lw * L.w[k], 0, 2);
+  // Global params ONLY (evidence-gated via globalCoin); warming up
+  // or unreachable → the base weights. No local component exists.
+  const g = globalCoin(sym);
+  if (!g || !g.w) return {...BASE_W};
+  const out = {};
+  for (const k of ["mom", "reg", "asym"]) out[k] = clamp(+g.w[k] || 1, 0, 2);
   return out;
 }
 function effBucketFactor(sym, key){
-  const lf = bucketFactor(learnState(sym), key), g = globalCoin(sym);
-  if (!g) return lf;
-  const gf = (g.buckets && g.buckets[key]) || 1, lw = localWeight(sym);
-  return clamp(1 + (1 - lw) * (gf - 1) + lw * (lf - 1), 0.5, 1.05);
+  const g = globalCoin(sym);
+  if (!g) return 1;
+  return clamp((g.buckets && g.buckets[key]) || 1, 0.5, 1.05);
 }
 function effBand(sym){
   const g = globalCoin(sym);
-  if (!g) return bandFor(sym);
-  return (1 - localWeight(sym)) * g.band + localWeight(sym) * bandFor(sym);
+  return g && g.band != null ? g.band : BAND_BASE;
 }
 function effDwell(sym){
   const g = globalCoin(sym);
-  return dwellOn(sym) || !!(g && g.dwell && localWeight(sym) < 0.5);
+  return !!(g && g.dwell);
 }
 function renderPool(sym){
   const cs = coinState(sym);
@@ -1861,256 +1624,42 @@ function renderPool(sym){
   if (GLOBAL_POOL){
     const g = GLOBAL_POOL[sym], tot = GLOBAL_TOTALS ? GLOBAL_TOTALS.scored : 0;
     if (g && g.evidence === "live"){
-      const lw = localWeight(sym);
-      txt = "Global pool: " + tot + " scored across all users · " + sym + " global hit " +
-        (g.hitRate != null ? Math.round(g.hitRate * 100) + "%" : "—") + " (" + g.scored + " scored) · your tuning: " +
-        Math.round((1 - lw) * 100) + "% global / " + Math.round(lw * 100) + "% yours";
+      txt = "Global pool: " + tot + " predictions scored by the system · " + sym + " global hit " +
+        (g.hitRate != null ? Math.round(g.hitRate * 100) + "%" : "—") + " (" + g.scored + " scored) · this page runs on these global params";
       if (g.fix && g.fix.state === "testing") txt += " · global fix test running (" + g.fix.shadowScored + "/30): " + (g.fix.desc || "");
       if (g.fix && g.fix.lastEvent) txt += " · " + g.fix.lastEvent;
     } else if (g) {
-      txt = "Global pool: " + tot + " scored across all users · " + sym + " warming up (" +
+      txt = "Global pool: " + tot + " predictions scored by the system · " + sym + " warming up (" +
         g.evidenceHave + "/" + g.evidenceNeed + ") — global tuning kicks in at " + g.evidenceNeed;
     }
   }
   if (cs.els.pool.textContent !== txt) cs.els.pool.textContent = txt;
 }
 
-/* ---------- anonymous contributions to the pool ----------
-   Every scored close on this device queues one small record (coin,
-   the probability shown, the call, the outcome, flip count, cycle
-   length, and the per-component gradient contributions). Batches go
-   up on close #5, then every 10 closes, and when the page hides.
-   The server folds them into pooled aggregates only — no raw history,
-   no identifiers. Resetting the scoreboard does NOT clear the queue:
-   already-scored anonymous aggregates are historical facts. */
-const LS_CONTRIB = "ph.contrib.v1";
-function contribState(){ return lsGet(LS_CONTRIB, {queue: [], total: 0}); }
-function saveContrib(st){ lsSet(LS_CONTRIB, st); }
-function queueContribution(sym, cs, snap, closedOver){
-  // SCORING LOCK: the pooled record is the OPENING snapshot's p/call —
-  // the prediction of record — never the final-tick live values.
-  const lp = snap.pred;
-  if (!lp) return;
-  const st = contribState();
-  st.queue.push({coin: sym, p: lp.p, pRaw: lp.pRaw, call: snap.call || "none",
-                 outcome: closedOver, flips: cs.flips, lenMin: S.lenMin,
-                 comp: lp.comp || {mom: 0, reg: 0, asym: 0}});
-  st.total++;
-  saveContrib(st);
-  if (st.total === 5 || st.total % 10 === 0) flushContrib(false);
-}
-async function flushContrib(keepalive){
-  const st = contribState();
-  if (!st.queue.length) return;
-  const batch = st.queue.slice(0, 50);
-  try {
-    const r = await fetch(AUTH + "/api/perp/contribute", {
-      method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({records: batch}), keepalive: !!keepalive
-    });
-    if (!r.ok) return;
-    const j = await r.json().catch(() => null);
-    if (j && j.ok){
-      const cur = contribState();
-      cur.queue.splice(0, batch.length);
-      saveContrib(cur);
-    }
-  } catch (e) { /* offline or blocked: the queue keeps the records */ }
-}
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushContrib(true); });
-window.addEventListener("pagehide", () => flushContrib(true));
-function renderLearn(sym){
+function renderGlobalLine(sym){
+  // WEB8: the card's tuning line describes the GLOBAL record from the
+  // shared database — scored count and hit rate the SYSTEM logged —
+  // never a per-visitor record (there isn't one anymore).
   const cs = coinState(sym);
   if (!cs.els.learn) return;
-  const L = learnState(sym);
+  const g = GLOBAL_POOL && GLOBAL_POOL[sym];
   let txt;
-  if (!L.log.length){
-    txt = "Learning: no scored closes yet — momentum x1.0 · regime x1.0 · asym x1.0 · band ±7 (base model values)";
+  if (!GLOBAL_POOL){
+    txt = "Global record: not loaded yet — predictions run on base model values until the shared database answers.";
+  } else if (g && g.evidence === "live"){
+    const calls = g.calls || 0;
+    txt = "Global record (shared database): " + g.scored + " scored by the system · " +
+      (calls ? Math.round(g.hitRate * 100) + "% hit on " + calls + " calls" : "no calls scored yet") +
+      " · tuning live from the pool: momentum x" + (+g.w.mom).toFixed(1) + " · regime x" + (+g.w.reg).toFixed(1) +
+      " · asym x" + (+g.w.asym).toFixed(1) + " · band ±" + Math.round(g.band * 100) + (g.dwell ? " (dwell on)" : "");
+  } else if (g) {
+    txt = "Global record (shared database): " + sym + " warming up (" + g.evidenceHave + "/" + g.evidenceNeed +
+      " scored) — predictions run on base model values until the system's own record unlocks global tuning.";
   } else {
-    const calls = L.log.filter(e => e.call !== "none");
-    const corr = calls.filter(e => (e.call === "over") === e.over).length;
-    const last50 = L.log.slice(-50);
-    const brier = mean(last50.map(e => { const q = e.over ? 1 : 0; return (e.p - q) * (e.p - q); }));
-    let ceNum = 0, ceDen = 0;
-    for (const k of Object.keys(BUCKET_MID)){
-      const b = L.buckets[k];
-      if (b && b.n >= 4){ ceNum += Math.abs(BUCKET_MID[k] - b.hit / b.n) * b.n; ceDen += b.n; }
-    }
-    const ce = ceDen ? ceNum / ceDen : null;
-    const fs = flipStats(L), band = effBand(sym), dw = effDwell(sym);
-    const tweaks = [];
-    if (Math.abs(L.w.mom - 1) >= 0.05 || Math.abs(L.w.reg - 1) >= 0.05 || Math.abs(L.w.asym - 1) >= 0.05) tweaks.push("weights retuned");
-    if (Object.keys(L.buckets).some(k => bucketFactor(L, k) < 0.99)) tweaks.push("hot confidence buckets shrunk");
-    if (band > BAND_BASE + 0.001) tweaks.push("band widened");
-    if (dw) tweaks.push("dwell on");
-    const sigLive = cs.feat.volRecent != null && cs.feat.volH &&
-      Math.abs(liveSigma(sym) - cs.feat.volH) > 0.02 * cs.feat.volH;
-    if (sigLive) tweaks.push("sigma live");
-    txt = "Learning: " + L.log.length + " scored · " + (calls.length ? Math.round(corr / calls.length * 100) + "% hit" : "no calls yet") +
-      " · Brier " + brier.toFixed(2) +
-      " · flips " + (fs.cycles ? fs.rate.toFixed(1) : "—") + "/cycle" +
-      (ce != null ? " · calib err " + Math.round(ce * 100) + "pt" : "") +
-      " · momentum x" + L.w.mom.toFixed(1) + " · regime x" + L.w.reg.toFixed(1) + " · asym x" + L.w.asym.toFixed(1) +
-      " · band ±" + Math.round(band * 100) + (dw ? " (dwell on)" : "") +
-      (tweaks.length ? " · active: " + tweaks.join(", ") : "");
+    txt = "Global record: " + sym + " not in the shared database yet — base model values.";
   }
   if (cs.els.learn.textContent !== txt) cs.els.learn.textContent = txt;
   renderPool(sym);
-  renderGate(sym);
-}
-function updateLearn(sym, lp, closedOver){
-  const L = learnState(sym);
-  const y = closedOver ? 1 : 0, p = clamp(lp.p, 0.02, 0.98);
-  // Per-component log-loss gradient steps. The prediction's z is
-  // (log price/line distance + sum_k w_k * raw_k) / sigmaT, so
-  // d(log-loss)/dw_k runs through the chain rule on the total drift;
-  // each weight moves only by its own component's share, clamped 0..2.
-  // p graded here is the calibrated probability the user actually saw.
-  if (lp.driftRaw && lp.sigmaT > 0){
-    const f = bucketFactor(L, bucketKey(lp.pRaw != null ? lp.pRaw : lp.p));
-    const phi = Math.exp(-lp.z * lp.z / 2) / Math.sqrt(2 * Math.PI);
-    const grad = (p - y) / (p * (1 - p)) * f * phi;   // d log-loss / d z
-    // Per-component gradient contributions, stashed for the anonymous
-    // global-pool record (the server folds exactly these).
-    lp.comp = {mom: grad * (lp.driftRaw.mom / lp.sigmaT),
-               reg: grad * (lp.driftRaw.reg / lp.sigmaT),
-               asym: grad * (lp.driftRaw.asym / lp.sigmaT)};
-    for (const k of ["mom", "reg", "asym"]){
-      L.w[k] = clamp(L.w[k] - 0.25 * grad * (lp.driftRaw[k] / lp.sigmaT), 0, 2);
-    }
-  } else {
-    lp.comp = {mom: 0, reg: 0, asym: 0};
-  }
-  // Per-bucket calibration record: which confidence bucket this call
-  // fell in, and whether the called side won.
-  const bk = bucketKey(lp.pRaw != null ? lp.pRaw : lp.p);
-  const b = L.buckets[bk] || (L.buckets[bk] = {n: 0, hit: 0});
-  b.n++;
-  if ((lp.p > 0.5) === closedOver) b.hit++;
-}
-
-/* ---------- WEB4 fix gate (local layer) ----------
-   Same champion-vs-challenger discipline as the server pool, run on
-   this device's own closes. The WEB3 micro-steps above keep tuning
-   continuously; STRUCTURAL fixes (bucket recalibration, weight caps,
-   band changes) must first shadow-score >= 30 closes in parallel
-   and beat the champion by a real margin (Brier -0.01 or hit +3pts)
-   before they apply. An adopted fix is watched for the next 30
-   scored closes — a >= 5pt success drop auto-reverts to the
-   snapshot and that fix goes on a 48h cooldown. Champion snapshot +
-   challenger state persist in the v3 store. Note: the shadow call
-   is computed from the prediction's stored internals with the local
-   bucket factor; the champion's shown probability is the
-   global-blended one — the comparison is same-close, same-stream. */
-const GATE_COOLDOWN_MS = 48 * 3600 * 1000;
-function detectLocalFix(sym){
-  const L = learnState(sym);
-  for (const k of ["b1", "b2", "b3"]){
-    const b = L.buckets[k];
-    if (b && b.n >= 20 && bucketFactor(L, k) <= 0.88)
-      return {kind: "bucket", key: k, mult: 0.92, sig: "bucket:" + k,
-              desc: "bucket " + k + " calibration x0.92 (confident bucket running hot)"};
-  }
-  for (const k of ["mom", "reg", "asym"]){
-    if (Math.abs(L.w[k] - 1) >= 0.4){
-      const nv = 1 + (L.w[k] - 1) * 0.75;
-      return {kind: "weight", key: k, value: nv, sig: "weight:" + k,
-              desc: "weight " + k + " " + L.w[k].toFixed(2) + " → " + nv.toFixed(2) + " (pulled toward base)"};
-    }
-  }
-  const fs = flipStats(L);
-  if (fs.cycles >= 10 && fs.rate > FLIP_HI)
-    return {kind: "band", add: 0.02, sig: "band", desc: "no-edge band +2pts (flip-flop control)"};
-  return null;
-}
-function shadowPred(sym, chal, lp){
-  const L = learnState(sym);
-  if (!lp || lp.driftRaw == null || !(lp.sigmaT > 0)) return null;
-  let p = lp.p, pRaw = lp.pRaw;
-  if (chal.kind === "weight"){
-    pRaw = normCdf(lp.z + (chal.value - L.w[chal.key]) * lp.driftRaw[chal.key] / lp.sigmaT);
-    p = 0.5 + (pRaw - 0.5) * bucketFactor(L, bucketKey(pRaw));
-  } else if (chal.kind === "bucket"){
-    p = 0.5 + (lp.pRaw - 0.5) * clamp(bucketFactor(L, bucketKey(lp.pRaw)) * chal.mult, 0.5, 1.05);
-  }
-  const band = bandFor(sym) + (chal.kind === "band" ? chal.add : 0);
-  return {p: p, call: Math.abs(p - 0.5) >= band ? (p > 0.5 ? "over" : "under") : "none"};
-}
-function scoreGate(sym, snap, closedOver){
-  // SCORING LOCK: the gate shadow-scores the OPENING prediction (the
-  // champion of record), exactly like grading does — never the live
-  // final-tick prediction.
-  const L = learnState(sym), G = L.gate, lp = snap.pred;
-  if (!lp) return;
-  const y = closedOver ? 1 : 0, hadWatch = !!G.watch;
-  if (G.challenger){
-    const sh = shadowPred(sym, G.challenger, lp);
-    if (sh){
-      const c = G.challenger;
-      c.scored++;
-      c.brier += (sh.p - y) * (sh.p - y);
-      c.champBrier += (lp.p - y) * (lp.p - y);
-      if (sh.call !== "none"){ c.calls++; if ((sh.call === "over") === closedOver) c.hits++; }
-      if (snap.call){ c.champCalls++; if ((snap.call === "over") === closedOver) c.champHits++; }
-      if (c.scored >= 30){
-        const cb = c.brier / c.scored, hb = c.champBrier / c.scored;
-        const chHit = c.calls >= 10 ? c.hits / c.calls : null;
-        const hpHit = c.champCalls >= 10 ? c.champHits / c.champCalls : null;
-        if (cb <= hb - 0.01 || (chHit != null && hpHit != null && chHit >= hpHit + 0.03)){
-          if (c.kind === "bucket") L.bucketAdj[c.key] = ((L.bucketAdj || {})[c.key] || 1) * c.mult;
-          if (c.kind === "weight") L.w[c.key] = c.value;
-          if (c.kind === "band") L.bandAdj = (L.bandAdj || 0) + c.add;
-          G.watch = {desc: c.desc, sig: c.sig, scored: 0, calls: 0, hits: 0, baseHits: c.champHits, baseCalls: c.champCalls};
-          G.lastEvent = "Fix adopted: " + c.desc + " — shadow " + c.scored + " scored" +
-            (hpHit != null && chHit != null ? ", " + Math.round(chHit * 100) + "% vs " + Math.round(hpHit * 100) + "%"
-                                            : ", Brier " + cb.toFixed(3) + " vs " + hb.toFixed(3));
-          G.challenger = null;
-        } else if (cb >= hb + 0.01 || c.scored >= 80){
-          G.lastEvent = "Fix rejected in shadow test: " + c.desc + " — " + c.scored + " scored, Brier " + cb.toFixed(3) + " vs champion " + hb.toFixed(3);
-          G.rejectedSig = c.sig; G.cooldownUntil = Date.now() + GATE_COOLDOWN_MS;
-          G.challenger = null;
-        }
-      }
-    }
-  }
-  if (G.watch && hadWatch){
-    const w = G.watch;
-    w.scored++;
-    if (snap.call){ w.calls++; if ((snap.call === "over") === closedOver) w.hits++; }
-    if (w.scored >= 30){
-      const cur = w.calls >= 10 ? w.hits / w.calls : null;
-      const base = w.baseCalls >= 10 ? w.baseHits / w.baseCalls : null;
-      if (cur != null && base != null && cur <= base - 0.05){
-        const snap = G.champion;
-        if (snap){ L.w = {...snap.w}; L.bucketAdj = {...(snap.bucketAdj || {})}; L.bandAdj = snap.bandAdj || 0; }
-        G.lastEvent = "Fix reverted — success rate dropped after adoption (" + Math.round(cur * 100) + "% vs " + Math.round(base * 100) + "% baseline): " + w.desc;
-        G.rejectedSig = w.sig; G.cooldownUntil = Date.now() + GATE_COOLDOWN_MS;
-      } else {
-        G.lastEvent = "Fix confirmed: " + w.desc + " — held up over " + w.scored + " post-adoption closes";
-      }
-      G.watch = null;
-    }
-  }
-  if (!G.challenger && !G.watch && Date.now() >= (G.cooldownUntil || 0)){
-    const cand = detectLocalFix(sym);
-    if (cand && cand.sig !== G.rejectedSig){
-      G.champion = {w: {...L.w}, bucketAdj: {...(L.bucketAdj || {})}, bandAdj: L.bandAdj || 0};
-      G.challenger = {...cand, scored: 0, brier: 0, champBrier: 0, calls: 0, hits: 0, champCalls: 0, champHits: 0};
-      G.lastEvent = "Fix proposed: " + cand.desc + " — shadow testing";
-    }
-  }
-  saveLearn();
-}
-function renderGate(sym){
-  const cs = coinState(sym);
-  if (!cs.els.gate) return;
-  const G = learnState(sym).gate || {};
-  const parts = [];
-  if (G.challenger) parts.push("Fix test running: " + G.challenger.desc + " — shadow " + G.challenger.scored + "/30 scored");
-  if (G.watch) parts.push("Fix watch: " + G.watch.desc + " — " + G.watch.scored + "/30 post-adoption closes");
-  if (G.lastEvent) parts.push(G.lastEvent);
-  const txt = parts.join(" · ");
-  if (cs.els.gate.textContent !== txt) cs.els.gate.textContent = txt;
 }
 
 /* ---------- prediction ---------- */
@@ -2121,7 +1670,7 @@ function predict(sym){
   const T = Math.max(1, (S.cycle.closeAt - Date.now()) / 1000), Th = T / 3600;
   const sigmaT = liveSigma(sym) * Math.sqrt(Th);
   // Three drift components (per hour, log-return units), each carrying
-  // its own learned weight — the same components the forecast graph
+  // its own globally-tuned weight — the same components the forecast graph
   // uses, so the whole page tunes as one brain.
   const baseVol = f.volH || M.vol;
   let momC = 0;
@@ -2147,7 +1696,8 @@ function predict(sym){
                  driftRaw: driftRaw,
                  lineMoved: !!(cs.lastPred && cs.lastPred.lineMoved) || cs.lineMoved};
   // The displayed call: judged against this coin's own NO EDGE band
-  // (widened when its calls have been flip-flopping), with call-dwell
+  // (widened in the global tuning when the system's calls have been
+  // flip-flopping), with call-dwell
   // so a jumpy call can't strobe — a side change must lead the old
   // side by >= 4 points on 2 consecutive ticks while dwell is on.
   const band = effBand(sym);
@@ -2166,7 +1716,7 @@ function predict(sym){
     cs.lastCall = null;
     cs.els.call.textContent = "NO EDGE"; cs.els.call.className = "call noedge";
     cs.els.conf.textContent = "Probability sits at " + (p * 100).toFixed(0) + "% — inside this coin's ±" + Math.round(band * 100) +
-      "pt no-call band around 50" + (band > BAND_BASE + 0.001 ? " (widened: its recent calls kept flip-flopping)" : "") +
+      "pt no-call band around 50" + (band > BAND_BASE + 0.001 ? " (widened in the global tuning: the system's recent calls kept flip-flopping)" : "") +
       ". The model won't dress up a coin flip.";
     cs.els.pbar.style.width = "0%";
   } else {
@@ -2185,7 +1735,7 @@ function predict(sym){
   // the line as set at the open, frozen for the life of the cycle.
   // Everything after is live tracking only: it may flip every 10s
   // and follow mid-cycle line moves, but grading, the scoreboard,
-  // the learning update, and the pool contribution consume ONLY this
+  // the close display consumes ONLY this
   // snapshot + the closing outcome. NO EDGE at the open (call null)
   // locks in a no-call for the cycle, whatever appears later.
   if (S.cycle.active && (!cs.snap || cs.snap.closeAt !== S.cycle.closeAt)){
@@ -2197,7 +1747,7 @@ function predict(sym){
   renderTrendRead(sym);
   renderLocked(sym);
   drawSpark(sym);
-  renderLearn(sym);
+  renderGlobalLine(sym);
 }
 function renderLocked(sym){
   const cs = coinState(sym);
@@ -2277,21 +1827,17 @@ async function scoreCycle(){
     if (cls) cs.els.root.classList.add(cls === "right" ? "flash-right" : "flash-wrong");
     setTimeout(((el, f) => () => { el.classList.remove("flash-right", "flash-wrong"); f.textContent = ""; })(cs.els.root, cs.els.flash), 12000);
     if (snap && snap.pred){
-      const L = learnState(sym);
-      L.log.push({t: Date.now(), p: snap.pred.p, call: snap.call || "none",
-                  over: closedOver, close: final, line: snap.line, flips: cs.flips,
-                  lineMoved: !!cs.lineMoved});
-      if (L.log.length > 300) L.log.splice(0, L.log.length - 300);
-      updateLearn(sym, snap.pred, closedOver);
-      saveLearn();
-      queueContribution(sym, cs, snap, closedOver);
-      scoreGate(sym, snap, closedOver);
-      renderGate(sym);
+      // WEB8: the close is kept ONLY as this visit's in-memory
+      // display history (Past strip + session scoreboard). Nothing
+      // is learned from it here, nothing is persisted, and nothing
+      // is uploaded — the system logs and learns from its own
+      // predictions in the shared database, server-side.
+      cs.hist.push({t: Date.now(), p: snap.pred.p, call: snap.call || "none",
+                    over: closedOver, close: final, line: snap.line});
+      if (cs.hist.length > 50) cs.hist.splice(0, cs.hist.length - 50);
     }
-    renderRec(sym);
-    renderLearn(sym);
+    renderPast(sym);
   }
-  lsSet(LS_SCORE, S.score);
   renderScore();
   const now = Date.now();
   while (S.cycle.closeAt <= now) S.cycle.closeAt += L;
@@ -2303,14 +1849,6 @@ async function scoreCycle(){
     updateLineUI(sym);
     predict(sym);
   });
-}
-function renderRec(sym){
-  const cs = coinState(sym), sc = S.score[sym];
-  renderPast(sym);
-  if (!cs.els.rec) return;
-  cs.els.rec.textContent = sc && (sc.hit + sc.miss + sc.nocall) > 0
-    ? "Page record on " + sym + ": " + sc.hit + " right · " + sc.miss + " wrong · " + sc.nocall + " no-call"
-    : "No closes scored on " + sym + " yet.";
 }
 function renderScore(){
   const tb = $("#scoreBody");
@@ -2324,11 +1862,8 @@ function renderScore(){
 }
 $("#startBtn").addEventListener("click", startCycle);
 $("#stopBtn").addEventListener("click", stopCycle);
-$("#resetScore").addEventListener("click", () => {
-  S.score = {}; lsSet(LS_SCORE, {});
-  S.learn = {}; lsSet(LS_LEARN, {}); lsSet(LS_LEARN2, {}); lsSet(LS_LEARN3, {});
-  renderScore(); S.selected.forEach(sym => { renderRec(sym); renderLearn(sym); });
-});
+// WEB8: no reset button — there is nothing stored to reset. The
+// session tally lives in memory and dies with the page.
 
 /* ---------- main loop ---------- */
 async function priceTick(){
@@ -2341,15 +1876,13 @@ async function priceTick(){
       if (cs.ticks.length > 700) cs.ticks.splice(0, cs.ticks.length - 700);
       if (cs.fcSnap){
         // Record the actual travel against the frozen forecast
-        // (thinned to ~15s) for the overlay, and let the sampler
-        // fold matched-time misses into the drift correction.
+        // (thinned to ~15s) for the overlay DRAW only — display
+        // state in memory; nothing is sampled, graded, or stored.
         const a = cs.fcSnap.actuals, nowA = Date.now();
         if (!a.length || nowA - a[a.length - 1].t >= 15000){
           a.push({t: nowA, p: cs.price});
           if (a.length > 3000) a.splice(0, a.length - 3000);
         }
-        fcOverlaySample(sym);
-        fcGradeMarks(sym);
       }
       cs.els.price.textContent = fmtPrice(cs.price);
       renderReadouts(sym);
@@ -2555,7 +2088,6 @@ $("#pipBtn").addEventListener("click", async () => {
 });
 
 /* ---------- init ---------- */
-migrateLearn();
 buildCoinGrid();
 (function init(){
   const len = S.lenMin;
@@ -2569,7 +2101,6 @@ buildCoinGrid();
   renderScore();
   loadGlobal();
   loadSources();
-  flushContrib(false);
 })();
 </script>
 </body>
