@@ -18,3 +18,5 @@ Source for **app.rivaleclipse.dev** (Cloudflare Pages, git-connected to this rep
 <!-- deploy trigger: project created 2026-10-27 -->
 
 <!-- deploy note 2026-10-28: Market-Tracker Android download is now perp-alerts.apk (Perp Alerts & Forecasts); the old tracker APK was removed. -->
+
+<!-- WEB10 redeploy trigger 2026-10-28 -->
