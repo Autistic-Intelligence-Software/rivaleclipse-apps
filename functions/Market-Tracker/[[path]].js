@@ -142,6 +142,79 @@ async function proxyApi(context, request, url, rest) {
   return new Response(r.body, { status: r.status, statusText: r.statusText, headers: out });
 }
 
+/* ------------- market-data proxy (WEB12, Shane 2026-10-28) -------
+   The tracker's market-mimic presets pull the CHOSEN market's own
+   numbers, not a local reconstruction:
+   - /api/pm/crypto-price?symbol=BTC&start=<epochSec>&variant=fifteen
+     forwards to Polymarket's own crypto-price endpoint — the same
+     one its up/down pages use. openPrice is the market's official
+     "price to beat" for the window opening at `start` (Chainlink
+     TWAP-60 for the 5m/15m/4h variants, the Binance candle open for
+     the hourly variant); closePrice is its live/final price.
+   - /api/kalshi/markets?series=KXBTC15M returns the open markets of
+     a Kalshi series (slimmed): floor_strike is the market's official
+     target for its window, set by Kalshi at the open.
+   Both require an entitled perp-acct session, same as the tracker. */
+
+const PM_VARIANTS = new Set(['fiveminute', 'fifteen', 'hourly', 'fourhour', 'daily']);
+
+async function requireEntitled(context, request) {
+  const token = parseCookies(request)[COOKIE_NAME];
+  if (!token) return null;
+  const v = await validateSession(context, token);
+  return v.kind === 'entitled' ? v : null;
+}
+
+async function pmPriceRoute(context, request, url) {
+  if (request.method !== 'GET') return jsonRes({ error: 'method_not_allowed' }, 405);
+  if (!(await requireEntitled(context, request))) return jsonRes({ error: 'unauthorized' }, 401);
+  const symbol = (url.searchParams.get('symbol') || '').toUpperCase();
+  const start = Number(url.searchParams.get('start'));
+  const variant = url.searchParams.get('variant') || '';
+  const nowS = Math.floor(Date.now() / 1000);
+  if (!/^[A-Z0-9]{2,10}$/.test(symbol) ||
+      !Number.isInteger(start) || start < nowS - 2 * 86400 || start > nowS + 86400 ||
+      !PM_VARIANTS.has(variant)) {
+    return jsonRes({ error: 'bad_params' }, 400);
+  }
+  const up = 'https://polymarket.com/api/crypto/crypto-price?symbol=' +
+    encodeURIComponent(symbol) + '&eventStartTime=' + start + '&variant=' + encodeURIComponent(variant);
+  let r;
+  try {
+    r = await fetch(up, { headers: { Accept: 'application/json' } });
+  } catch (e) {
+    return jsonRes({ error: 'upstream_unavailable' }, 502);
+  }
+  const text = await r.text();
+  return new Response(text, {
+    status: r.status,
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+  });
+}
+
+async function kalshiRoute(context, request, url) {
+  if (request.method !== 'GET') return jsonRes({ error: 'method_not_allowed' }, 405);
+  if (!(await requireEntitled(context, request))) return jsonRes({ error: 'unauthorized' }, 401);
+  const series = (url.searchParams.get('series') || '').toUpperCase();
+  if (!/^KX[A-Z0-9]{2,20}$/.test(series)) return jsonRes({ error: 'bad_params' }, 400);
+  const up = 'https://api.elections.kalshi.com/trade-api/v2/markets?status=open&limit=10&series_ticker=' +
+    encodeURIComponent(series);
+  let r;
+  try {
+    r = await fetch(up, { headers: { Accept: 'application/json' } });
+  } catch (e) {
+    return jsonRes({ error: 'upstream_unavailable' }, 502);
+  }
+  if (!r.ok) return jsonRes({ error: 'upstream_error' }, 502);
+  let j;
+  try { j = await r.json(); } catch (e) { return jsonRes({ error: 'upstream_error' }, 502); }
+  const markets = (Array.isArray(j.markets) ? j.markets : []).map(m => ({
+    ticker: m.ticker, floor_strike: m.floor_strike,
+    open_time: m.open_time, close_time: m.close_time,
+  }));
+  return jsonRes({ markets }, 200, { 'Cache-Control': 'no-store' });
+}
+
 /* ---------------- account API (/Market-Tracker/acct/*) ---------- */
 
 const ACCT_ACTIONS = {
@@ -525,6 +598,13 @@ export async function onRequest(context) {
   // API proxy — the tracker's data plane.
   if (rest === '/api/perp' || rest.startsWith('/api/perp/')) {
     return proxyApi(context, request, url, rest);
+  }
+  // Market-data proxy (WEB12): the chosen market's own targets/feed.
+  if (rest === '/api/pm/crypto-price') {
+    return pmPriceRoute(context, request, url);
+  }
+  if (rest === '/api/kalshi/markets') {
+    return kalshiRoute(context, request, url);
   }
   if (rest === '/api' || rest.startsWith('/api/')) {
     return jsonRes({ error: 'not_found' }, 404);
