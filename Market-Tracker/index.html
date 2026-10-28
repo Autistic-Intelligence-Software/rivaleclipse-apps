@@ -550,6 +550,10 @@ function coinState(sym){
     t1: null, tH: null,        // WEB11: start time (ms) of the first stored 1m / 1h candle
     rollClose: null,           // WEB11: the close price of the cycle being scored (line-roll source)
     lineFromStart: false,      // WEB11: line was the startCycle price fallback, not a strike/user line
+    lineSrc: null,             // WEB12: where the current line came from (market target / fallback), shown on the card
+    mktPrice: null,            // WEB12: last live price from the chosen market's feed (Polymarket mode)
+    mktPriceAt: 0,             // WEB12: when that feed price was fetched
+    nextTarget: null,          // WEB12: the market target for the NEXT window, fetched while scoring this one
     // WEB9 addendum (Shane 2026-10-28): the forecast section ALWAYS
     // starts collapsed — a stored ph.fc30 from an earlier session
     // must not re-expand it on load (that was burning data on
@@ -744,21 +748,25 @@ function toggleCoin(sym, on, box){
   else { removeCard(sym); }
   syncAllPadSelects();
 }
-/* ---------- WEB11: market-mimic presets (Shane 2026-10-28) ----------
-   The Setup drawer's "Mimic a market" selector tailors the app's
-   DEFAULTS to mirror another market's up/down structure — its
-   windows and its strike-at-open rule. It is structure only: the
-   app never connects to that market, never uses its prices, and
-   the label in the UI says so. The line roll (each cycle opens at
-   the previous cycle's close) is the global default for EVERY
-   preset, Custom included. */
+/* ---------- WEB11/WEB12: market-mimic presets (Shane 2026-10-28) --
+   The Setup drawer's "Mimic a market" selector mirrors another
+   market's up/down product. WEB12 (Shane's correction, 2026-10-28):
+   mirroring means the market's OWN numbers — at every rollover the
+   line becomes that market's actual target for the new window
+   (Polymarket's official price to beat, Kalshi's official strike),
+   pulled live from that market's feed through the app's proxy, and
+   the closing value it grades against is the same feed's value.
+   Where a market doesn't run a coin or a window, the card says so
+   and falls back to the Coinbase window open. The line roll (each
+   cycle opens at the previous cycle's close) remains the default
+   for the Custom preset. */
 const PRESETS = {
   custom: {name: null, lens: [1, 5, 15, 30, 60], def: 15,
     note: "Your own windows and lines. The line roll still applies: every cycle opens with its line at the previous cycle's closing price, and a line you set by hand governs only the cycle in progress."},
   polymarket: {name: "Polymarket", lens: [5, 15, 60, 240], def: 15,
-    note: "Mirrors Polymarket's up/down structure — 5m / 15m / 1h / 4h windows, strike set at the window's opening price. Structure only: this does not connect to Polymarket, use its prices, or place anything there."},
-  kalshi: {name: "Kalshi", lens: [60, 1440], def: 60,
-    note: "Mirrors Kalshi's hourly / daily structure — 1h and 24h (daily) periods, strike set at the period's opening price. Structure only: this does not connect to Kalshi, use its prices, or place anything there."},
+    note: "Live-mirrors Polymarket's up/down markets — 5m / 15m / 1h / 4h windows. At every rollover each coin's line becomes Polymarket's actual price to beat for the new window, pulled from Polymarket's own price feed (Chainlink TWAP for 5m/15m/4h, its hourly price for 1h), and the live price follows the same feed. Coins Polymarket doesn't run fall back to the Coinbase window open — the card says which. Nothing is placed on Polymarket."},
+  kalshi: {name: "Kalshi", lens: [15, 60, 1440], def: 15,
+    note: "Live-mirrors Kalshi's up/down markets. On the 15m window each coin's line becomes Kalshi's actual strike for the new window, pulled from Kalshi's public market data at every rollover (BTC, ETH, SOL, XRP, DOGE, NEAR — the coins Kalshi runs; others fall back to the Coinbase window open, and the card says which). Kalshi's 1h / 24h markets are strike ladders with no single target, so those windows keep the line roll. Nothing is placed on Kalshi."},
 };
 function lenLabel(min){ return min === 1440 ? "24h (daily)" : min >= 60 ? (min / 60) + "h" : min + "m"; }
 function cycleWinLabel(){
@@ -786,6 +794,9 @@ function applyPreset(name, skipLen){
   const note = $("#presetNote"); if (note) note.textContent = PRESETS[name].note;
   buildLenChips();
   if (!skipLen && PRESETS[name].def !== S.lenMin) setLen(PRESETS[name].def);
+  // WEB12: switching markets mid-cycle re-targets the running lines
+  // to the newly chosen market's target for this window.
+  if (!skipLen && S.cycle.active) S.selected.forEach(sym => applyMarketStrike(sym));
 }
 function setLen(min, fromCustom){
   S.lenMin = clamp(Math.round(min) || 15, 1, 1440);
@@ -806,6 +817,104 @@ $("#lenCustom").addEventListener("change", ev => { const v = parseInt(ev.target.
 buildLenChips();
 applyPreset(S.preset, true);
 { const ps = $("#presetSel"); if (ps) ps.addEventListener("change", ev => applyPreset(ev.target.value)); }
+
+/* ---------- WEB12: live market mirroring (Shane 2026-10-28) -------
+   When a market preset is active, the target line is NOT a local
+   reconstruction: it is the chosen market's own published target
+   for the window, fetched through the app's same-origin proxy
+   (/Market-Tracker/api/pm/* and /api/kalshi/*, entitled sessions
+   only). Polymarket: its crypto-price endpoint returns the official
+   price to beat (openPrice) per window start + variant — Chainlink
+   TWAP-60 for 5m/15m/4h on the coins it runs (BTC/ETH/SOL/XRP/DOGE),
+   the Binance candle open for 1h on every coin. Kalshi: the open
+   15M market's floor_strike IS its official target (CF Benchmarks
+   60-second average), for BTC/ETH/SOL/XRP/DOGE/NEAR. Anything else
+   falls back to the Coinbase window open, and the card's line
+   source says which happened. */
+const PM_TWAP_COINS = ["BTC", "ETH", "SOL", "XRP", "DOGE"];
+const PM_VARIANT = {5: "fiveminute", 15: "fifteen", 60: "hourly", 240: "fourhour"};
+const KX_SERIES = {BTC: "KXBTC15M", ETH: "KXETH15M", SOL: "KXSOL15M",
+                   XRP: "KXXRP15M", DOGE: "KXDOGE15M", NEAR: "KXNEAR15M"};
+function marketActive(){ return S.preset === "polymarket" || S.preset === "kalshi"; }
+async function pmPrice(sym, openAtMs, variant){
+  const j = await fetchJSON(AUTH + "/api/pm/crypto-price?symbol=" + encodeURIComponent(sym) +
+    "&start=" + Math.floor(openAtMs / 1000) + "&variant=" + variant);
+  return j && !j.error ? j : null;
+}
+async function kalshiMarkets(sym){
+  const series = KX_SERIES[sym];
+  if (!series) return null;
+  const j = await fetchJSON(AUTH + "/api/kalshi/markets?series=" + series);
+  return j && Array.isArray(j.markets) ? j.markets : null;
+}
+/* The chosen market's target for the window opening at openAtMs:
+   {price, src}, or null when that market doesn't cover this
+   coin/window (the caller falls back to the Coinbase open). */
+async function marketTarget(sym, openAtMs){
+  if (S.preset === "polymarket"){
+    const variant = PM_VARIANT[S.lenMin];
+    if (!variant) return null;
+    if (variant !== "hourly" && !PM_TWAP_COINS.includes(sym)) return null;
+    const j = await pmPrice(sym, openAtMs, variant);
+    if (j && isFinite(+j.openPrice) && +j.openPrice > 0)
+      return {price: +j.openPrice, src: "Polymarket price to beat"};
+    return null;
+  }
+  if (S.preset === "kalshi"){
+    if (S.lenMin !== 15) return null;
+    const ms = await kalshiMarkets(sym);
+    if (!ms) return null;
+    const want = new Date(openAtMs).toISOString();
+    const m = ms.find(x => x.open_time === want);
+    if (m && isFinite(+m.floor_strike) && +m.floor_strike > 0)
+      return {price: +m.floor_strike, src: "Kalshi strike"};
+    return null;
+  }
+  return null;
+}
+/* Polymarket's own final value for the window that opened at
+   openAtMs, once Polymarket marks it complete. (Kalshi publishes
+   no equivalent single final value — its windows chain through
+   the next strike instead; see scoreCycle.) */
+async function marketClose(sym, openAtMs){
+  if (S.preset !== "polymarket") return null;
+  const variant = PM_VARIANT[S.lenMin];
+  if (!variant) return null;
+  if (variant !== "hourly" && !PM_TWAP_COINS.includes(sym)) return null;
+  const j = await pmPrice(sym, openAtMs, variant);
+  if (j && j.completed && isFinite(+j.closePrice) && +j.closePrice > 0) return +j.closePrice;
+  return null;
+}
+/* Apply the market target for the CURRENT cycle's open as the line.
+   Runs after the synchronous Coinbase strike so the card never
+   waits on the network; a hand-set line (lineMoved) is never
+   overridden mid-cycle. Retries briefly — a brand-new window's
+   reading can lag the boundary by a few seconds. */
+async function applyMarketStrike(sym){
+  if (!marketActive() || !S.cycle.active) return false;
+  const cs = coinState(sym);
+  const openAt = cycleOpenAt();
+  for (let i = 0; i < 4; i++){
+    if (!S.cycle.active || cycleOpenAt() !== openAt) return false;
+    const t = await marketTarget(sym, openAt);
+    if (t){
+      if (cs.lineMoved) return false;
+      cs._lastLine = t.price;      // the market roll is not a user line move
+      cs.lineSrc = t.src;
+      setLine(sym, t.price);
+      cs.lineFromStart = false;
+      return true;
+    }
+    if (i < 3) await new Promise(r => setTimeout(r, 3000));
+  }
+  if (S.cycle.active && cycleOpenAt() === openAt && !cs.lineMoved){
+    cs.lineSrc = S.preset === "polymarket"
+      ? "Coinbase open (no Polymarket target for this coin/window)"
+      : "Coinbase open (no Kalshi target for this coin/window)";
+    updateLineUI(sym);
+  }
+  return false;
+}
 
 /* ---------- cards ---------- */
 function addCard(sym){
@@ -980,7 +1089,8 @@ function updateLineUI(sym){
   if (!cs.dragging) cs.els.slider.value = clamp(off, -10, 10);
   cs.els.slider.classList.toggle("pinned", pinned);
   cs.els.sval.innerHTML = 'offset <span class="off">' + fmtOff(off) + "</span> · line " + fmtPrice(cs.line) +
-    (pinned ? " (past slider range)" : "");
+    (pinned ? " (past slider range)" : "") +
+    (cs.lineSrc ? ' · <span class="lsrc">' + cs.lineSrc + "</span>" : "");
   cs.els.lmoved.hidden = !cs.lineMoved;
   if (cs.lineMoved) cs.els.lmoved.textContent = "Line moved mid-cycle — the live view follows your new line, but grading stays on the call and line locked at the open.";
   renderReadouts(sym);
@@ -999,6 +1109,7 @@ function noteLineChange(sym){
   const cs = coinState(sym);
   if (!S.cycle.active || cs.lineMoved) return;
   cs.lineMoved = true;
+  cs.lineSrc = "your line (this cycle only)";   // WEB12: a hand-set line replaces the market target until the roll
   if (cs.lastPred && cs.price){
     const T = Math.max(1, (S.cycle.closeAt - Date.now()) / 1000);
     const sigT = liveSigma(sym) * Math.sqrt(T / 3600);
@@ -1112,6 +1223,9 @@ async function loadCoin(sym){
     if (!(S.cycle.active && applyOpenStrike(sym)) && !cs.lineSet && cs.closesH.length)
       setLine(sym, cs.closesH[cs.closesH.length - 1]);
   }
+  // WEB12: if a market preset is active, the market's own target
+  // for this window supersedes the Coinbase-open strike.
+  applyMarketStrike(sym);
   computeAnalysis(sym);
 }
 function computeFeatures(sym){
@@ -2550,8 +2664,11 @@ function startCycle(){
     if (!applyOpenStrike(sym) && !cs.lineSet && cs.price){ setLine(sym, cs.price); cs.lineFromStart = true; }
     predict(sym);
   });
+  // WEB12: replace the Coinbase-open placeholder with the chosen
+  // market's actual target for this window, as soon as it answers.
+  if (marketActive()) S.selected.forEach(sym => applyMarketStrike(sym));
   $("#cycleStatus").textContent = S.preset !== "custom"
-    ? "Cycle running — mimicking " + PRESETS[S.preset].name + " structure: " + cycleWinLabel() + "s, strike = the price at the window open (line roll on). Each coin's call locks at the open (shown on its card) — only the locked call is graded; the live call just tracks."
+    ? "Cycle running — live-mirroring " + PRESETS[S.preset].name + ": " + cycleWinLabel() + "s. Each coin's line is " + PRESETS[S.preset].name + "'s actual target for the window, pulled from its feed at the open — the source is named on each card. Each coin's call locks at the open (shown on its card) — only the locked call is graded; the live call just tracks."
     : "Cycle running — " + S.lenMin + "m perpetuals, aligned to the wall clock. Each coin's line starts at the previous close's price (line roll on). Each coin's call locks at the open (shown on its card) — only the locked call is graded; the live call just tracks.";
 }
 function stopCycle(){
@@ -2574,8 +2691,33 @@ async function scoreCycle(){
   const L = S.lenMin * 60000;
   for (const sym of S.selected.slice()){
     const cs = coinState(sym);
-    const t = await fetchJSON(CB + "/products/" + sym + "-USD/ticker");
-    const final = t && isFinite(+t.price) ? +t.price : cs.price;
+    // WEB12: under a market preset, the closing value AND the next
+    // window's line come from the chosen market's own feed. Its
+    // final reading can lag the boundary by a few seconds, so
+    // retry briefly. The chain is exact by construction: the next
+    // window's target is the same boundary reading that settles
+    // this window (Polymarket's next price to beat = this window's
+    // final TWAP; Kalshi's next strike = the CF Benchmarks average
+    // that settles this window) — so the next target doubles as
+    // the final when the market's own final isn't posted yet.
+    let final = null;
+    cs.nextTarget = null;
+    if (marketActive()){
+      const openAt = S.cycle.closeAt - L;
+      for (let i = 0; i < 3 && (final == null || cs.nextTarget == null); i++){
+        if (cs.nextTarget == null) cs.nextTarget = await marketTarget(sym, S.cycle.closeAt);
+        if (final == null){
+          final = await marketClose(sym, openAt);
+          if (final == null && cs.nextTarget) final = cs.nextTarget.price;
+        }
+        if ((final == null || cs.nextTarget == null) && i < 2)
+          await new Promise(r => setTimeout(r, 3000));
+      }
+    }
+    if (final == null){
+      const t = await fetchJSON(CB + "/products/" + sym + "-USD/ticker");
+      final = t && isFinite(+t.price) ? +t.price : cs.price;
+    }
     if (final != null) cs.rollClose = final;   // WEB11 (A): next cycle's strike
     if (final == null || !cs.line) continue;
     cs.price = final;
@@ -2629,8 +2771,15 @@ async function scoreCycle(){
     // a pinned absolute line at the close). A hand-set line
     // governed only the cycle that just ended. Pads targeting
     // this coin show the rolled line as their entry.
-    if (c.rollClose != null){
-      const rolled = c.rollClose; c.rollClose = null;
+    if (c.rollClose != null || c.nextTarget){
+      // WEB12: when the chosen market published the next window's
+      // target, that target IS the new line — not the close we
+      // happened to sample. Otherwise the line rolls to the close.
+      const rolled = c.nextTarget ? c.nextTarget.price : c.rollClose;
+      c.rollClose = null;
+      if (c.nextTarget){ c.lineSrc = c.nextTarget.src; c.nextTarget = null; }
+      else if (marketActive()) c.lineSrc = "Coinbase close (market target unavailable)";
+      else c.lineSrc = null;
       c._lastLine = rolled;                 // not a user line move
       setLine(sym, rolled);
       S.selected.forEach(o => {
@@ -2697,9 +2846,29 @@ $("#stopBtn").addEventListener("click", stopCycle);
 async function priceTick(){
   for (const sym of S.selected.slice()){
     const cs = coinState(sym);
-    const t = await fetchJSON(CB + "/products/" + sym + "-USD/ticker");
-    if (t && isFinite(+t.price)){
-      cs.price = +t.price;
+    // WEB12: under the Polymarket preset the live price comes from
+    // Polymarket's own feed (its hourly price pipe, refreshed about
+    // every 10s per coin) instead of Coinbase — the same feed the
+    // targets come from. Kalshi's settlement feed (CF Benchmarks)
+    // is not public, so Kalshi mode keeps the Coinbase live price
+    // and mirrors the target only. Any feed miss falls back to the
+    // Coinbase ticker for that tick.
+    let tickPrice = null;
+    if (S.preset === "polymarket"){
+      if (Date.now() - (cs.mktPriceAt || 0) >= 10000){
+        const j = await pmPrice(sym, Math.floor(Date.now() / 3600000) * 3600000, "hourly");
+        if (j && isFinite(+j.closePrice) && +j.closePrice > 0){
+          cs.mktPrice = +j.closePrice; cs.mktPriceAt = Date.now();
+        }
+      }
+      if (cs.mktPrice && Date.now() - cs.mktPriceAt < 30000) tickPrice = cs.mktPrice;
+    }
+    if (tickPrice == null){
+      const t = await fetchJSON(CB + "/products/" + sym + "-USD/ticker");
+      if (t && isFinite(+t.price)) tickPrice = +t.price;
+    }
+    if (tickPrice != null){
+      cs.price = tickPrice;
       cs.ticks.push({t: Date.now(), p: cs.price});
       if (cs.ticks.length > 3000) cs.ticks.splice(0, cs.ticks.length - 3000);
       if (cs.fcSnap){
