@@ -224,6 +224,8 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
 @media (max-width:640px){.cardpad{flex-basis:168px;padding-left:10px}.cardrow{gap:10px}}
 .cpad-sel{width:100%;background:#0c0c18;border:1px solid var(--line);color:var(--txt);
   border-radius:10px;padding:9px 11px;font-size:15px;margin-top:6px}
+#presetSel{width:100%;background:#0c0c18;border:1px solid var(--line);color:var(--txt);
+  border-radius:10px;padding:9px 11px;font-size:15px;margin-top:6px}
 .cpad-live{margin-top:6px}
 .cpad-dispwrap{margin-top:10px;border:1px solid var(--line);border-radius:14px;background:#0c0c18;padding:10px 12px}
 .cpad-disp{font-size:34px;font-weight:800;letter-spacing:.01em;font-variant-numeric:tabular-nums;line-height:1.1;color:var(--gold2)}
@@ -258,17 +260,18 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
   <div class="drawerhead"><span>Setup</span><button class="dclose" type="button" data-close aria-label="Close setup">✕</button></div>
   <section class="card" id="setupCard">
     <h2>Setup</h2>
+    <div class="lbl">Mimic a market</div>
+    <select id="presetSel" aria-label="Mimic a market">
+      <option value="custom">None / Custom</option>
+      <option value="polymarket">Polymarket</option>
+      <option value="kalshi">Kalshi</option>
+    </select>
+    <div class="note" id="presetNote"></div>
     <div class="lbl">Length of perpetuals</div>
-    <div class="chips" id="lenChips">
-      <button class="chip" data-min="1">1m</button>
-      <button class="chip" data-min="5">5m</button>
-      <button class="chip on" data-min="15">15m</button>
-      <button class="chip" data-min="30">30m</button>
-      <button class="chip" data-min="60">1h</button>
-    </div>
+    <div class="chips" id="lenChips"></div>
     <div class="row" style="margin-top:10px">
       <label class="note" for="lenCustom">Custom minutes</label>
-      <input type="number" id="lenCustom" min="1" max="240" step="1" placeholder="15">
+      <input type="number" id="lenCustom" min="1" max="1440" step="1" placeholder="15">
     </div>
     <div class="lbl">Which cryptos to watch (up to 6)</div>
     <div class="coins" id="coinGrid"></div>
@@ -375,6 +378,7 @@ const AUTH = "/Market-Tracker";
    contribution queue. */
 const LS_SEL = "ph.sel.v1", LS_LEN = "ph.len.v1";
 const LS_SIDE = "ph.side.v1";
+const LS_PRESET = "ph.preset.v1";   // WEB11: market-mimic preset (display pref only)
 let SIDES = {};
 try { SIDES = JSON.parse(localStorage.getItem(LS_SIDE) || "{}") || {}; } catch (e) { SIDES = {}; }
 if (!SIDES || typeof SIDES !== "object" || Array.isArray(SIDES)) SIDES = {};
@@ -431,6 +435,8 @@ function lsSet(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch 
 
 const S = {
   lenMin: lsGet(LS_LEN, 15),
+  preset: (() => { const p = lsGet(LS_PRESET, "custom");
+    return ["custom", "polymarket", "kalshi"].includes(p) ? p : "custom"; })(),
   selected: [],
   coins: {},
   cycle: {active: false, closeAt: 0},
@@ -459,6 +465,9 @@ function coinState(sym){
     flips: 0, dispSide: null, dispP: null, dwellSide: null, dwellCount: 0, dragging: false,
     zoom: lsGet(LS_ZOOM, {})[sym] || "live",
     pad: null,   // WEB10: this card's number-pad state {target, text} — display only
+    t1: null, tH: null,        // WEB11: start time (ms) of the first stored 1m / 1h candle
+    rollClose: null,           // WEB11: the close price of the cycle being scored (line-roll source)
+    lineFromStart: false,      // WEB11: line was the startCycle price fallback, not a strike/user line
     // WEB9 addendum (Shane 2026-10-28): the forecast section ALWAYS
     // starts collapsed — a stored ph.fc30 from an earlier session
     // must not re-expand it on load (that was burning data on
@@ -482,10 +491,11 @@ function coinState(sym){
    mode). "snap to price" pins the line at the current live price. */
 function setLineFromHeader(sym, raw){
   const v = parseFloat(raw);
-  if (isFinite(v) && v > 0) setLine(sym, v);
+  if (isFinite(v) && v > 0){ coinState(sym).lineFromStart = false; setLine(sym, v); }
 }
 function snapLineToPrice(sym){
   const cs = coinState(sym);
+  cs.lineFromStart = false;
   if (cs.price) setLine(sym, cs.price);
 }
 function setDetails(sym, open){
@@ -568,8 +578,51 @@ function toggleCoin(sym, on, box){
   else { removeCard(sym); }
   syncAllPadSelects();
 }
+/* ---------- WEB11: market-mimic presets (Shane 2026-10-28) ----------
+   The Setup drawer's "Mimic a market" selector tailors the app's
+   DEFAULTS to mirror another market's up/down structure — its
+   windows and its strike-at-open rule. It is structure only: the
+   app never connects to that market, never uses its prices, and
+   the label in the UI says so. The line roll (each cycle opens at
+   the previous cycle's close) is the global default for EVERY
+   preset, Custom included. */
+const PRESETS = {
+  custom: {name: null, lens: [1, 5, 15, 30, 60], def: 15,
+    note: "Your own windows and lines. The line roll still applies: every cycle opens with its line at the previous cycle's closing price, and a line you set by hand governs only the cycle in progress."},
+  polymarket: {name: "Polymarket", lens: [5, 15, 60, 240], def: 15,
+    note: "Mirrors Polymarket's up/down structure — 5m / 15m / 1h / 4h windows, strike set at the window's opening price. Structure only: this does not connect to Polymarket, use its prices, or place anything there."},
+  kalshi: {name: "Kalshi", lens: [60, 1440], def: 60,
+    note: "Mirrors Kalshi's hourly / daily structure — 1h and 24h (daily) periods, strike set at the period's opening price. Structure only: this does not connect to Kalshi, use its prices, or place anything there."},
+};
+function lenLabel(min){ return min === 1440 ? "24h (daily)" : min >= 60 ? (min / 60) + "h" : min + "m"; }
+function cycleWinLabel(){
+  const p = PRESETS[S.preset];
+  const base = S.lenMin === 1440 ? "daily" : lenLabel(S.lenMin);
+  return (p && p.name ? p.name + " " : "") + base + (S.lenMin >= 1440 ? " period" : " window");
+}
+function buildLenChips(){
+  const wrap = $("#lenChips");
+  if (!wrap) return;
+  wrap.innerHTML = PRESETS[S.preset].lens.map(m =>
+    '<button class="chip' + (m === S.lenMin ? " on" : "") + '" data-min="' + m + '">' + lenLabel(m) + "</button>").join("");
+}
+/* Applying a preset: persist it, rebuild the length chips to the
+   market's windows, and adopt its default length. A length change
+   restarts the cycle on the new window (the standing setLen
+   behavior — the old window no longer exists); when the length is
+   unchanged, running lines are NOT touched — they re-base at the
+   next rollover like everything else. */
+function applyPreset(name, skipLen){
+  if (!PRESETS[name]) name = "custom";
+  S.preset = name;
+  lsSet(LS_PRESET, name);
+  const sel = $("#presetSel"); if (sel) sel.value = name;
+  const note = $("#presetNote"); if (note) note.textContent = PRESETS[name].note;
+  buildLenChips();
+  if (!skipLen && PRESETS[name].def !== S.lenMin) setLen(PRESETS[name].def);
+}
 function setLen(min, fromCustom){
-  S.lenMin = clamp(Math.round(min) || 15, 1, 240);
+  S.lenMin = clamp(Math.round(min) || 15, 1, 1440);
   lsSet(LS_LEN, S.lenMin);
   document.querySelectorAll("#lenChips .chip").forEach(c => c.classList.toggle("on", +c.dataset.min === S.lenMin));
   if (!fromCustom) $("#lenCustom").value = "";
@@ -579,8 +632,14 @@ function setLen(min, fromCustom){
   });
   if (S.cycle.active) startCycle();
 }
-document.querySelectorAll("#lenChips .chip").forEach(c => c.addEventListener("click", () => setLen(+c.dataset.min, false)));
+{ const lc = $("#lenChips"); if (lc) lc.addEventListener("click", ev => {
+    const b = ev.target && ev.target.closest ? ev.target.closest(".chip") : null;
+    if (b && b.dataset.min) setLen(+b.dataset.min, false);
+  }); }
 $("#lenCustom").addEventListener("change", ev => { const v = parseInt(ev.target.value, 10); if (v >= 1) setLen(v, true); });
+buildLenChips();
+applyPreset(S.preset, true);
+{ const ps = $("#presetSel"); if (ps) ps.addEventListener("change", ev => applyPreset(ev.target.value)); }
 
 /* ---------- cards ---------- */
 function addCard(sym){
@@ -798,8 +857,43 @@ function setLineOffset(sym, off){
   // Slider path: the line becomes an offset that rides the live price.
   const cs = coinState(sym);
   if (!cs.price) return;
+  cs.lineFromStart = false;
   cs.lineMode = "off"; cs.lineOff = off;
   setLine(sym, cs.price * (1 + off / 100), true);
+}
+
+/* ---------- WEB11 (A): line roll — the open strike ----------
+   Every cycle, every coin: the target line BEGINS at the market
+   price at the close of the previous cycle — i.e. the price at
+   this cycle's opening boundary (the boundaries are the same
+   epoch-aligned ones the server grid uses: floor(now/L)*L). A
+   line set by hand (pad, slider, snap) governs only the cycle in
+   progress; scoreCycle re-bases at rollover. For a fresh watch
+   mid-cycle, the strike is recovered from the stored candles:
+   the close of the candle ENDING at the opening boundary (1m
+   series first, hourly as the deep fallback for long windows). */
+function cycleOpenAt(){ return S.cycle.closeAt - S.lenMin * 60000; }
+function strikeFromCandles(sym, B){
+  const cs = coinState(sym);
+  if (cs.t1 != null && cs.closes1 && cs.closes1.length){
+    const idx = Math.round((B - 60000 - cs.t1) / 60000);
+    if (idx >= 0 && idx < cs.closes1.length) return cs.closes1[idx];
+  }
+  if (cs.tH != null && cs.closesH && cs.closesH.length){
+    const idx = Math.round((B - 3600000 - cs.tH) / 3600000);
+    if (idx >= 0 && idx < cs.closesH.length) return cs.closesH[idx];
+  }
+  return null;
+}
+function applyOpenStrike(sym){
+  const cs = coinState(sym);
+  if (!S.cycle.active) return false;
+  const strike = strikeFromCandles(sym, cycleOpenAt());
+  if (!(strike > 0)) return false;
+  cs._lastLine = strike;      // the roll is not a user line move
+  setLine(sym, strike);
+  cs.lineFromStart = false;
+  return true;
 }
 
 /* ---------- data + features ---------- */
@@ -812,6 +906,7 @@ async function loadCoin(sym){
   ]);
   if (Array.isArray(h) && h.length > 30){
     const rows = h.slice().reverse(); // ascending
+    cs.tH = rows[0][0] * 1000;
     cs.closesH = rows.map(r => r[4]);
     cs.volsH = rows.map(r => r[5]);
     computeFeatures(sym);
@@ -821,7 +916,6 @@ async function loadCoin(sym){
     if (cs.els.regime) cs.els.regime.textContent =
       "6-mo regime: " + (M.slope >= 0 ? "upward" : "downward") + " drift " + fmtPct(M.slope, true) + "/day · range position " +
       Math.round(M.pos * 100) + "% · base model held-out record " + (M.bt * 100).toFixed(1) + "% (n=" + M.btN + ")";
-    if (!cs.lineSet && cs.closesH.length) setLine(sym, cs.closesH[cs.closesH.length - 1]);
   } else if (cs.els.regime) {
     cs.els.regime.innerHTML = '<span class="err">Candle feed hiccup — retrying on the next refresh.</span>';
   }
@@ -830,7 +924,16 @@ async function loadCoin(sym){
     drawSpark(sym);
   }
   if (Array.isArray(m1) && m1.length > 30){
-    cs.closes1 = m1.slice().reverse().map(r => r[4]);
+    const rows = m1.slice().reverse(); // ascending
+    cs.t1 = rows[0][0] * 1000;
+    cs.closes1 = rows.map(r => r[4]);
+  }
+  // WEB11 (A): line init. Mid-cycle fresh watch -> the strike is
+  // the price at the current cycle's opening boundary; otherwise
+  // the standing default (last hourly close) until Start re-bases.
+  if (!cs.lineSet || cs.lineFromStart){
+    if (!(S.cycle.active && applyOpenStrike(sym)) && !cs.lineSet && cs.closesH.length)
+      setLine(sym, cs.closesH[cs.closesH.length - 1]);
   }
   computeAnalysis(sym);
 }
@@ -2119,7 +2222,8 @@ function predict(sym){
     cs.els.call.textContent = "NO EDGE"; cs.els.call.className = "call noedge";
     cs.els.conf.textContent = "Probability sits at " + (p * 100).toFixed(0) + "% — inside this coin's ±" + Math.round(band * 100) +
       "pt no-call band around 50" + (band > BAND_BASE + 0.001 ? " (widened in the global tuning: the system's recent calls kept flip-flopping)" : "") +
-      ". The model won't dress up a coin flip.";
+      ". The model won't dress up a coin flip." +
+      (S.preset !== "custom" ? " " + cycleWinLabel() + " closes in " + fmtClock(S.cycle.closeAt - Date.now()) + "." : "");
     cs.els.pbar.style.width = "0%";
   } else {
     const over = side === "over", conf = over ? p : 1 - p;
@@ -2127,7 +2231,8 @@ function predict(sym){
     cs.lastCall = {side: side, p: p};
     cs.els.call.textContent = (over ? "OVER " : "UNDER ") + (conf * 100).toFixed(0) + "%";
     cs.els.call.className = "call " + (over ? "over" : "under");
-    cs.els.conf.textContent = "Chance the close lands over your line: " + (p * 100).toFixed(1) + "% · closes in " + fmtClock(S.cycle.closeAt - Date.now());
+    cs.els.conf.textContent = "Chance the close lands over your line: " + (p * 100).toFixed(1) + "% · closes in " + fmtClock(S.cycle.closeAt - Date.now()) +
+      (S.preset !== "custom" ? " · " + cycleWinLabel() : "");
     cs.els.pbar.style.width = (conf * 100).toFixed(0) + "%";
   }
   if (side) cs.dispSide = side;
@@ -2177,8 +2282,18 @@ function startCycle(){
   S.cycle.closeAt = Math.floor(now / L) * L + L;
   S.cycle.active = true;
   $("#startBtn").disabled = true; $("#stopBtn").disabled = false;
-  S.selected.forEach(sym => { const cs = coinState(sym); if (!cs.lineSet && cs.price) setLine(sym, cs.price); predict(sym); });
-  $("#cycleStatus").textContent = "Cycle running — " + S.lenMin + "m perpetuals, aligned to the wall clock. Each coin's call locks at the open (shown on its card) — only the locked call is graded; the live call just tracks.";
+  // WEB11 (A): every coin's line begins at the price at this
+  // window's opening boundary (the previous window's close). If
+  // the candles can't reach the boundary yet, fall back to the
+  // live price and let loadCoin correct it to the strike.
+  S.selected.forEach(sym => {
+    const cs = coinState(sym);
+    if (!applyOpenStrike(sym) && !cs.lineSet && cs.price){ setLine(sym, cs.price); cs.lineFromStart = true; }
+    predict(sym);
+  });
+  $("#cycleStatus").textContent = S.preset !== "custom"
+    ? "Cycle running — mimicking " + PRESETS[S.preset].name + " structure: " + cycleWinLabel() + "s, strike = the price at the window open (line roll on). Each coin's call locks at the open (shown on its card) — only the locked call is graded; the live call just tracks."
+    : "Cycle running — " + S.lenMin + "m perpetuals, aligned to the wall clock. Each coin's line starts at the previous close's price (line roll on). Each coin's call locks at the open (shown on its card) — only the locked call is graded; the live call just tracks.";
 }
 function stopCycle(){
   S.cycle.active = false;
@@ -2202,6 +2317,7 @@ async function scoreCycle(){
     const cs = coinState(sym);
     const t = await fetchJSON(CB + "/products/" + sym + "-USD/ticker");
     const final = t && isFinite(+t.price) ? +t.price : cs.price;
+    if (final != null) cs.rollClose = final;   // WEB11 (A): next cycle's strike
     if (final == null || !cs.line) continue;
     cs.price = final;
     // SCORING LOCK: grade ONLY the prediction locked at this cycle's
@@ -2249,6 +2365,23 @@ async function scoreCycle(){
     c.lastCall = null; c.lastPred = null; c.snap = null;
     c.flips = 0; c.lineMoved = false;                    // fresh cycle record
     c.dispSide = null; c.dispP = null; c.dwellSide = null; c.dwellCount = 0;
+    // WEB11 (A) LINE ROLL: the new cycle's line re-bases to the
+    // price the just-ended cycle closed at (offset back to 0.0% —
+    // a pinned absolute line at the close). A hand-set line
+    // governed only the cycle that just ended. Pads targeting
+    // this coin show the rolled line as their entry.
+    if (c.rollClose != null){
+      const rolled = c.rollClose; c.rollClose = null;
+      c._lastLine = rolled;                 // not a user line move
+      setLine(sym, rolled);
+      S.selected.forEach(o => {
+        const oc = coinState(o);
+        if (oc.pad && oc.pad.target === sym){
+          oc.pad.text = String(Math.round(rolled * 100) / 100);
+          if (oc.els.padDisp) padRender(o);
+        }
+      });
+    }
     updateLineUI(sym);
     predict(sym);
   });
@@ -2782,6 +2915,7 @@ async function cardPadEnter(sym){
   /* WEB10 (Shane's sketch): ENTER APPLIES the line to the target
      coin's card — pinned absolute, same as the header Line field
      (the old standalone pad only read against the typed line). */
+  tcs.lineFromStart = false;
   if (tcs.line !== line || !tcs.lineSet) setLine(tsym, line);
   const band = effBand(tsym);
   const rows = PAD_HZ.map(h => {
