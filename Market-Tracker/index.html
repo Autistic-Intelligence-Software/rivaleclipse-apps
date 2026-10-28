@@ -276,6 +276,28 @@ footer{max-width:1800px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
   .cpad-disp{font-size:38px}
 }
 @media (min-width:1750px){.cardpad{flex-basis:240px}}
+/* ---------- WEB13: "Simplified" explainer pop-outs (Shane
+   2026-10-28) — one small button in the top-pick banner and in
+   each card's advisory / chart / trend sections; a single shared
+   pop-out explains the section in plain words and closes on any
+   click outside it. z-index 57: above the cards, below the
+   drawers (60) and their backdrop (58). ---------- */
+.simplrow{display:flex;justify-content:flex-end;margin-top:6px}
+.simplrow[hidden]{display:none}
+.simplbtn{background:none;border:1px solid var(--line);border-radius:999px;color:var(--gold2);
+  cursor:pointer;font-size:11px;font-weight:700;letter-spacing:.07em;padding:2px 10px;
+  text-transform:uppercase}
+.simplbtn:hover{border-color:var(--gold)}
+.simplbtn.on{border-color:var(--gold);background:#1c1808;color:var(--gold2)}
+#simplPop{position:absolute;z-index:57;width:min(400px,calc(100vw - 20px));
+  background:#101020;border:1px solid var(--gold);border-radius:14px;padding:13px 28px 13px 15px;
+  box-shadow:0 14px 44px rgba(0,0,0,.6);font-size:14.5px;line-height:1.6;color:var(--txt)}
+#simplPop[hidden]{display:none}
+#simplPop .simpl-h{font-size:12px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--gold2);font-weight:800;margin-bottom:5px}
+#simplPop .simpl-x{position:absolute;top:7px;right:9px;background:none;border:none;
+  color:var(--mut);font-size:14px;cursor:pointer;padding:2px 5px;line-height:1}
+#simplPop .simpl-x:hover{color:var(--txt)}
 </style>
 </head>
 <body>
@@ -354,6 +376,7 @@ footer{max-width:1800px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
         <span class="note">Live refreshes near-instantly and uses more data.</span>
       </div>
       <div id="advStrip" class="advstrip" hidden></div>
+      <div class="simplrow" id="advSimplRow" hidden><button type="button" class="simplbtn" data-simpl="banner">Simplified</button></div>
       <div id="cards"></div>
     </section>
   </div>
@@ -585,6 +608,90 @@ function applyFC30(sym){
   if (cs.fc30on) renderFC30Stat(sym);
 }
 
+/* ---------- WEB13: "Simplified" explainers (Shane 2026-10-28) ----
+   One shared pop-out, four plain-language texts. Buttons: the
+   top-pick banner (static, beside #advStrip) and, in every card,
+   the advisory block, the price chart and the trend block. Only
+   one pop-out ever exists; opening another section swaps it, and
+   any click outside it (or Escape) closes it. The pop-out is
+   anchored under its section — right-aligned on desktop, a
+   full-width panel under the section on narrow screens. */
+const SIMPL_TEXT = {
+  banner: { h: "Top pick banner — in simple terms",
+    t: "This banner looks at every coin the system tracks and points to the one that seems easiest to predict right now. It names the side it leans toward — OVER means it expects the price to finish above the target line, UNDER means below — and the percentage is how often the system has been right on calls like this before. It's a hint for where to look first, not a promise." },
+  chart: { h: "Price chart — in simple terms",
+    t: "This chart shows the coin's price moving in real time. The buttons (Live, 5M, 15M, 30M, 1H, 3H, 6H) change how much of the recent past you see. The dashed line is your target line — the whole game is whether the price ends above or below it when the cycle closes. The strip underneath is the system's live guess, updating as new prices come in." },
+  trend: { h: "Trend report — in simple terms",
+    t: "This block describes how the coin has been behaving: drifting up, drifting down, or hugging the line. It compares the size of its rises to its falls and tells you what the system expects for the end of the current cycle. If it says 'No cycle running,' nothing is being scored yet — set your line and press Start." },
+  advisory: { h: "The system's opinion — in simple terms",
+    t: "This is the system's honest opinion on this coin right now. The badge says how predictable it looks (a coin sitting flat can be a bad bet even when nothing is 'wrong'). The suggested side is the side the system would pick, and the percentage is its real track record on this coin so far — its actual scored history, never a guarantee." }
+};
+const SIMPL = { pop: null, key: null, btn: null };
+function closeSimpl(){
+  if (SIMPL.pop) SIMPL.pop.hidden = true;
+  if (SIMPL.btn && SIMPL.btn.classList) SIMPL.btn.classList.remove("on");
+  SIMPL.key = null; SIMPL.btn = null;
+}
+function simplSection(btn, key){
+  if (key === "banner") return $("#advStrip") || btn;
+  const root = btn.closest ? btn.closest(".wcard") : null;
+  if (!root) return btn;
+  if (key === "advisory") return root.querySelector(".advwhy") || btn;
+  if (key === "chart"){
+    const ch = root.querySelector(".charts");
+    return (ch && !ch.hidden) ? ch : (root.querySelector(".zoomrow") || btn);
+  }
+  if (key === "trend") return root.querySelector(".pred") || btn;
+  return btn;
+}
+function openSimpl(btn){
+  const key = btn && btn.dataset ? btn.dataset.simpl : null;
+  const info = key ? SIMPL_TEXT[key] : null;
+  if (!info) return;
+  if (SIMPL.key === key && SIMPL.btn === btn){ closeSimpl(); return; }
+  closeSimpl();
+  if (!SIMPL.pop){
+    const pop = document.createElement("div");
+    pop.id = "simplPop"; pop.hidden = true;
+    pop.innerHTML = '<div class="simpl-h"></div><button type="button" class="simpl-x" aria-label="Close">✕</button><div class="simpl-t"></div>';
+    const x = pop.querySelector(".simpl-x");
+    if (x && x.addEventListener) x.addEventListener("click", closeSimpl);
+    document.body.appendChild(pop);
+    SIMPL.pop = pop;
+  }
+  const pop = SIMPL.pop;
+  pop.querySelector(".simpl-h").textContent = info.h;
+  pop.querySelector(".simpl-t").textContent = info.t;
+  const sec = simplSection(btn, key) || btn;
+  const r = sec.getBoundingClientRect ? sec.getBoundingClientRect() : { bottom: 0, right: 0 };
+  const vw = window.innerWidth || 1024, sx = window.scrollX || 0, sy = window.scrollY || 0;
+  pop.hidden = false;
+  pop.style.top = (r.bottom + sy + 6) + "px";
+  if (vw < 640){
+    pop.style.left = (sx + 10) + "px";
+  } else {
+    const w = Math.min(400, vw - 20);
+    let left = r.right + sx - w;
+    left = Math.max(sx + 8, Math.min(left, sx + vw - w - 8));
+    pop.style.left = left + "px";
+  }
+  SIMPL.key = key; SIMPL.btn = btn;
+  if (btn.classList) btn.classList.add("on");
+}
+document.addEventListener("click", ev => {
+  const b = ev.target && ev.target.closest ? ev.target.closest(".simplbtn") : null;
+  if (b) openSimpl(b);
+});
+document.addEventListener("pointerdown", ev => {
+  if (!SIMPL.pop || SIMPL.pop.hidden) return;
+  const t = ev.target;
+  if (!t) return;
+  if (t === SIMPL.pop || (SIMPL.pop.contains && SIMPL.pop.contains(t))) return;
+  if (t.closest && t.closest(".simplbtn")) return;
+  closeSimpl();
+});
+document.addEventListener("keydown", ev => { if (ev.key === "Escape") closeSimpl(); });
+
 /* ---------- setup UI ---------- */
 function buildCoinGrid(){
   const grid = $("#coinGrid");
@@ -685,13 +792,15 @@ function addCard(sym){
   el.innerHTML =
     '<div class="cardrow"><div class="cardmain">' +
     '<div class="wtop"><h3>' + sym + '</h3><span class="chg">24h —</span></div>' +
+    '<div class="simplrow"><button type="button" class="simplbtn" data-simpl="advisory">Simplified</button></div>' +
     '<div class="advrow"><span class="advbadge" hidden></span><span class="sidechip" hidden></span></div>' +
     '<div class="advwhy"></div>' +
     '<div class="price">—</div>' +
     '<div class="readouts"><span class="ro">Line $<input class="ro-line-in" type="number" step="any" inputmode="decimal" placeholder="—" title="Type the perpetual contract price — sets your line exactly"></span><span class="ro">Current <b class="ro-cur">—</b></span><span class="ro-dist">—</span></div>' +
+    '<div class="simplrow"><button type="button" class="simplbtn" data-simpl="chart">Simplified</button></div>' +
     '<div class="livewrap"><canvas class="spark" width="1040" height="300"></canvas><div class="pill" hidden></div></div>' +
     '<div class="zoomrow"><div class="zoomseg">' +
-    '<button type="button" data-zoom="live">Live</button><button type="button" data-zoom="5">5M</button><button type="button" data-zoom="15">15M</button><button type="button" data-zoom="30">30M</button>' +
+    '<button type="button" data-zoom="live">Live</button><button type="button" data-zoom="5">5M</button><button type="button" data-zoom="15">15M</button><button type="button" data-zoom="30">30M</button><button type="button" data-zoom="60">1H</button><button type="button" data-zoom="180">3H</button><button type="button" data-zoom="360">6H</button>' +
     '</div><div class="past"></div></div>' +
     '<div class="charts single" hidden><div><div class="chartlbl">Estimate — live prediction feed</div>' +
     '<div class="zoomrow"><div class="zoomseg estlseg"><button type="button" data-estl="1">1 Min</button><button type="button" data-estl="5">5 Min</button><button type="button" data-estl="10">10 Min</button></div></div>' +
@@ -700,6 +809,7 @@ function addCard(sym){
     '<div class="zoomrow"><div class="zoomseg fczoomseg"><button type="button" data-fczoom="5">5 Min</button><button type="button" data-fczoom="10">10 Min</button><button type="button" data-fczoom="15">15 Min</button><button type="button" data-fczoom="30">30 Min</button></div><span class="note fc30age"></span></div>' +
     '<div class="fc30stat"></div></div></div>' +
     '<div class="row" style="margin-top:6px"><button class="fc30btn snap" type="button">Forecast section: off</button></div>' +
+    '<div class="simplrow"><button type="button" class="simplbtn" data-simpl="trend">Simplified</button></div>' +
     '<div class="regime">Loading 6 months of pattern stats…</div>' +
     '<div class="trend"></div>' +
     '<div class="swline"></div>' +
@@ -1047,11 +1157,25 @@ const COIN_COLORS = {BTC: "#f7931a", ETH: "#8a9cff", SOL: "#9945ff", XRP: "#4db2
   ADA: "#4a7dd4", LINK: "#5b83e6", AVAX: "#ff6b6b", DOT: "#ff4d9d", LTC: "#a5b8d3", BCH: "#8dc351",
   NEAR: "#2ee6a8", UNI: "#ff5ca8", ATOM: "#b7bcd4", XLM: "#9d6bff", ETC: "#3ddc97", FIL: "#4da2ff",
   HBAR: "#b388ff", SUI: "#6cb8ff", PEPE: "#69c24a"};
-const ZOOM_MS = {live: 60000, "5": 300000, "15": 900000, "30": 1800000};
+const ZOOM_MS = {live: 60000, "5": 300000, "15": 900000, "30": 1800000,
+  "60": 3600000, "180": 10800000, "360": 21600000};
 function seriesForZoom(sym){
   const cs = coinState(sym), now = Date.now(), winMs = ZOOM_MS[cs.zoom] || 900000;
   const pts = [];
-  if (cs.zoom !== "live"){
+  if (cs.zoom === "360"){
+    // WEB13: the 6H lookback runs on the 15-minute closes — the
+    // 1-minute series only reaches ~5h back, so it cannot cover 6H.
+    // 24 bars over the window, ticks layered on top as usual.
+    // Already loaded by loadCoin — zooming never refetches.
+    const c15 = cs.closes15, n = c15.length;
+    if (n > 1){
+      const endT = Math.floor(now / 900000) * 900000 + 900000;
+      for (let i = 0; i < n; i++){
+        const t = endT - (n - 1 - i) * 900000;
+        if (t >= now - winMs) pts.push({t: t, p: c15[i]});
+      }
+    }
+  } else if (cs.zoom !== "live"){
     // Base layer: 1-minute candle closes (each stamped at its candle
     // end). Already loaded by loadCoin — zooming never refetches.
     const c1 = cs.closes1, n = c1.length;
@@ -2610,6 +2734,8 @@ function renderAdvisory(){
         (a.side ? " · suggested side " + a.side + " (" + (a.side_horizon_min || 30) + "m, " + Math.round((a.side_p || 0) * 100) + "%)"
                 : " · no side call (NO EDGE)");
     } else strip.hidden = true;
+    const sr = $("#advSimplRow");
+    if (sr) sr.hidden = strip.hidden;
   }
   S.selected.forEach(renderAdvCard);
   renderAlerts();
