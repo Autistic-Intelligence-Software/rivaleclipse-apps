@@ -253,11 +253,11 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
     <div class="row">
       <button class="btn primary" id="startBtn">Start cycle</button>
       <button class="btn ghost" id="stopBtn" disabled>Stop</button>
-      <a class="btn" id="apkBtn" href="perpetual-helper.apk" download title="Download the Perpetual Helper Android app (stage 1, 1.4 MB)">Download the Android app (APK) — stage-1 preview</a>
+      <a class="btn" id="apkBtn" href="perp-alerts.apk" download title="Download the Perp Alerts Android app (alerts & forecast windows, 1.4 MB)">Download the Android app (APK) — Perp Alerts & Forecasts</a>
       <button class="btn ghost" id="pipBtn">Pop out panel</button>
     </div>
     <div class="note" id="pipNote" style="margin-top:8px"></div>
-    <div class="note">The floating panel in this browser edition uses Chrome's picture-in-picture. The Android app floats over any app instead — its download button activates when the build lands.</div>
+    <div class="note">The floating panel in this browser edition uses Chrome's picture-in-picture. The Android app is Perp Alerts: it pulls the live alerts and today's best forecast windows when you open it, and receives push alerts when the system fires one.</div>
   </section>
 </aside>
 <aside class="drawer left" id="oddsDrawer" aria-label="Odds board">
@@ -2541,7 +2541,7 @@ document.addEventListener("keydown", ev => { if (ev.key === "Escape") closeDrawe
 $("#pipBtn").addEventListener("click", async () => {
   const note = $("#pipNote");
   if (!("documentPictureInPicture" in window)){
-    note.textContent = "Pop-out needs Chrome's document picture-in-picture — this browser doesn't offer it. The Android app floats over every app instead.";
+    note.textContent = "Pop-out needs Chrome's document picture-in-picture — this browser doesn't offer it. The Perp Alerts Android app carries the alerts and forecast windows instead.";
     return;
   }
   try {
