@@ -63,7 +63,7 @@ input[type=number]{background:#0c0c18;border:1px solid var(--line);color:var(--t
 #watchHead{display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;justify-content:space-between}
 #countdown{font-size:26px;font-weight:700;color:var(--gold2);font-variant-numeric:tabular-nums}
 #cycleStatus{color:var(--mut);font-size:14px}
-#cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;margin-top:6px}
+#cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(700px,100%),1fr));gap:14px;margin-top:6px}
 .wcard{background:#0c0c18;border:1px solid var(--line);border-radius:16px;padding:14px;position:relative}
 .wcard.flash-right{border-color:var(--up);box-shadow:0 0 0 1px var(--up)}
 .wcard.flash-wrong{border-color:var(--down);box-shadow:0 0 0 1px var(--down)}
@@ -203,17 +203,10 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
 #smsForm{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin-top:10px}
 #smsPhone{background:#0c0c18;border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:10px 12px;font-size:15px;min-width:210px}
 .linkbtn{background:none;border:none;color:var(--gold2);cursor:pointer;font-size:13px;text-decoration:underline;padding:0}
-.paddispwrap{margin-top:12px;border:1px solid var(--line);border-radius:14px;background:#0c0c18;padding:12px 14px}
-#padDisplay{font-size:46px;font-weight:800;letter-spacing:.01em;font-variant-numeric:tabular-nums;line-height:1.1;color:var(--gold2)}
-#padCoin{background:#0c0c18;border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:9px 11px;font-size:15px}
-.padgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:12px}
 .padbtn{border:1px solid var(--line);background:#14142a;color:var(--txt);border-radius:14px;
   min-height:62px;font-size:25px;font-weight:700;cursor:pointer}
 .padbtn:active{border-color:var(--gold);color:var(--gold2)}
 .padbtn.util{font-size:19px;color:var(--gold2)}
-.padside{flex:1 1 200px;border:1px solid var(--line);background:#0c0c18;color:var(--txt);border-radius:12px;
-  padding:14px;font-size:16px;font-weight:800;cursor:pointer}
-.padside.on{border-color:var(--gold);color:#14100a;background:linear-gradient(90deg,var(--gold2),var(--gold))}
 .posbtns{display:flex;gap:8px;margin-top:10px}
 .posbtn{flex:1;border:1px solid var(--line);background:#0c0c18;color:var(--txt);border-radius:12px;
   padding:11px 6px;font-size:14px;font-weight:800;cursor:pointer}
@@ -223,11 +216,32 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
 .posbtn.down.on{background:var(--down);border-color:var(--down);color:#17060b}
 .cardadvice{margin-top:8px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;
   background:rgba(124,92,255,.05);font-size:13.5px;line-height:1.55}
-#padOut table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
-#padOut th,#padOut td{border-bottom:1px solid var(--line);padding:6px;text-align:left}
-#padOut th{color:var(--mut);font-size:12px;letter-spacing:.1em;text-transform:uppercase}
-#padOut .up{color:var(--up);font-weight:800} #padOut .down{color:var(--down);font-weight:800}
+/* ---------- WEB10: wide two-column cards, per-card pad, scoreboard
+   collapse, advice pop-out (Shane 2026-10-28 annotated sketches) --- */
+.cardrow{display:flex;gap:14px;align-items:flex-start}
+.cardmain{flex:1 1 auto;min-width:0}
+.cardpad{flex:0 0 250px;border-left:1px solid var(--line);padding-left:14px}
+@media (max-width:640px){.cardpad{flex-basis:168px;padding-left:10px}.cardrow{gap:10px}}
+.cpad-sel{width:100%;background:#0c0c18;border:1px solid var(--line);color:var(--txt);
+  border-radius:10px;padding:9px 11px;font-size:15px;margin-top:6px}
+.cpad-live{margin-top:6px}
+.cpad-dispwrap{margin-top:10px;border:1px solid var(--line);border-radius:14px;background:#0c0c18;padding:10px 12px}
+.cpad-disp{font-size:34px;font-weight:800;letter-spacing:.01em;font-variant-numeric:tabular-nums;line-height:1.1;color:var(--gold2)}
+.cpad-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}
+.cpad-grid .padbtn{min-height:48px;font-size:20px;border-radius:12px}
+.cpad-grid .padbtn.util{font-size:16px}
+.cpad-out table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+.cpad-out th,.cpad-out td{border-bottom:1px solid var(--line);padding:5px 4px;text-align:left}
+.cpad-out th{color:var(--mut);font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+.cpad-out .up{color:var(--up);font-weight:800} .cpad-out .down{color:var(--down);font-weight:800}
 .padadvice{font-size:14.5px;line-height:1.6;margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:11px 13px;background:rgba(124,92,255,.06)}
+.cardpop{margin-top:8px}
+.cardpop[hidden]{display:none}
+.boardhead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:18px}
+.boardbtn{background:none;border:1px solid var(--line);border-radius:999px;color:var(--gold2);
+  cursor:pointer;font-size:12.5px;font-weight:700;padding:5px 14px}
+#scoreBoard[hidden]{display:none}
+
 </style>
 </head>
 <body>
@@ -306,13 +320,15 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
       </div>
       <div id="advStrip" class="advstrip" hidden></div>
       <div id="cards"></div>
-      <div class="lbl" style="margin-top:18px">System scoreboard — global</div>
+      <div class="boardhead"><span class="lbl" style="margin:0">System scoreboard — global</span><button class="boardbtn" id="scoreBtn" type="button">Scoreboard ▸</button></div>
+      <div id="scoreBoard" hidden>
       <div class="note">every visitor sees these same numbers · updated from the shared database</div>
       <div class="note" id="scoreSummary" style="margin-top:6px">loading system record…</div>
       <table id="scoreTable">
         <thead><tr><th>Coin</th><th>Scored</th><th>Calls</th><th>Hit rate</th><th>Forecast ✓</th><th>Forecast ✗</th></tr></thead>
         <tbody id="scoreBody"><tr><td colspan="6" class="note">loading system record…</td></tr></tbody>
       </table>
+      </div>
     </section>
   </div>
   <section class="card" id="forecastCard">
@@ -333,41 +349,6 @@ footer{max-width:1180px;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-
     </form>
     <div class="note" id="smsMsg" style="margin-top:7px"></div>
     <div class="note" id="smsState" style="margin-top:4px">SMS sending activates when the alert provider is connected; alerts already appear here live.</div>
-  </section>
-  <section class="card" id="padCard">
-    <h2>Line &amp; Position Pad</h2>
-    <p class="note" style="margin-top:0">Calculator-style entry: pick the crypto, tap your target line in on the big pad (or type — your hardware keyboard works while this panel is in use), tell it which side you hold with Up / Down, then hit ENTER. It runs the page's own prediction math — the same global params the watch cards run on — for your coin and your line at every standard horizon, and tells you plainly what the numbers say about your position, including what flipping or cashing out does to them. Advisory only: it never places trades, and probabilities are not guarantees.</p>
-    <div class="row" style="margin-top:10px">
-      <label class="note" for="padCoin">Crypto</label>
-      <select id="padCoin"></select>
-      <span class="note" id="padLive"></span>
-    </div>
-    <div class="paddispwrap">
-      <div class="lbl" style="margin:0">Target line</div>
-      <div id="padDisplay">$0</div>
-      <div class="note" id="padInfo"></div>
-    </div>
-    <div class="padgrid">
-      <button class="padbtn" type="button" data-pad="7">7</button>
-      <button class="padbtn" type="button" data-pad="8">8</button>
-      <button class="padbtn" type="button" data-pad="9">9</button>
-      <button class="padbtn" type="button" data-pad="4">4</button>
-      <button class="padbtn" type="button" data-pad="5">5</button>
-      <button class="padbtn" type="button" data-pad="6">6</button>
-      <button class="padbtn" type="button" data-pad="1">1</button>
-      <button class="padbtn" type="button" data-pad="2">2</button>
-      <button class="padbtn" type="button" data-pad="3">3</button>
-      <button class="padbtn" type="button" data-pad=".">.</button>
-      <button class="padbtn" type="button" data-pad="0">0</button>
-      <button class="padbtn util" type="button" data-pad="back">⌫</button>
-      <button class="padbtn util" type="button" data-pad="clear" style="grid-column:1 / -1">C — clear</button>
-    </div>
-    <div class="row" style="margin-top:12px">
-      <button class="padside" id="padUp" type="button">▲ Up — I hold OVER</button>
-      <button class="padside" id="padDown" type="button">▼ Down — I hold UNDER</button>
-    </div>
-    <button class="btn primary" id="padEnter" type="button" style="width:100%;margin-top:12px;padding:15px;font-size:17px">ENTER — run the numbers</button>
-    <div id="padOut"></div>
   </section>
 </main>
 <footer>
@@ -477,6 +458,7 @@ function coinState(sym){
     snipe: null, line: null, lineSet: false, lineMode: "abs", lineOff: 0, lineMoved: false,
     flips: 0, dispSide: null, dispP: null, dwellSide: null, dwellCount: 0, dragging: false,
     zoom: lsGet(LS_ZOOM, {})[sym] || "live",
+    pad: null,   // WEB10: this card's number-pad state {target, text} — display only
     // WEB9 addendum (Shane 2026-10-28): the forecast section ALWAYS
     // starts collapsed — a stored ph.fc30 from an earlier session
     // must not re-expand it on load (that was burning data on
@@ -584,6 +566,7 @@ function toggleCoin(sym, on, box){
   lsSet(LS_SEL, S.selected);
   if (on){ addCard(sym); loadCoin(sym); }
   else { removeCard(sym); }
+  syncAllPadSelects();
 }
 function setLen(min, fromCustom){
   S.lenMin = clamp(Math.round(min) || 15, 1, 240);
@@ -605,6 +588,7 @@ function addCard(sym){
   const el = document.createElement("article");
   el.className = "wcard"; el.id = "card-" + sym;
   el.innerHTML =
+    '<div class="cardrow"><div class="cardmain">' +
     '<div class="wtop"><h3>' + sym + '</h3><span class="chg">24h —</span></div>' +
     '<div class="advrow"><span class="advbadge" hidden></span><span class="sidechip" hidden></span></div>' +
     '<div class="advwhy"></div>' +
@@ -627,8 +611,9 @@ function addCard(sym){
     '<div class="snipe" hidden></div>' +
     '<div class="pred"><div class="call noedge">NO CYCLE RUNNING</div><div class="conf">Set your line, then press Start — every call is for the close vs your line, never for right now.</div><div class="trendread" hidden></div><div class="pbar"><div style="width:0%"></div></div></div>' +
     '<div class="posbtns"><button type="button" class="posbtn up">(+) Up — I hold OVER</button><button type="button" class="posbtn down">(-) Down — I hold UNDER</button></div>' +
-    '<div class="cardadvice" hidden></div>' +
     '<div class="lockedline" hidden></div>' +
+    '<div class="cardpop" hidden>' +
+    '<div class="cardadvice" hidden></div>' +
     '<button class="detbtn" type="button">Details ▸</button>' +
     '<div class="carddetails" hidden>' +
     '<div class="line-ctl"><label>Over / under line <span class="slider-val"></span></label>' +
@@ -641,7 +626,35 @@ function addCard(sym){
     '<div class="fcrec"></div>' +
     '<div class="learnline"></div>' +
     '<div class="pooline"></div>' +
-    '<div class="srcline" hidden></div></div>';
+    '<div class="srcline" hidden></div></div>' +
+    '</div>' +   /* .cardpop */
+    '</div>' +   /* .cardmain */
+    '<aside class="cardpad" aria-label="Line pad">' +
+    '<div class="lbl" style="margin:0">Pad target</div>' +
+    '<select class="cpad-sel" aria-label="Coin this pad edits"></select>' +
+    '<div class="note cpad-live"></div>' +
+    '<div class="cpad-dispwrap"><div class="lbl" style="margin:0">Target line</div>' +
+    '<div class="cpad-disp">$0</div><div class="note cpad-info"></div></div>' +
+    '<div class="cpad-grid">' +
+    '<button class="padbtn cpad-btn" type="button" data-cpad="7">7</button>' +
+    '<button class="padbtn cpad-btn" type="button" data-cpad="8">8</button>' +
+    '<button class="padbtn cpad-btn" type="button" data-cpad="9">9</button>' +
+    '<button class="padbtn cpad-btn" type="button" data-cpad="4">4</button>' +
+    '<button class="padbtn cpad-btn" type="button" data-cpad="5">5</button>' +
+    '<button class="padbtn cpad-btn" type="button" data-cpad="6">6</button>' +
+    '<button class="padbtn cpad-btn" type="button" data-cpad="1">1</button>' +
+    '<button class="padbtn cpad-btn" type="button" data-cpad="2">2</button>' +
+    '<button class="padbtn cpad-btn" type="button" data-cpad="3">3</button>' +
+    '<button class="padbtn cpad-btn" type="button" data-cpad=".">.</button>' +
+    '<button class="padbtn cpad-btn" type="button" data-cpad="0">0</button>' +
+    '<button class="padbtn cpad-btn util" type="button" data-cpad="back">⌫</button>' +
+    '<button class="padbtn cpad-btn util" type="button" data-cpad="clear" style="grid-column:1 / -1">C — clear</button>' +
+    '</div>' +
+    '<button class="btn ghost cpad-snap" type="button" style="width:100%;margin-top:9px">Set target to current market</button>' +
+    '<button class="btn primary cpad-enter" type="button" style="width:100%;margin-top:9px;padding:12px;font-size:15px">ENTER — run the numbers</button>' +
+    '<div class="cpad-out"></div>' +
+    '</aside>' +
+    '</div>';   /* .cardrow */
   $("#cards").appendChild(el);
   cs.els = {
     root: el, chg: el.querySelector(".chg"), price: el.querySelector(".price"),
@@ -654,6 +667,11 @@ function addCard(sym){
     tread: el.querySelector(".trendread"),
     posUp: el.querySelector(".posbtn.up"), posDn: el.querySelector(".posbtn.down"),
     cardadvice: el.querySelector(".cardadvice"),
+    pop: el.querySelector(".cardpop"),
+    padSel: el.querySelector(".cpad-sel"), padLive: el.querySelector(".cpad-live"),
+    padDisp: el.querySelector(".cpad-disp"), padInfo: el.querySelector(".cpad-info"),
+    padBtns: el.querySelectorAll(".cpad-btn"), padSnap: el.querySelector(".cpad-snap"),
+    padEnter: el.querySelector(".cpad-enter"), padOut: el.querySelector(".cpad-out"),
     pbar: el.querySelector(".pbar > div"), lineIn: el.querySelector(".ro-line-in"),
     slider: el.querySelector(".line-slider"), flash: el.querySelector(".flashmsg"),
     sval: el.querySelector(".slider-val"), lmoved: el.querySelector(".linemoved"),
@@ -700,6 +718,7 @@ function addCard(sym){
   cs.els.slider.addEventListener("change", () => { cs.dragging = false; });
   cs.els.lineIn.addEventListener("change", () => setLineFromHeader(sym, cs.els.lineIn.value));
   el.querySelector(".snapbtn").addEventListener("click", () => snapLineToPrice(sym));
+  initCardPad(sym);
   renderPast(sym);
   renderFCRec(sym);
   renderGlobalLine(sym);
@@ -729,6 +748,10 @@ function updateLineUI(sym){
   cs.els.lmoved.hidden = !cs.lineMoved;
   if (cs.lineMoved) cs.els.lmoved.textContent = "Line moved mid-cycle — the live view follows your new line, but grading stays on the call and line locked at the open.";
   renderReadouts(sym);
+  // WEB10: keep this card's pad (live price / typed-line context) and
+  // any other card's pad that targets this coin in step with the line.
+  if (cs.els.padDisp) padRender(sym);
+  refreshPadsFor(sym);
 }
 function noteLineChange(sym){
   // A mid-cycle line move changes what the LIVE tracking view means:
@@ -1902,6 +1925,22 @@ function liveSigma(sym){
    global fetch hasn't landed or fails, predictions run on the same
    base params — there is no local fallback tuning to degrade to. */
 let GLOBAL_POOL = null, GLOBAL_TOTALS = null;
+/* WEB10 (Shane 2026-10-28): the global scoreboard lives in a
+   collapsed-by-default section under the cards — same toggle
+   pattern as the card details. The data pipeline is untouched:
+   loadGlobal() still fetches and renderGlobalScore() still
+   writes into #scoreSummary/#scoreBody exactly as before; the
+   section simply starts hidden and re-renders on open. */
+let SCORE_OPEN = false;
+function setScoreOpen(open){
+  SCORE_OPEN = !!open;
+  const b = $("#scoreBoard"), btn = $("#scoreBtn");
+  if (b) b.hidden = !SCORE_OPEN;
+  if (btn) btn.textContent = SCORE_OPEN ? "Scoreboard ▴" : "Scoreboard ▸";
+  if (SCORE_OPEN) renderGlobalScore();
+}
+{ const sb = $("#scoreBtn"); if (sb) sb.addEventListener("click", () => setScoreOpen(!SCORE_OPEN)); }
+
 async function loadGlobal(){
   const j = await fetchJSON(AUTH + "/api/perp/global");
   if (!j || !j.ok || !j.coins) return;
@@ -2541,58 +2580,76 @@ async function smsUnsubscribe(phone){
 { const f = $("#smsForm"); if (f) f.addEventListener("submit", ev => { ev.preventDefault(); smsSubscribe($("#smsPhone").value); }); }
 { const u = $("#smsUnsub"); if (u) u.addEventListener("click", () => smsUnsubscribe($("#smsPhone").value)); }
 
-/* ---------- Line & Position Pad (Section C4) ----------
-   Calculator-style line entry + position advice. ENTER runs the
-   page's own prediction core — probOverAt(), the exact function the
-   watch cards' predict() calls (global params via effW / applyCalib /
-   effBand) — for the chosen coin and the entered line at the standard
-   horizons. Nothing here places trades; it reads your numbers back
-   with the model's probabilities attached, numbers first, advice
-   second, no guarantees. */
-const PAD = {coin: "BTC", text: "", side: null, armed: false};
-const PAD_HZ = [5, 15, 30, 45, 60];
-function padRender(){
-  const d = $("#padDisplay");
-  if (d) d.textContent = PAD.text ? "$" + PAD.text : "$0";
-  const cs = coinState(PAD.coin), price = cs.price || 0;
-  const live = $("#padLive");
-  if (live) live.textContent = PAD.coin + " live: " + (price ? fmtPrice(price) : "—");
-  const info = $("#padInfo");
-  if (info){
-    const line = parseFloat(PAD.text);
-    info.textContent = isFinite(line) && line > 0 && price
-      ? "Line for " + PAD.coin + " · " + fmtPct(line / price - 1, true) + " vs the live price"
-      : "No line typed — ENTER will use the live price as the line.";
-  }
-}
-function padPress(k){
-  PAD.armed = true;
-  if (k === "clear") PAD.text = "";
-  else if (k === "back") PAD.text = PAD.text.slice(0, -1);
-  else if (k === "."){ if (!PAD.text.includes(".")) PAD.text = (PAD.text || "0") + "."; }
-  else if (/^[0-9]$/.test(k) && PAD.text.replace(".", "").length < 12) PAD.text += k;
-  padRender();
-}
-function padSetSide(side){
-  PAD.side = side; PAD.armed = true;
-  const up = $("#padUp"), dn = $("#padDown");
-  if (up) up.classList.toggle("on", side === "up");
-  if (dn) dn.classList.toggle("on", side === "down");
-}
-async function padSetCoin(sym){
-  PAD.coin = sym; PAD.text = "";
-  padRender();
+/* WEB9 + WEB10: the per-card advice line. It reuses the SAME
+   probOverAt core and the SAME positionAdvice() builder as the
+   per-card pads, so the card and the pad can never disagree.
+   Cycle running + locked: advice runs against the LOCKED line
+   with the time actually left. Otherwise it runs against the
+   card's current line at the 30-minute horizon. WEB10: the
+   advice + details block is a pop-out that exists ONLY while a
+   side is chosen — with no side picked nothing of the block
+   renders in the card; choosing Up/Down pops it open; clearing
+   the side hides it again. */
+function renderCardAdvice(sym){
   const cs = coinState(sym);
-  if (!cs.price){
-    const t = await fetchJSON(CB + "/products/" + sym + "-USD/ticker");
-    if (t && isFinite(+t.price) && PAD.coin === sym) cs.price = +t.price;
+  if (!cs.els.cardadvice) return;
+  const side = cardSide(sym);
+  if (cs.els.posUp) cs.els.posUp.classList.toggle("on", side === "up");
+  if (cs.els.posDn) cs.els.posDn.classList.toggle("on", side === "down");
+  const invite = "Tap (+) Up or (-) Down to tell the system your side — advice tunes to your position.";
+  if (cs.els.pop){
+    if (!side){ cs.els.pop.hidden = true; return; }
+    cs.els.pop.hidden = false;
   }
-  if (!cs.closesH.length) loadCoin(sym);
-  padRender();
+  let txt = null;
+  if (cs.price){
+    if (S.cycle.active && cs.snap && cs.snap.closeAt === S.cycle.closeAt){
+      const T = Math.max(1, (S.cycle.closeAt - Date.now()) / 1000);
+      const r = probOverAt(sym, cs.price, cs.snap.line, T);
+      txt = positionAdvice(side, cs.price, cs.snap.line, r.p, effBand(sym),
+        "at the close (" + fmtClock(S.cycle.closeAt - Date.now()) + " left)",
+        side ? null : invite);
+    } else if (cs.line){
+      const r = probOverAt(sym, cs.price, cs.line, 1800);
+      txt = positionAdvice(side, cs.price, cs.line, r.p, effBand(sym),
+        "at the 30m close if you opened now", side ? null : invite);
+    }
+  }
+  if (txt == null){
+    txt = side
+      ? "Your side: " + (side === "up" ? "OVER (Up)" : "UNDER (Down)") + " — waiting on a live price to run the numbers."
+      : invite + " The numbers appear once the live price lands.";
+  }
+  if (cs.els.cardadvice.textContent !== txt) cs.els.cardadvice.textContent = txt;
+  cs.els.cardadvice.hidden = false;
 }
+
+/* ---------- per-card Line Pads (Section C4, WEB10) ----------
+   Shane 2026-10-28: the standalone "Line & Position" panel is
+   gone; EVERY watch card carries its own number pad in a right-
+   hand column beside the graph and values. Each pad has:
+     — a target dropdown listing the currently watched coins
+       (defaults to the card's own coin; switching it retargets
+       the pad — display, digit entry, ENTER and the snap button
+       all act on the selected coin, and the edit reflects on
+       that coin's card);
+     — the big $ line display + digit pad + hardware keyboard
+       (the keyboard drives the most recently used pad);
+     — "Set target to current market": pins the target coin's
+       line to its live price (the same snapLineToPrice the card
+       details' snap button uses);
+     — ENTER: pins the typed line on the target coin (absolute
+       mode, same as the header Line field) and runs the per-
+       horizon readout through probOverAt — the page's single
+       probability core — with advice from positionAdvice using
+       the target coin's chosen Up/Down side.
+   Pad state is display-only (coinState.pad); it is never
+   persisted and never posted anywhere. */
+const PAD_HZ = [5, 15, 30, 45, 60];
 /* positionAdvice(side, price, line, p, band, closePhrase, intro) —
-   THE position-advice builder, shared by the Line & Position Pad
-   and the per-card Up/Down buttons (WEB9, Shane 2026-10-28) so the
+   THE position-advice builder, shared by the per-card Line Pads
+   (WEB10 — they replaced the standalone Line & Position Pad) and
+   the per-card Up/Down buttons (WEB9, Shane 2026-10-28) so the
    two surfaces can never contradict: same probOverAt probability,
    same NO EDGE band, same branches. side is "up"/"down"/null;
    closePhrase names the close the probability is for ("at the 30m
@@ -2647,79 +2704,102 @@ function positionAdvice(side, price, line, p, band, closePhrase, intro){
     " puts you on the side it favors at " + pct(pOther) + ". Your two exits, with the numbers: FLIP — close this side and take " + other +
     " at " + pct(pOther) + "; or CASH OUT — sell now and cap the loss instead of risking the full contract at the close. Holding is a bet on a reversal the numbers don't currently support.";
 }
-function padAdvice(price, line, head){
-  return positionAdvice(PAD.side, price, line, head.p, effBand(PAD.coin),
-    "at the 30m close", PAD.side ? null : "No position picked above.");
-}
-/* ---------- WEB9: per-card position buttons + advice -------------
-   Every watch card carries its own (+)/(-) side buttons so the
-   system knows what the user might need advising on (Shane
-   2026-10-28). The advice line under them runs the SAME
-   positionAdvice builder as the Pad over probOverAt: against the
-   LOCKED line with the time remaining while a cycle runs, else
-   against the card's current line at the 30-minute horizon,
-   labeled as if opening now. The picked side is the user's own
-   display state (localStorage ph.side.v1, like the watchlist
-   prefs) — it feeds nothing and is sent nowhere. */
-function renderCardAdvice(sym){
+function cardPad(sym){
   const cs = coinState(sym);
-  if (!cs.els.cardadvice) return;
-  const side = cardSide(sym);
-  if (cs.els.posUp) cs.els.posUp.classList.toggle("on", side === "up");
-  if (cs.els.posDn) cs.els.posDn.classList.toggle("on", side === "down");
-  const invite = "Tap (+) Up or (-) Down to tell the system your side — advice tunes to your position.";
-  let txt = null;
-  if (cs.price){
-    if (S.cycle.active && cs.snap && cs.snap.closeAt === S.cycle.closeAt){
-      const T = Math.max(1, (S.cycle.closeAt - Date.now()) / 1000);
-      const r = probOverAt(sym, cs.price, cs.snap.line, T);
-      txt = positionAdvice(side, cs.price, cs.snap.line, r.p, effBand(sym),
-        "at the close (" + fmtClock(S.cycle.closeAt - Date.now()) + " left)",
-        side ? null : invite);
-    } else if (cs.line){
-      const r = probOverAt(sym, cs.price, cs.line, 1800);
-      txt = positionAdvice(side, cs.price, cs.line, r.p, effBand(sym),
-        "at the 30m close if you opened now", side ? null : invite);
-    }
-  }
-  if (txt == null){
-    txt = side
-      ? "Your side: " + (side === "up" ? "OVER (Up)" : "UNDER (Down)") + " — waiting on a live price to run the numbers."
-      : invite + " The numbers appear once the live price lands.";
-  }
-  if (cs.els.cardadvice.textContent !== txt) cs.els.cardadvice.textContent = txt;
-  cs.els.cardadvice.hidden = false;
+  if (!cs.pad) cs.pad = {target: sym, text: ""};
+  return cs.pad;
 }
-async function padEnter(){
-  const out = $("#padOut");
-  const sym = PAD.coin, cs = coinState(sym);
-  if (!cs.price){
-    const t = await fetchJSON(CB + "/products/" + sym + "-USD/ticker");
-    if (t && isFinite(+t.price)) cs.price = +t.price;
+function syncPadSelect(sym){
+  const cs = coinState(sym);
+  if (!cs.els.padSel) return;
+  const cp = cardPad(sym);
+  if (!S.selected.includes(cp.target)) cp.target = sym;
+  cs.els.padSel.innerHTML = S.selected.map(s =>
+    '<option value="' + s + '"' + (s === cp.target ? " selected" : "") + ">" + s + "</option>").join("");
+  cs.els.padSel.value = cp.target;
+}
+function syncAllPadSelects(){ S.selected.forEach(s => syncPadSelect(s)); }
+function padRender(sym){
+  const cs = coinState(sym), cp = cardPad(sym);
+  if (!cs.els.padDisp) return;
+  const tcs = coinState(cp.target), price = tcs.price || 0;
+  cs.els.padDisp.textContent = cp.text ? "$" + cp.text : "$0";
+  if (cs.els.padLive) cs.els.padLive.textContent = cp.target + " live: " + (price ? fmtPrice(price) : "—");
+  const line = parseFloat(cp.text);
+  if (cs.els.padInfo) cs.els.padInfo.textContent = isFinite(line) && line > 0 && price
+    ? "Line for " + cp.target + " · " + fmtPct(line / price - 1, true) + " vs the live price"
+    : "No line typed — ENTER will pin " + cp.target + "'s line at the live price.";
+}
+/* Another card's pad may be targeting this coin: after its line
+   or price moves, refresh those pads' context lines. */
+function refreshPadsFor(tsym){
+  S.selected.forEach(s => {
+    if (s === tsym) return;
+    const cs = coinState(s);
+    if (cs.pad && cs.pad.target === tsym) padRender(s);
+  });
+}
+function padPress(sym, k){
+  ACTIVE_PAD = sym;
+  const cp = cardPad(sym);
+  if (k === "clear") cp.text = "";
+  else if (k === "back") cp.text = cp.text.slice(0, -1);
+  else if (k === "."){ if (!cp.text.includes(".")) cp.text = (cp.text || "0") + "."; }
+  else if (/^[0-9]$/.test(k) && cp.text.replace(".", "").length < 12) cp.text += k;
+  padRender(sym);
+}
+/* "Set target to current market": pin the TARGET coin's line to
+   its live market price (the existing snap-to-price behavior)
+   and mirror the value into the pad display. */
+function padSnapToMarket(sym){
+  ACTIVE_PAD = sym;
+  const cp = cardPad(sym);
+  snapLineToPrice(cp.target);
+  const tcs = coinState(cp.target);
+  if (tcs.price) cp.text = String(Math.round(tcs.price * 100) / 100);
+  padRender(sym);
+  refreshPadsFor(cp.target);
+}
+/* ENTER: pin the typed line on the target coin and run the
+   per-horizon readout (probOverAt — the same core predict()
+   uses, so nothing can drift between the pad and the cards). */
+async function cardPadEnter(sym){
+  ACTIVE_PAD = sym;
+  const cp = cardPad(sym), tsym = cp.target, tcs = coinState(tsym);
+  const out = coinState(sym).els.padOut;
+  if (!tcs.price){
+    const t = await fetchJSON(CB + "/products/" + tsym + "-USD/ticker");
+    if (t && isFinite(+t.price)) tcs.price = +t.price;
   }
-  const price = cs.price;
+  const price = tcs.price;
   if (!(price > 0)){
-    if (out) out.innerHTML = '<div class="note">No live price for ' + sym + ' yet — the feed has not answered. Give it a few seconds and hit ENTER again.</div>';
+    if (out) out.innerHTML = '<div class="note">No live price for ' + tsym + ' yet — the feed has not answered. Give it a few seconds and hit ENTER again.</div>';
     return null;
   }
-  let line = parseFloat(PAD.text);
+  let line = parseFloat(cp.text);
   const usedLive = !(isFinite(line) && line > 0);
   if (usedLive) line = price;
-  const band = effBand(sym);
+  /* WEB10 (Shane's sketch): ENTER APPLIES the line to the target
+     coin's card — pinned absolute, same as the header Line field
+     (the old standalone pad only read against the typed line). */
+  if (tcs.line !== line || !tcs.lineSet) setLine(tsym, line);
+  const band = effBand(tsym);
   const rows = PAD_HZ.map(h => {
-    const r = probOverAt(sym, price, line, h * 60);
+    const r = probOverAt(tsym, price, line, h * 60);
     const call = Math.abs(r.p - 0.5) >= band ? (r.p > 0.5 ? "OVER" : "UNDER") : null;
     return {h: h, p: r.p, call: call, winP: call ? (call === "OVER" ? r.p : 1 - r.p) : null};
   });
   const head = rows.find(r => r.h === 30) || rows[0];
-  const advice = padAdvice(price, line, head);
+  const side = cardSide(tsym);
+  const advice = positionAdvice(side, price, line, head.p, band,
+    "at the 30m close", side ? null : "No position picked above.");
   if (out){
     const winNow = price > line ? "up" : price < line ? "down" : null;
-    const posLine = !PAD.side ? "No position selected — pick Up or Down above if you hold a side."
-      : "Your side: " + (PAD.side === "up" ? "OVER (Up)" : "UNDER (Down)") + " — currently " +
-        (winNow === null ? "sitting exactly on the line" : winNow === PAD.side ? "WINNING at the live price" : "LOSING at the live price") + ".";
+    const posLine = !side ? "No position selected — tap (+) Up or (-) Down on the " + tsym + " card if you hold a side."
+      : "Your side: " + (side === "up" ? "OVER (Up)" : "UNDER (Down)") + " — currently " +
+        (winNow === null ? "sitting exactly on the line" : winNow === side ? "WINNING at the live price" : "LOSING at the live price") + ".";
     out.innerHTML =
-      '<div class="note" style="margin-top:2px">' + sym + " · line " + fmtPrice(line) + (usedLive ? " (live price — no line was typed)" : "") +
+      '<div class="note" style="margin-top:2px">' + tsym + " · line " + fmtPrice(line) + (usedLive ? " (live price — no line was typed)" : "") +
       " · live " + fmtPrice(price) + " · line is " + fmtPct(line / price - 1, true) + " vs live</div>" +
       '<table><thead><tr><th>Close in</th><th>System call</th><th>Win probability</th></tr></thead><tbody>' +
       rows.map(r => "<tr><td>" + (r.h === 60 ? "1 hour" : r.h + " min") + '</td><td>' +
@@ -2730,28 +2810,35 @@ async function padEnter(){
       '<div class="padadvice">' + advice + "</div>" +
       '<div class="note" style="margin-top:6px">Same math as the watch cards, same global params. Probabilities from pattern statistics — not a promise about any single close. This pad advises; it does not place or execute trades.</div>';
   }
-  return {sym: sym, price: price, line: line, rows: rows, head: head, advice: advice};
+  refreshPadsFor(tsym);
+  return {sym: tsym, price: price, line: line, rows: rows, head: head, advice: advice};
 }
-{ const sel = $("#padCoin");
-  if (sel){
-    sel.innerHTML = ORDER.map(s => '<option value="' + s + '"' + (s === PAD.coin ? " selected" : "") + ">" + s + "</option>").join("");
-    sel.addEventListener("change", () => padSetCoin(sel.value));
-  }
-}
-document.querySelectorAll(".padbtn").forEach(b => b.addEventListener("click", () => padPress(b.dataset.pad)));
-{ const e = $("#padEnter"); if (e) e.addEventListener("click", () => padEnter()); }
-{ const u = $("#padUp"); if (u) u.addEventListener("click", () => padSetSide("up")); }
-{ const d = $("#padDown"); if (d) d.addEventListener("click", () => padSetSide("down")); }
-{ const pc = $("#padCard"); if (pc) pc.addEventListener("pointerdown", () => { PAD.armed = true; }); }
+/* Hardware keyboard: drives the pad of the card the user most
+   recently touched (pointer or button), exactly like the old
+   panel — digits, dot, Backspace, Enter. Form fields keep their
+   own keys. */
+let ACTIVE_PAD = null;
 document.addEventListener("keydown", ev => {
-  if (!PAD.armed) return;
+  if (!ACTIVE_PAD) return;
   const t = ev.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
-  if (/^[0-9.]$/.test(ev.key)) padPress(ev.key);
-  else if (ev.key === "Backspace"){ padPress("back"); ev.preventDefault(); }
-  else if (ev.key === "Enter"){ padEnter(); ev.preventDefault(); }
+  if (/^[0-9.]$/.test(ev.key)) padPress(ACTIVE_PAD, ev.key);
+  else if (ev.key === "Backspace"){ padPress(ACTIVE_PAD, "back"); ev.preventDefault(); }
+  else if (ev.key === "Enter"){ cardPadEnter(ACTIVE_PAD); ev.preventDefault(); }
 });
-padRender();
+function initCardPad(sym){
+  const cs = coinState(sym), cp = cardPad(sym);
+  if (cs.els.padBtns) cs.els.padBtns.forEach(b =>
+    b.addEventListener("click", () => padPress(sym, b.dataset.cpad)));
+  if (cs.els.padSel) cs.els.padSel.addEventListener("change", () => {
+    cp.target = cs.els.padSel.value; cp.text = ""; ACTIVE_PAD = sym; padRender(sym);
+  });
+  if (cs.els.padSnap) cs.els.padSnap.addEventListener("click", () => padSnapToMarket(sym));
+  if (cs.els.padEnter) cs.els.padEnter.addEventListener("click", () => cardPadEnter(sym));
+  if (cs.root) cs.root.addEventListener("pointerdown", () => { ACTIVE_PAD = sym; });
+  syncPadSelect(sym);
+  padRender(sym);
+}
 
 /* ---------- odds panel (ODDS-SPEC) ----------
    The user picks only a coin and a value; the server (the global
