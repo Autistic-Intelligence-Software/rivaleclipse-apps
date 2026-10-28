@@ -151,10 +151,12 @@ async function proxyApi(context, request, url, rest) {
      "price to beat" for the window opening at `start` (Chainlink
      TWAP-60 for the 5m/15m/4h variants, the Binance candle open for
      the hourly variant); closePrice is its live/final price.
-   - /api/kalshi/markets?series=KXBTC15M returns the open markets of
-     a Kalshi series (slimmed): floor_strike is the market's official
-     target for its window, set by Kalshi at the open.
-   Both require an entitled perp-acct session, same as the tracker. */
+   Kalshi used to be proxied here too, but the Pages edge cannot
+   reach Kalshi's hosts reliably (intermittent edge 502s) — the auth
+   service serves its strikes at GET /api/perp/kalshi instead,
+   carried by the standard /api/perp/* API proxy.
+   The PM route requires an entitled perp-acct session, same as
+   the tracker. */
 
 const PM_VARIANTS = new Set(['fiveminute', 'fifteen', 'hourly', 'fourhour', 'daily']);
 
@@ -190,32 +192,6 @@ async function pmPriceRoute(context, request, url) {
     status: r.status,
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
-}
-
-async function kalshiRoute(context, request, url) {
-  if (request.method !== 'GET') return jsonRes({ error: 'method_not_allowed' }, 405);
-  if (!(await requireEntitled(context, request))) return jsonRes({ error: 'unauthorized' }, 401);
-  const series = (url.searchParams.get('series') || '').toUpperCase();
-  if (!/^KX[A-Z0-9]{2,20}$/.test(series)) return jsonRes({ error: 'bad_params' }, 400);
-  // external-api.kalshi.com is Kalshi's documented public API host;
-  // the elections host intermittently 502s when fetched from the
-  // Pages edge (verified 2026-10-28), this one answers cleanly.
-  const up = 'https://external-api.kalshi.com/trade-api/v2/markets?status=open&limit=10&series_ticker=' +
-    encodeURIComponent(series);
-  let r;
-  try {
-    r = await fetch(up, { headers: { Accept: 'application/json' } });
-  } catch (e) {
-    return jsonRes({ error: 'upstream_unavailable' }, 502);
-  }
-  if (!r.ok) return jsonRes({ error: 'upstream_error' }, 502);
-  let j;
-  try { j = await r.json(); } catch (e) { return jsonRes({ error: 'upstream_error' }, 502); }
-  const markets = (Array.isArray(j.markets) ? j.markets : []).map(m => ({
-    ticker: m.ticker, floor_strike: m.floor_strike,
-    open_time: m.open_time, close_time: m.close_time,
-  }));
-  return jsonRes({ markets }, 200, { 'Cache-Control': 'no-store' });
 }
 
 /* ---------------- account API (/Market-Tracker/acct/*) ---------- */
@@ -606,9 +582,10 @@ export async function onRequest(context) {
   if (rest === '/api/pm/crypto-price') {
     return pmPriceRoute(context, request, url);
   }
-  if (rest === '/api/kalshi/markets') {
-    return kalshiRoute(context, request, url);
-  }
+  // Kalshi is NOT proxied here: the Pages edge cannot reach Kalshi's
+  // hosts reliably (intermittent edge-generated 502s, verified
+  // 2026-10-28). The auth service serves GET /api/perp/kalshi
+  // instead, which rides the standard /api/perp/* proxy above.
   if (rest === '/api' || rest.startsWith('/api/')) {
     return jsonRes({ error: 'not_found' }, 404);
   }
