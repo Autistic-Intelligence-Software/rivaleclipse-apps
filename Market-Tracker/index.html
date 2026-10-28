@@ -126,6 +126,22 @@ canvas.spark{width:100%;height:150px;display:block}
   margin-top:9px;border:1px solid var(--edge);color:#14100a;font-weight:700;font-size:14px;
   background:linear-gradient(90deg,var(--edge),var(--gold));border-radius:10px;padding:7px 10px;
 }
+/* SNIPE SPOTTER (Shane 2026-10-28): the 1-10% -> ~100% bounce panel +
+   per-card spot highlight. Gold-bordered so a live spot reads as a
+   highlight, distinct from the old hourly .snipe banner above. */
+#snipeCard{border-color:var(--gold);margin:12px 0 4px}
+.bspot{
+  margin-top:9px;border:2px solid var(--gold);color:var(--gold2);font-weight:800;font-size:14px;
+  background:rgba(201,162,39,.10);border-radius:10px;padding:7px 10px;
+}
+.spotrow{border:1px solid var(--gold);border-radius:12px;padding:10px 12px;margin-top:9px;background:rgba(201,162,39,.07);font-size:14px;line-height:1.5}
+.spotrow .acoin,.spotrecent .acoin{font-weight:800;color:var(--gold2)}
+.spotrow .atime{color:var(--mut);font-size:12px;margin-left:8px}
+.spotbadge{font-size:12px;font-weight:800;letter-spacing:.03em;border-radius:999px;padding:3px 10px;border:1px solid var(--line);margin-left:8px}
+.spotbadge.over{color:#0b1510;background:linear-gradient(90deg,var(--up),#7bf0b2);border-color:var(--up)}
+.spotbadge.under{color:#ffd7de;background:rgba(255,94,122,.13);border-color:var(--down)}
+.spotrec{margin-top:10px;font-size:13.5px;line-height:1.55}
+.spotrecent{font-size:13px;margin-top:5px;line-height:1.5}
 .pred{margin-top:10px;border-top:1px solid var(--line);padding-top:10px;min-height:64px}
 .pred .call{font-size:21px;font-weight:800;letter-spacing:.02em}
 .pred .call.over{color:var(--up)} .pred .call.under{color:var(--down)} .pred .call.noedge{color:var(--mut)}
@@ -187,6 +203,14 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
 /* ---------- TUTORIAL-ADVISORY (Section C) ---------- */
 .advstrip{border:1px solid var(--up);color:var(--up);border-radius:12px;padding:9px 12px;
   font-size:14.5px;font-weight:700;margin-top:12px;background:rgba(61,220,132,.07)}
+/* WEB17: big-multiplier board — sits directly under the top-pick
+   banner; compact chips, honest wording only. */
+.multboard{border:1px solid var(--gold);border-radius:12px;padding:9px 12px;margin-top:8px;
+  background:#14110a;font-size:13.5px;display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+.multboard .mblbl{font-weight:800;color:var(--gold2);letter-spacing:.02em}
+.multboard .mbquiet{color:var(--mut)}
+.multchip{border:1px solid var(--gold);color:var(--gold2);border-radius:999px;padding:3px 10px;
+  font-weight:700;background:#1c1808;white-space:nowrap}
 .advrow{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-top:7px}
 .advbadge{font-size:12px;font-weight:800;letter-spacing:.03em;border-radius:999px;padding:3px 10px;border:1px solid var(--line)}
 .advbadge.green{color:#0b1510;background:linear-gradient(90deg,var(--up),#7bf0b2);border-color:var(--up)}
@@ -403,6 +427,12 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
       </div>
       <div id="advStrip" class="advstrip" hidden></div>
       <div class="simplrow" id="advSimplRow" hidden><button type="button" class="simplbtn" data-simpl="banner">Simplified</button></div>
+      <div id="multBoard" class="multboard"><span class="mblbl">Big multipliers ahead</span><span class="mbquiet">No big-multiplier setups on the board right now.</span></div>
+      <section class="card" id="snipeCard">
+        <h2 style="margin:0">🎯 Snipe Spotter — the 1–10% → 100% bounce</h2>
+        <p class="note" style="margin-top:4px">This spotter flags one event only: a perpetual window where the cheap side — the side priced at just 1–10% odds — shows wave signs of flipping to a near-lock before the close. When that bounce setup is live it shows here and on the coin's card. Nothing else gets flagged.</p>
+        <div id="snipeBody"><div class="note">Loading the spotter…</div></div>
+      </section>
       <div id="cards"></div>
     </section>
   </div>
@@ -572,6 +602,9 @@ function coinState(sym){
     lineSrc: null,             // WEB12: where the current line came from (market target / fallback), shown on the card
     mktPrice: null,            // WEB12: last live price from the chosen market's feed (Polymarket mode)
     mktPriceAt: 0,             // WEB12: when that feed price was fetched
+    mktSrc: null,              // WEB17: "rtds" (live Chainlink stream) or "poll" (hourly-variant poll)
+    mktLines: null,            // WEB17: per-horizon market targets {5:{price,src,start,at}, 15:…, 60:…, 240:…}
+    mktLinesAt: 0,             // WEB17: last mktLines refresh pass (throttle)
     nextTarget: null,          // WEB12: the market target for the NEXT window, fetched while scoring this one
     // WEB9 addendum (Shane 2026-10-28): the forecast section ALWAYS
     // starts collapsed — a stored ph.fc30 from an earlier session
@@ -941,6 +974,171 @@ async function applyMarketStrike(sym){
   return false;
 }
 
+/* ---------- WEB17 (Shane 2026-10-28): window math, per-horizon
+   market targets, and Polymarket's live Chainlink stream ----------
+   Shane's photo showed the tracker's values disagreeing with the
+   market it mimics. Measured live 2026-10-28 (proxy vs Polymarket
+   direct, identical params): the proxy pipe is byte-identical —
+   the gaps came from (a) the cycle line being locked from an early,
+   still-forming TWAP sample (the endpoint's openPrice is a 60s
+   TWAP, flagged incomplete while the window's first minute runs),
+   (b) comparing horizons against the WRONG window's target (his
+   15m-cycle line vs Polymarket's 5M market target), and (c) the
+   "live" price being the Binance hourly candle's last price polled
+   every ~10s — tens of dollars behind the Chainlink print
+   Polymarket displays during fast moves. Fixes below: per-horizon
+   targets refreshed as they firm up, and the live price from
+   Polymarket's own RTDS Chainlink stream. */
+/* Epoch-aligned window helpers — the same alignment the cycle
+   code uses (floor(now/L)*L + L). */
+function winStartMs(nowMs, hMin){ const L = hMin * 60000; return Math.floor(nowMs / L) * L; }
+function winBoundaryMs(nowMs, hMin){ return winStartMs(nowMs, hMin) + hMin * 60000; }
+
+const MKT_HZ = [5, 15, 60, 240];
+/* Refresh cs.mktLines: the mimicked market's OWN target for the
+   CURRENT window of each horizon. An entry is refetched when it is
+   older than 20s or its window rolled — early in a window the
+   Polymarket openPrice is still a forming TWAP, so re-reading lets
+   the target converge to the value Polymarket settles on instead
+   of freezing the first partial sample. Kalshi publishes only the
+   15m strike, so only the 15 entry exists there. */
+async function refreshMktLines(sym){
+  const cs = coinState(sym);
+  if (!marketActive()){ cs.mktLines = null; return; }
+  if (!cs.mktLines) cs.mktLines = {};
+  const now = Date.now();
+  for (const h of MKT_HZ){
+    const start = winStartMs(now, h);
+    const cur = cs.mktLines[h];
+    if (cur && cur.start === start && now - cur.at < 20000) continue;
+    let got = null;
+    if (S.preset === "polymarket"){
+      const variant = PM_VARIANT[h];
+      if (variant && (variant === "hourly" || PM_TWAP_COINS.includes(sym))){
+        const j = await pmPrice(sym, start, variant);
+        if (j && isFinite(+j.openPrice) && +j.openPrice > 0)
+          got = {price: +j.openPrice, src: "Polymarket", start: start, at: Date.now()};
+      }
+    } else if (S.preset === "kalshi" && h === 15){
+      const ms = await kalshiMarkets(sym);
+      if (ms){
+        const want = new Date(start).toISOString();
+        const m = ms.find(x => x.open_time === want);
+        if (m && isFinite(+m.floor_strike) && +m.floor_strike > 0)
+          got = {price: +m.floor_strike, src: "Kalshi", start: start, at: Date.now()};
+      }
+    }
+    if (got) cs.mktLines[h] = got;
+    else if (cur && cur.start !== start) delete cs.mktLines[h];
+  }
+}
+/* The market target for horizon h RIGHT NOW, or null when the
+   mimicked market has none for this coin/window (stale-window
+   entries never leak into a new window). */
+function mktLineFor(sym, h){
+  const cs = coinState(sym);
+  const ml = cs.mktLines && cs.mktLines[h];
+  if (!ml) return null;
+  return ml.start === winStartMs(Date.now(), h) ? ml : null;
+}
+
+/* Polymarket RTDS — the live Chainlink price stream Polymarket
+   itself displays (wss://ws-live-data.polymarket.com, public, no
+   auth). Wire protocol per Polymarket's official RTDS→PolyBolt
+   migration guide (docs.polymarket.com/migrate/rtds-to-polybolt):
+   subscribe {"action":"subscribe","subscriptions":[{"topic":
+   "crypto_prices_chainlink","type":"update","filters":"{\"symbol\":
+   \"btc/usd\"}"}]} (one entry per symbol, filters a JSON string),
+   heartbeat = text frame "PING" every 5s, updates arrive as
+   {"topic","type","timestamp","payload":{"symbol":"btc/usd",
+   "value":…,"timestamp":…}}. NOTE: Polymarket has deprecated these
+   topics in favour of the authenticated PolyBolt feed — while the
+   public stream lives it is the exact displayed price; the moment
+   it errors/closes/goes stale the page falls back to the hourly-
+   variant poll (priceTick), so nothing depends on it surviving. */
+const RTDS_URL = "wss://ws-live-data.polymarket.com";
+const RTDS_ST = {ws: null, ping: null, timer: null, backoff: 1000, syms: ""};
+/* Pure parser (unit-tested): one RTDS text frame → {sym, price,
+   tsMs} or null. Accepts the documented update shape and the
+   subscribe snapshot's payload.data array (last point wins). */
+function rtdsPriceFromMsg(text){
+  let m;
+  try { m = JSON.parse(text); } catch (e) { return null; }
+  if (!m || typeof m !== "object") return null;
+  if (m.topic !== "crypto_prices_chainlink" && m.topic !== "crypto_prices") return null;
+  const p = m.payload;
+  if (!p || typeof p !== "object") return null;
+  const norm = (raw) => {
+    if (typeof raw !== "string" || !raw) return null;
+    let s = raw.toUpperCase();
+    if (s.endsWith("/USD")) s = s.slice(0, -4);
+    if (s.endsWith("USDT")) s = s.slice(0, -4);
+    else if (s.endsWith("USD")) s = s.slice(0, -3);
+    return s || null;
+  };
+  let symRaw = p.symbol, valRaw = p.value, tsRaw = p.timestamp;
+  if (Array.isArray(p.data) && p.data.length){
+    const last = p.data[p.data.length - 1] || {};
+    valRaw = last.value; tsRaw = last.timestamp;
+  }
+  const sym = norm(symRaw);
+  const price = Number(valRaw);
+  if (!sym || !(price > 0) || !isFinite(price)) return null;
+  const ts = Number(tsRaw);
+  const envTs = Number(m.timestamp);
+  return {sym: sym, price: price, tsMs: isFinite(ts) && ts > 0 ? ts : (isFinite(envTs) && envTs > 0 ? envTs : 0)};
+}
+function rtdsStop(){
+  if (RTDS_ST.ping != null){ clearInterval(RTDS_ST.ping); RTDS_ST.ping = null; }
+  if (RTDS_ST.timer != null){ clearTimeout(RTDS_ST.timer); RTDS_ST.timer = null; }
+  if (RTDS_ST.ws){ const w = RTDS_ST.ws; RTDS_ST.ws = null;
+    try { w.onclose = null; w.close(); } catch (e) {} }
+  RTDS_ST.syms = "";
+}
+function rtdsSchedule(){
+  if (RTDS_ST.timer != null) return;
+  const wait = RTDS_ST.backoff;
+  RTDS_ST.backoff = Math.min(30000, RTDS_ST.backoff * 2);
+  RTDS_ST.timer = setTimeout(() => { RTDS_ST.timer = null; rtdsEnsure(); }, wait);
+}
+/* Keep the RTDS socket matched to the Polymarket preset + watched
+   coins. Guarded by typeof WebSocket: test/non-browser contexts
+   simply never open a socket and stay on the polling path. */
+function rtdsEnsure(){
+  if (S.preset !== "polymarket"){ if (RTDS_ST.ws || RTDS_ST.timer != null) rtdsStop(); return; }
+  if (typeof WebSocket === "undefined") return;
+  const want = S.selected.slice().sort().join(",");
+  if (!want) return;
+  if (RTDS_ST.ws && RTDS_ST.syms === want &&
+      (RTDS_ST.ws.readyState === 0 || RTDS_ST.ws.readyState === 1)) return;
+  rtdsStop();
+  RTDS_ST.syms = want;
+  let ws;
+  try { ws = new WebSocket(RTDS_URL); } catch (e) { rtdsSchedule(); return; }
+  RTDS_ST.ws = ws;
+  ws.onopen = () => {
+    RTDS_ST.backoff = 1000;
+    const subs = S.selected.map(sym => ({topic: "crypto_prices_chainlink", type: "update",
+      filters: JSON.stringify({symbol: sym.toLowerCase() + "/usd"})}));
+    try { ws.send(JSON.stringify({action: "subscribe", subscriptions: subs})); } catch (e) {}
+    if (RTDS_ST.ping != null) clearInterval(RTDS_ST.ping);
+    RTDS_ST.ping = setInterval(() => { try { ws.send("PING"); } catch (e) {} }, 5000);
+  };
+  ws.onmessage = (ev) => {
+    const u = rtdsPriceFromMsg(ev && ev.data);
+    if (!u || !S.selected.includes(u.sym)) return;
+    const cs = S.coins[u.sym];
+    if (!cs) return;
+    cs.mktPrice = u.price; cs.mktPriceAt = Date.now(); cs.mktSrc = "rtds";
+  };
+  ws.onerror = () => { try { ws.close(); } catch (e) {} };
+  ws.onclose = () => {
+    if (RTDS_ST.ping != null){ clearInterval(RTDS_ST.ping); RTDS_ST.ping = null; }
+    if (RTDS_ST.ws === ws) RTDS_ST.ws = null;
+    if (S.preset === "polymarket") rtdsSchedule();
+  };
+}
+
 /* ---------- cards ---------- */
 function addCard(sym){
   const cs = coinState(sym);
@@ -974,6 +1172,7 @@ function addCard(sym){
     '<div class="trend"></div>' +
     '<div class="swline"></div>' +
     '<div class="snipe" hidden></div>' +
+    '<div class="bspot" hidden></div>' +
     '<div class="pred"><div class="call noedge">NO CYCLE RUNNING</div><div class="conf">Set your line, then press Start — every call is for the close vs your line, never for right now.</div><div class="trendread" hidden></div><div class="pbar"><div style="width:0%"></div></div></div>' +
     '<div class="posbtns"><button type="button" class="posbtn up">(+) Up — I hold OVER</button><button type="button" class="posbtn down">(-) Down — I hold UNDER</button></div>' +
     '<div class="lockedline" hidden></div>' +
@@ -1028,7 +1227,8 @@ function addCard(sym){
     advWhy: el.querySelector(".advwhy"),
     spark: el.querySelector(".spark"), fc: el.querySelector(".fc"), regime: el.querySelector(".regime"),
     trend: el.querySelector(".trend"), swline: el.querySelector(".swline"),
-    snipe: el.querySelector(".snipe"), pred: el.querySelector(".pred"),
+    snipe: el.querySelector(".snipe"), bspot: el.querySelector(".bspot"),
+    pred: el.querySelector(".pred"),
     call: el.querySelector(".pred .call"), conf: el.querySelector(".pred .conf"),
     tread: el.querySelector(".trendread"),
     posUp: el.querySelector(".posbtn.up"), posDn: el.querySelector(".posbtn.down"),
@@ -2985,24 +3185,40 @@ $("#stopBtn").addEventListener("click", stopCycle);
 
 /* ---------- main loop ---------- */
 async function priceTick(){
+  rtdsEnsure();   // WEB17: keeps the RTDS socket matched to preset + watchlist (stops it off-preset)
   for (const sym of S.selected.slice()){
     const cs = coinState(sym);
     // WEB12: under the Polymarket preset the live price comes from
-    // Polymarket's own feed (its hourly price pipe, refreshed about
-    // every 10s per coin) instead of Coinbase — the same feed the
+    // Polymarket's own feed instead of Coinbase — the same feed the
     // targets come from. Kalshi's settlement feed (CF Benchmarks)
     // is not public, so Kalshi mode keeps the Coinbase live price
     // and mirrors the target only. Any feed miss falls back to the
     // Coinbase ticker for that tick.
+    // WEB17: the primary Polymarket feed is now the RTDS Chainlink
+    // stream (the exact price Polymarket displays, pushed live);
+    // a tick uses it only while it is ≤5s fresh. Whenever the
+    // stream is down or stale, the hourly-variant poll runs on
+    // EVERY price tick (tightened from ~10s) — it is the Binance
+    // hourly candle's last price, so in a fast move it still trails
+    // the Chainlink print; the last feed price (<30s old) covers a
+    // single poll miss, then Coinbase is the final fallback.
     let tickPrice = null;
     if (S.preset === "polymarket"){
-      if (Date.now() - (cs.mktPriceAt || 0) >= 10000){
+      if (cs.mktSrc === "rtds" && cs.mktPrice && Date.now() - cs.mktPriceAt <= 5000)
+        tickPrice = cs.mktPrice;
+      if (tickPrice == null){
         const j = await pmPrice(sym, Math.floor(Date.now() / 3600000) * 3600000, "hourly");
         if (j && isFinite(+j.closePrice) && +j.closePrice > 0){
-          cs.mktPrice = +j.closePrice; cs.mktPriceAt = Date.now();
-        }
+          cs.mktPrice = +j.closePrice; cs.mktPriceAt = Date.now(); cs.mktSrc = "poll";
+          tickPrice = cs.mktPrice;
+        } else if (cs.mktPrice && Date.now() - cs.mktPriceAt < 30000) tickPrice = cs.mktPrice;
       }
-      if (cs.mktPrice && Date.now() - cs.mktPriceAt < 30000) tickPrice = cs.mktPrice;
+    }
+    // WEB17: per-horizon market targets stay fresh in either
+    // market mode (throttled pass; entries self-limit to ~20s).
+    if (marketActive() && Date.now() - (cs.mktLinesAt || 0) >= 5000){
+      cs.mktLinesAt = Date.now();
+      refreshMktLines(sym);
     }
     if (tickPrice == null){
       const t = await fetchJSON(CB + "/products/" + sym + "-USD/ticker");
@@ -3049,6 +3265,10 @@ async function priceTick(){
       recordPredSnap(sym);
     }
   }
+  // WEB17: the big-multiplier board's trend candidates refresh on
+  // a ≤10s pass here (its snipe/forecast candidates re-render when
+  // those payloads land — see loadSnipe/loadDayForecast).
+  if (Date.now() - MULT_AT >= 10000){ MULT_AT = Date.now(); renderMultBoard(); }
 }
 /* ---------- WEB9 addendum: price tick-rate control ----------------
    One timer drives priceTick; setTickRate re-arms it immediately
@@ -3068,6 +3288,16 @@ document.querySelectorAll("#tickSeg button").forEach(b =>
   b.addEventListener("click", () => setTickRate(+b.dataset.tick)));
 setInterval(() => {
   S.loopN++;
+  // WEB17: per-horizon countdown labels (outlook rows + ENTER
+  // tables) tick every second — text nodes only; the rows
+  // themselves recompute on the price-tick cadence.
+  const cdEls = document.querySelectorAll(".cdft");
+  for (let i = 0; i < cdEls.length; i++){
+    const h = cdEls[i].dataset ? +cdEls[i].dataset.cdh : 0;
+    if (!(h > 0)) continue;
+    const txt = fmtClock(winBoundaryMs(Date.now(), h) - Date.now()) + " left";
+    if (cdEls[i].textContent !== txt) cdEls[i].textContent = txt;
+  }
   if (S.cycle.active){
     $("#countdown").textContent = "Perpetual closes in " + fmtClock(S.cycle.closeAt - Date.now());
     for (const sym of S.selected){
@@ -3084,7 +3314,7 @@ setInterval(() => {
   }
   if (S.loopN % 60 === 0) S.selected.forEach(loadCoin);
   if (S.loopN % 15 === 0 && S.selected.length) loadSources();
-  if (S.loopN % 900 === 0){ loadGlobal(); loadAdvisory(); loadDayForecast(); }
+  if (S.loopN % 900 === 0){ loadGlobal(); loadAdvisory(); loadDayForecast(); loadSnipe(); }
 }, 1000);
 /* WEB5: the actual-overlay sweep animation — redraws only the open
    forecast graphs (the frozen forecast itself never changes; just
@@ -3125,6 +3355,7 @@ async function loadDayForecast(){
   if (!j || !j.ok) return;
   DAYFC = j;
   renderDayForecast();
+  renderMultBoard();
 }
 function renderAdvisory(){
   const strip = $("#advStrip");
@@ -3191,6 +3422,155 @@ function renderAlerts(){
   if (st && ADVISORY) st.textContent = ADVISORY.sms_active
     ? "SMS alerts are LIVE — subscribers get a text the moment a proven wave pattern lines up again."
     : "SMS sending activates when the alert provider is connected; alerts already appear here live.";
+}
+/* ---------- SNIPE SPOTTER (Shane 2026-10-28): the 1-10% bounce ----
+   A VIEW of the server spotter (GET /api/perp/snipe), polled on the
+   same cadence as the advisory. The spotter specializes in ONE
+   event: a perpetual side priced at 1-10% odds whose wave signs say
+   it can bounce to ~100% and close in profit. The page renders the
+   server's live spots, its closed-spot outcomes, and its own graded
+   record next to the same event's unspotted base rate — real
+   numbers only, nothing ranked or dressed up. A failed poll leaves
+   the last render untouched. */
+let SNIPE = null;
+async function loadSnipe(){
+  const j = await fetchJSON(AUTH + "/api/perp/snipe");
+  if (!j || !j.ok) return;
+  SNIPE = j;
+  renderSnipe();
+  renderMultBoard();
+}
+function snipeRecordLine(rec){
+  if (!rec || !(rec.spots > 0))
+    return "Spotter record: no spots graded yet — the record starts with the first closed spot.";
+  const pct = (r) => (r == null || !isFinite(r)) ? null : Math.round(r * 100) + "%";
+  let t = "Spotter record: " + rec.spots + " spotted · " + (rec.bounced || 0) + " hit ~100%";
+  const br = pct(rec.bounce_rate); if (br) t += " (" + br + ")";
+  t += " · " + (rec.profit || 0) + " closed in profit";
+  const pr = pct(rec.profit_rate); if (pr) t += " (" + pr + ")";
+  if (rec.base_windows > 0){
+    t += " — same event unspotted: bounced " + (rec.base_bounced || 0) + "/" + rec.base_windows;
+    const bb = pct(rec.base_bounce_rate); if (bb) t += " (" + bb + ")";
+    t += ".";
+  }
+  return t;
+}
+function snipeSpotRow(sp){
+  const under = sp.side === "under";
+  const nowPct = Math.round((sp.prob_now || 0) * 100);
+  return '<div class="spotrow"><span class="acoin">' + escHtml(sp.coin || "") + '</span>' +
+    '<span class="spotbadge ' + (under ? "under" : "over") + '">' + (under ? "UNDER" : "OVER") + '</span>' +
+    '<span class="atime">' + sp.horizon_min + 'm perpetual · closes in ' + fmtClock((sp.close_at || 0) - Date.now()) + '</span>' +
+    '<div style="margin-top:4px">Odds now <b>' + nowPct + '%</b> (spotted at ' + Math.round((sp.prob0 || 0) * 100) + '%)' +
+    (sp.max_prob != null ? ' · peak so far ' + Math.round(sp.max_prob * 100) + '%' : '') +
+    ' — needs ~' + (sp.required_move_pct != null && isFinite(sp.required_move_pct) ? (+sp.required_move_pct).toFixed(2) : "—") +
+    '% move to the line ' + fmtPrice(sp.line) + '</div>' +
+    '<div class="pbar"><div style="width:' + nowPct + '%"></div></div>' +
+    (sp.signs && sp.signs.length ? '<div class="note" style="margin-top:4px">Signs: ' + sp.signs.map(escHtml).join(' · ') + '</div>' : '') +
+    '</div>';
+}
+function snipeRecentRow(r){
+  const outcome = r.bounced ? (r.won ? "BOUNCED + closed in profit" : "bounced, missed the close") : "never bounced";
+  return '<div class="spotrecent"><span class="acoin">' + escHtml(r.coin || "") + '</span> ' +
+    (r.side === "under" ? "UNDER" : "OVER") + ' ' + r.horizon_min + 'm · <b>' + outcome + '</b>' +
+    ' <span class="note">peak odds ' + Math.round((r.max_prob || 0) * 100) + '% · closed ' + fmtPrice(r.close_price) +
+    ' vs line ' + fmtPrice(r.line) + ' · ' + escHtml(new Date(r.close_at || 0).toLocaleString()) + '</span></div>';
+}
+function renderSnipeBadges(){
+  const spots = (SNIPE && SNIPE.spots) || [];
+  for (const sym of S.selected){
+    const cs = coinState(sym), b = cs.els && cs.els.bspot;
+    if (!b) continue;
+    const sp = spots.find(s => s.coin === sym);
+    if (!sp){ b.hidden = true; b.textContent = ""; continue; }
+    b.hidden = false;
+    b.textContent = "🎯 SNIPE SPOT: " + (sp.side === "under" ? "UNDER" : "OVER") + " side at " +
+      Math.round((sp.prob_now || 0) * 100) + "% — bounce setup for the " + sp.horizon_min +
+      "m close " + new Date(sp.close_at || 0).toLocaleTimeString();
+  }
+}
+function renderSnipe(){
+  renderSnipeBadges();
+  const body = $("#snipeBody");
+  if (!body || !SNIPE) return;
+  const spots = SNIPE.spots || [], recent = SNIPE.recent || [];
+  let html = spots.length
+    ? spots.map(snipeSpotRow).join("")
+    : '<div class="note">No snipe setups live right now — this spotter only fires on the 1–10% → 100% bounce pattern, so quiet is normal.</div>';
+  html += '<div class="spotrec">' + escHtml(snipeRecordLine(SNIPE.record)) + '</div>';
+  if (recent.length)
+    html += '<div class="lbl" style="margin:10px 0 2px">Recently closed spots (last 24h)</div>' + recent.map(snipeRecentRow).join("");
+  body.innerHTML = html;
+}
+/* ---------- WEB17: Big multipliers ahead (Shane 2026-10-28) ----
+   A header board directly under the top-pick banner: the most
+   likely BIG-multiplier setups coming up soon, built only from
+   data the page already pulls — (a) live snipe spots (a cheap
+   side that could bounce toward ~100%: implied multiplier
+   ~1/prob_now), (b) the day forecast's best windows (predictable
+   shifts, with the typical move size when the payload carries
+   one), (c) strong 1h+ trend reads on watched coins (fluctuations
+   building). Soonest first, top 3, each with its approximate
+   time. Wording stays honest — possible / setup / building; the
+   multiplier is what the odds imply IF the move lands, never a
+   promise. Re-renders when the snipe/forecast payloads land and
+   on a ≤10s throttled pass in priceTick for the trend reads. */
+let MULT_AT = 0;
+function nextUtcHourMs(utcH, now){
+  const d = new Date(now);
+  let t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), ((utcH % 24) + 24) % 24);
+  if (t <= now) t += 86400000;
+  return t;
+}
+function multTimeStr(t){
+  try { return new Date(t).toLocaleTimeString("en-US", {hour: "numeric", minute: "2-digit"}); }
+  catch (e) { return new Date(t).toLocaleTimeString(); }
+}
+function renderMultBoard(){
+  const el = $("#multBoard");
+  if (!el) return;
+  const now = Date.now();
+  const cands = [];
+  const spots = (SNIPE && SNIPE.spots) || [];
+  for (const sp of spots){
+    const p = +sp.prob_now;
+    if (!(p > 0) || p >= 0.5 || !(sp.close_at > now)) continue;
+    const mult = Math.round(1 / p);
+    if (mult < 2) continue;
+    cands.push({t: sp.close_at, txt: "🎯 ~" + mult + "x · " + (sp.coin || "") + " " + sp.horizon_min + "m " +
+      (sp.side === "under" ? "UNDER" : "OVER") + " side at " + Math.round(p * 100) + "% · possible bounce setup"});
+  }
+  const mb = (DAYFC && DAYFC.market_best) || [];
+  for (const w of mb){
+    if (!w || !isFinite(+w.from_h)) continue;
+    const start = nextUtcHourMs(+w.from_h, now);
+    if (start - now > 12 * 3600000) continue;
+    let mv = "";
+    const ch = DAYFC.coins && DAYFC.coins[w.coin];
+    const hr = ch && (ch.hours || []).find(x => +x.h === ((+w.from_h % 24) + 24) % 24);
+    if (hr && isFinite(+hr.vol) && +hr.vol > 0) mv = " · typical move ±" + (+hr.vol * 100).toFixed(2) + "%";
+    cands.push({t: start, txt: "🔮 predictable shift window · " + (w.coin || "") + mv});
+  }
+  for (const sym of S.selected){
+    const cs = S.coins[sym];
+    if (!cs || !cs.trend) continue;
+    let tw = null, lbl = "";
+    for (const k of ["w1h", "w4h"]){
+      const t = cs.trend[k];
+      if (t && (t.state === "JUMPING" || t.state === "DROPPING") && Math.abs(t.stdSlope || 0) >= 0.5 &&
+          (!tw || Math.abs(t.stdSlope) > Math.abs(tw.stdSlope))){ tw = t; lbl = WIN_LABEL[k]; }
+    }
+    if (!tw) continue;
+    const t = S.cycle.active && S.cycle.closeAt > now ? S.cycle.closeAt : winBoundaryMs(now, 60);
+    cands.push({t: t, txt: "📈 fluctuation building · " + sym + " " + lbl + " trend " + tw.state +
+      " (" + (tw.stdSlope >= 0 ? "+" : "") + tw.stdSlope.toFixed(1) + "σ slope) · possible bigger move"});
+  }
+  cands.sort((a, b) => a.t - b.t);
+  const top = cands.slice(0, 3);
+  const html = '<span class="mblbl">Big multipliers ahead</span>' + (top.length
+    ? top.map(c => '<span class="multchip">' + escHtml(c.txt) + " · ~" + multTimeStr(c.t) + "</span>").join("")
+    : '<span class="mbquiet">No big-multiplier setups on the board right now.</span>');
+  if (el.innerHTML !== html) el.innerHTML = html;
 }
 /* Hour helpers: forecast hours arrive as UTC hours (0–23); the UI
    leads with Eastern Time (America/New_York) and keeps UTC alongside. */
@@ -3490,10 +3870,23 @@ async function cardPadEnter(sym){
   tcs.lineFromStart = false;
   if (tcs.line !== line || !tcs.lineSet) setLine(tsym, line);
   const band = effBand(tsym);
+  /* WEB17: in market-mimic mode each horizon's row runs against
+     the market's own target for the CURRENT window of that
+     horizon when it publishes one, over the time REMAINING in
+     that window (the market's timer) — not the typed line over a
+     fresh full horizon. The typed line still pins the card and
+     still drives the position advice below (the 30m row has no
+     market variant anywhere, so the head stays on the typed
+     line). */
+  if (marketActive()) await refreshMktLines(tsym);
+  const nowE = Date.now();
   const rows = PAD_HZ.map(h => {
-    const r = probOverAt(tsym, price, line, h * 60);
+    const remaining = Math.max(1, (winBoundaryMs(nowE, h) - nowE) / 1000);
+    const ml = mktLineFor(tsym, h);
+    const r = probOverAt(tsym, price, ml ? ml.price : line, remaining);
     const call = Math.abs(r.p - 0.5) >= band ? (r.p > 0.5 ? "OVER" : "UNDER") : null;
-    return {h: h, p: r.p, call: call, winP: call ? (call === "OVER" ? r.p : 1 - r.p) : null};
+    return {h: h, p: r.p, call: call, winP: call ? (call === "OVER" ? r.p : 1 - r.p) : null,
+            remaining: remaining, line: ml ? ml.price : line, mkt: ml ? ml.src : null};
   });
   const head = rows.find(r => r.h === 30) || rows[0];
   const side = cardSide(tsym);
@@ -3508,10 +3901,18 @@ async function cardPadEnter(sym){
       '<div class="note" style="margin-top:2px">' + tsym + " · line " + fmtPrice(line) + (usedLive ? " (live price — no line was typed)" : "") +
       " · live " + fmtPrice(price) + " · line is " + fmtPct(line / price - 1, true) + " vs live</div>" +
       '<table><thead><tr><th>Close in</th><th>System call</th><th>Win probability</th></tr></thead><tbody>' +
-      rows.map(r => "<tr><td>" + (r.h === 60 ? "1 hour" : r.h + " min") + '</td><td>' +
+      rows.map(r => "<tr><td>" + (r.h === 60 ? "1 hour" : r.h + " min") +
+        ' · <span class="cdft" data-cdh="' + r.h + '">' + fmtClock(r.remaining * 1000) + " left</span>" +
+        (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + ")</span>" : "") +
+        '</td><td>' +
         (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + "</span>" : '<span class="note">NO EDGE</span>') +
         "</td><td>" + (r.call ? Math.round(r.winP * 100) + "%" : "OVER " + Math.round(r.p * 100) + "% / UNDER " + Math.round((1 - r.p) * 100) + "%") + "</td></tr>").join("") +
       "</tbody></table>" +
+      (rows.some(r => r.mkt)
+        ? '<div class="note" style="margin-top:4px">' + (S.preset === "kalshi"
+          ? "15m target from Kalshi; other horizons vs the line above."
+          : "Targets from Polymarket's own per-window prices; horizons Polymarket doesn't run (30m/45m) vs the line above.") + "</div>"
+        : "") +
       '<div class="note" style="margin-top:8px">' + posLine + "</div>" +
       '<div class="padadvice">' + advice + "</div>" +
       '<div class="note" style="margin-top:6px">Same math as the watch cards, same global params. Probabilities from pattern statistics — not a promise about any single close. This pad advises; it does not place or execute trades.</div>';
@@ -3529,18 +3930,30 @@ async function cardPadEnter(sym){
    coin's own line when one is set (a cycle line, a hand-set line,
    or a market target in mimic mode); with no line set the calls
    run against the live price and the heading says so. Updates on
-   the price ticks; display only, like everything on this page. */
+   the price ticks; display only, like everything on this page.
+   WEB17 (Shane 2026-10-28): each row is the CURRENT window of its
+   horizon — probability and estimate run over the time REMAINING
+   in that window (the market's own timer), and in market-mimic
+   mode the row's target is the market's own per-window price for
+   that horizon when it publishes one (cs.mktLines), so the card
+   and the mimicked market are always talking about the same
+   window and the same target. */
 function padCallsRows(sym){
   const cs = coinState(sym);
   if (!(cs.price > 0)) return null;
-  const line = (cs.lineSet && cs.line > 0) ? cs.line : cs.price;
   const band = effBand(sym);
+  const now = Date.now();
+  const baseLine = (cs.lineSet && cs.line > 0) ? cs.line : cs.price;
   return PAD_HZ.map(h => {
-    const r = probOverAt(sym, cs.price, line, h * 60);
+    const remaining = Math.max(1, (winBoundaryMs(now, h) - now) / 1000);
+    const ml = mktLineFor(sym, h);
+    const line = ml ? ml.price : baseLine;
+    const r = probOverAt(sym, cs.price, line, remaining);
     const call = Math.abs(r.p - 0.5) >= band ? (r.p > 0.5 ? "OVER" : "UNDER") : null;
     return {h: h, p: r.p, call: call,
             winP: call ? (call === "OVER" ? r.p : 1 - r.p) : null,
-            est: cs.price * Math.exp(r.driftTotal)};
+            est: cs.price * Math.exp(r.driftTotal),
+            remaining: remaining, line: line, mkt: ml ? ml.src : null};
   });
 }
 function renderPadCalls(sym){
@@ -3548,18 +3961,29 @@ function renderPadCalls(sym){
   if (!out) return;
   const rows = padCallsRows(sym);
   if (!rows){ if (out.innerHTML) out.innerHTML = ""; return; }
-  const lineRef = (cs.lineSet && cs.line > 0)
+  const anyMkt = rows.some(r => r.mkt);
+  const lineRef = anyMkt
+    ? "vs " + (S.preset === "kalshi" ? "Kalshi's strike + the card line" : "the market's own per-window targets")
+    : (cs.lineSet && cs.line > 0)
     ? "vs line " + fmtPrice(cs.line) + (cs.lineSrc ? " (" + cs.lineSrc + ")" : "")
     : "vs live price — no line set";
+  const foot = anyMkt
+    ? (S.preset === "kalshi"
+      ? "15m target from Kalshi; other horizons vs the card line. Each row is the current window of its horizon — the call runs over the time left in it."
+      : "Targets from Polymarket's own per-window prices; horizons Polymarket doesn't run (30m/45m) vs the card line. Each row is the current window of its horizon — the call runs over the time left in it.")
+    : "Est. end value = the model's projected close for that perpetual, from the live price and the same math as the call. Each row is the current window of its horizon — the call runs over the time left in it.";
   const html =
     '<div class="lbl" style="margin:12px 0 4px">Perpetual outlook — ' + lineRef + '</div>' +
     '<table><thead><tr><th>Perpetual</th><th>System call</th><th>Est. end value</th></tr></thead><tbody>' +
-    rows.map(r => "<tr><td>" + (r.h === 60 ? "1 hour" : r.h + " min") + "</td><td>" +
+    rows.map(r => "<tr><td>" + (r.h === 60 ? "1 hour" : r.h + " min") +
+      ' · <span class="cdft" data-cdh="' + r.h + '">' + fmtClock(r.remaining * 1000) + " left</span>" +
+      (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + ")</span>" : "") +
+      "</td><td>" +
       (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + " " + Math.round(r.winP * 100) + "%</span>"
               : '<span class="note">NO EDGE</span>') +
       "</td><td>" + fmtPrice(r.est) + "</td></tr>").join("") +
     "</tbody></table>" +
-    '<div class="note" style="margin-top:4px">Est. end value = the model\'s projected close for that perpetual, from the live price and the same math as the call.</div>';
+    '<div class="note" style="margin-top:4px">' + foot + '</div>';
   if (out.innerHTML !== html) out.innerHTML = html;
 }
 /* Hardware keyboard: drives the pad of the card the user most
@@ -3750,6 +4174,7 @@ buildCoinGrid();
   loadGlobal();
   loadAdvisory();
   loadDayForecast();
+  loadSnipe();
   loadSources();
 })();
 </script>
