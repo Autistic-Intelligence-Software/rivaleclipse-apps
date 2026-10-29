@@ -647,6 +647,7 @@ function coinState(sym){
     mktLines: null,            // WEB17: per-horizon market targets {5:{price,src,start,at}, 15:…, 60:…, 240:…}
     mktLinesAt: 0,             // WEB17: last mktLines refresh pass (throttle)
     nextTarget: null,          // WEB12: the market target for the NEXT window, fetched while scoring this one
+    strikePass: 0,             // WEB19: token of this coin's live applyMarketStrike convergence pass (only the newest pass may apply values)
     // WEB9 addendum (Shane 2026-10-28): the forecast section ALWAYS
     // starts collapsed — a stored ph.fc30 from an earlier session
     // must not re-expand it on load (that was burning data on
@@ -1087,7 +1088,10 @@ async function marketTarget(sym, openAtMs){
     if (variant !== "hourly" && !PM_TWAP_COINS.includes(sym)) return null;
     const j = await pmPrice(sym, openAtMs, variant);
     if (j && isFinite(+j.openPrice) && +j.openPrice > 0)
-      return {price: +j.openPrice, src: "Polymarket price to beat"};
+      // WEB19: surface the endpoint's forming flag — openPrice is a
+      // 60s TWAP, still converging while incomplete is true; the
+      // strike pass keeps re-reading until it clears.
+      return {price: +j.openPrice, src: "Polymarket price to beat", incomplete: !!j.incomplete};
     return null;
   }
   if (S.preset === "kalshi"){
@@ -1097,7 +1101,9 @@ async function marketTarget(sym, openAtMs){
     const want = new Date(openAtMs).toISOString();
     const m = ms.find(x => x.open_time === want);
     if (m && isFinite(+m.floor_strike) && +m.floor_strike > 0)
-      return {price: +m.floor_strike, src: "Kalshi strike"};
+      // A Kalshi strike is final the moment it is published — a
+      // successful read is a settled read (WEB19).
+      return {price: +m.floor_strike, src: "Kalshi strike", incomplete: false};
     return null;
   }
   return null;
@@ -1115,35 +1121,80 @@ async function marketClose(sym, openAtMs){
   if (j && j.completed && isFinite(+j.closePrice) && +j.closePrice > 0) return +j.closePrice;
   return null;
 }
-/* Apply the market target for the CURRENT cycle's open as the line.
-   Runs after the synchronous Coinbase strike so the card never
-   waits on the network; a hand-set line (lineMoved) is never
-   overridden mid-cycle. Retries briefly — a brand-new window's
-   reading can lag the boundary by a few seconds. */
+/* WEB19: applyMarketStrike is a CONVERGENCE pass, not a one-shot
+   read. Shane 2026-10-28: "it still needs to pull the updated
+   target line value, each time a perpetual timer restarts."
+   Diagnosis: at a roll, scoreCycle's brief boundary fetch often
+   missed the new window's target outright (the card line then sat
+   on the Coinbase-close fallback for the whole cycle, because
+   nothing ever re-pulled it), or caught only the earliest
+   still-forming TWAP sample and never converged — while the
+   outlook rows did converge via refreshMktLines, so the card line
+   and the row targets disagreed all cycle. The pass re-reads the
+   market target for the CURRENT cycle's open every ~5s for up to
+   ~75s, applying each new reading as it firms up, until the read
+   is settled: a Kalshi strike (final on first read), a Polymarket
+   read no longer flagged incomplete, or a value unchanged across
+   consecutive reads once the window is ≥65s old. It runs at cycle
+   start, on preset change, on coin load, and — the fix — at every
+   rollover (scoreCycle calls it for every selected coin after the
+   line roll + predict). A hand-set line (lineMoved) is never
+   overridden: it is checked before every apply, and checking it
+   stops the pass. Overlapping passes for the same coin/cycle are
+   token-guarded (cs.strikePass, keyed to the cycle it serves) so
+   only the newest pass may apply values; a stopped or rolled
+   cycle ends the pass at its next check. If no target ever
+   arrives, the standing honest fallback labeling is kept. */
 async function applyMarketStrike(sym){
   if (!marketActive() || !S.cycle.active) return false;
   const cs = coinState(sym);
-  const openAt = cycleOpenAt();
-  for (let i = 0; i < 4; i++){
-    if (!S.cycle.active || cycleOpenAt() !== openAt) return false;
+  const openAt = cycleOpenAt(), closeAt = S.cycle.closeAt;
+  const token = (cs.strikePass || 0) + 1;
+  cs.strikePass = token;
+  const live = () => S.cycle.active && S.cycle.closeAt === closeAt &&
+                     cycleOpenAt() === openAt && cs.strikePass === token;
+  const t0 = Date.now();
+  let applied = false, appliedPrice = null, lastRead = null;
+  while (live()){
+    if (cs.lineMoved) return applied;
     const t = await marketTarget(sym, openAt);
+    if (!live() || cs.lineMoved) return applied;
     if (t){
-      if (cs.lineMoved) return false;
-      cs._lastLine = t.price;      // the market roll is not a user line move
-      cs.lineSrc = t.src;
-      setLine(sym, t.price);
-      cs.lineFromStart = false;
-      return true;
+      const sameAsLastRead = lastRead != null && Math.abs(t.price - lastRead) <= 1e-9;
+      lastRead = t.price;
+      if (appliedPrice == null || Math.abs(t.price - appliedPrice) > 1e-9){
+        cs._lastLine = t.price;      // a market (re)target is not a user line move
+        cs.lineSrc = t.src;
+        setLine(sym, t.price);
+        cs.lineFromStart = false;
+        applied = true; appliedPrice = t.price;
+        /* SCORING LOCK vs CONVERGENCE: in market mode the market's
+           own target IS this cycle's opening line — the endpoint's
+           first reading is a still-forming TWAP sample of that same
+           line, and later readings are firmer measurements of it,
+           not a new line. So when the pass firms the value up, the
+           locked snapshot's line follows the measurement
+           (snap.line only). The locked call and p were the system's
+           call on this window and NEVER change here; grading
+           consumes the call against this same opening line. */
+        if (cs.snap && cs.snap.closeAt === S.cycle.closeAt && cs.snap.line !== t.price){
+          cs.snap.line = t.price;
+          renderLocked(sym);
+        }
+      }
+      if (t.incomplete === false) return applied;
+      if (sameAsLastRead && Date.now() - openAt >= 65000) return applied;
     }
-    if (i < 3) await new Promise(r => setTimeout(r, 3000));
+    if (Date.now() - t0 >= 75000) break;
+    await new Promise(r => setTimeout(r, 5000));
   }
-  if (S.cycle.active && cycleOpenAt() === openAt && !cs.lineMoved){
+  if (!applied && live() && !cs.lineMoved){
     cs.lineSrc = S.preset === "polymarket"
       ? "Coinbase open (no Polymarket target for this coin/window)"
       : "Coinbase open (no Kalshi target for this coin/window)";
     updateLineUI(sym);
   }
-  return false;
+  return applied;
 }
 
 /* ---------- WEB17 (Shane 2026-10-28): window math, per-horizon
@@ -3342,6 +3393,12 @@ async function scoreCycle(){
     updateLineUI(sym);
     predict(sym);
   });
+  // WEB19: (re)start the market-target convergence pass for the
+  // NEW cycle, for every selected coin. The boundary fetch above
+  // often misses the fresh window's target or catches only its
+  // earliest forming sample; the pass keeps pulling the market's
+  // updated target value as it firms up (see applyMarketStrike).
+  if (marketActive()) S.selected.forEach(sym => { applyMarketStrike(sym); });
 }
 /* ---------- System scoreboard — global (Shane 2026-10-27) ----------
    The header scoreboard is the SYSTEM's record, pulled from the one
