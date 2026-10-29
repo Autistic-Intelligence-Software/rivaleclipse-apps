@@ -21,12 +21,20 @@ body{
   min-height:100vh;
 }
 a{color:var(--gold2)}
-header{max-width:none;margin:0 auto;padding:28px 18px 6px}
-.wordmark{font-size:15px;letter-spacing:.35em;text-transform:uppercase;color:var(--mut)}
+header{max-width:none;margin:0 auto;padding:12px 18px 10px;position:sticky;top:0;z-index:56;
+  background:rgba(6,6,16,.93);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line)}
+.wordmark{font-size:12px;letter-spacing:.35em;text-transform:uppercase;color:var(--mut)}
 .wordmark b{color:#fff;font-weight:700}
 .wordmark i{color:var(--gold);font-style:normal;font-weight:700}
-h1{margin:6px 0 4px;font-size:34px;line-height:1.1;background:linear-gradient(90deg,var(--gold2),var(--gold) 55%,var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
-.sub{color:var(--mut);max-width:760px;font-size:15px;line-height:1.5}
+.hrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:3px}
+h1{margin:0;font-size:24px;line-height:1.1;background:linear-gradient(90deg,var(--gold2),var(--gold) 55%,var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--mut);max-width:760px;font-size:13.5px;line-height:1.45;margin:5px 0 0}
+.hdrnav{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-left:auto}
+.ctxbtn{background:none;border:1px solid var(--line);border-radius:999px;color:var(--gold2);
+  cursor:pointer;font-size:12px;font-weight:700;letter-spacing:.05em;padding:4px 12px;text-transform:uppercase}
+.ctxbtn:hover{border-color:var(--gold)}
+.ctxbtn.on{border-color:var(--gold);background:#1c1808;color:var(--gold2)}
 main{max-width:none;margin:0 auto;padding:14px 18px 30px;display:grid;gap:16px}
 .card{
   background:linear-gradient(180deg,var(--card) 0%,var(--card2) 100%);
@@ -348,14 +356,44 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
 #simplPop .simpl-x{position:absolute;top:7px;right:9px;background:none;border:none;
   color:var(--mut);font-size:14px;cursor:pointer;padding:2px 5px;line-height:1}
 #simplPop .simpl-x:hover{color:var(--txt)}
+/* ---------- WEB18: ONE shared context window (Shane 2026-10-28) --
+   The WEB13 pop-out is now the page's single context window: text
+   explainers (Simplified + How-it-works) AND full live panels
+   (scoreboard, day-forecast detail, per-card details/records) all
+   open in it — one at a time, anchored under the invoking section,
+   closed by outside tap or Escape. Panel mode widens the window
+   and scrolls; the default view keeps only essentials on screen. */
+#simplPop.ctxpanel{width:min(720px,calc(100vw - 20px));max-height:78vh;overflow-y:auto}
+#simplPop .ctx-body{margin-top:2px}
+#simplPop .ctx-body .note:first-child{margin-top:0}
+.ctx-body table{width:100%}
+#fcDetail[hidden]{display:none}
+.failodds{color:var(--gold2);font-weight:700;font-size:12px;white-space:nowrap}
+.spotrow .failodds{display:block;margin-top:4px;font-size:12.5px}
+#scorePeek{margin-top:8px;font-size:13.5px;color:var(--txt)}
+.secthead{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.secthead h2{margin:0}
+@media (max-width:640px){
+  .card{padding:14px}
+  .wcard{padding:12px}
+  h1{font-size:21px}
+  .hdrnav{margin-left:0}
+}
 </style>
 </head>
 <body>
 <header>
   <div class="wordmark"><b>Rıval</b> <i>Eclıpse</i></div>
-  <h1>Perpetual Helper</h1>
-  <p class="sub">Live prices for the cryptos you pick, a cycle timer synced to the market clock, and an over/under call for the close from 6 months of pattern stats per coin. Each cycle's call locks at the open — that locked call is the only one graded — while the live call keeps tracking every 10 seconds until the close. It scores itself at every close, in the open.</p>
-  <p class="sub" style="margin-top:10px"><a href="learn/" style="font-weight:700">📚 Learn — the perpetuals tutorial &amp; lessons →</a> <span>what to look for in the data, real past charts with the signs drawn on, wave and snipe patterns, and how positions are managed.</span></p>
+  <div class="hrow">
+    <h1>Perpetual Helper</h1>
+    <nav class="hdrnav" aria-label="Page sections">
+      <button type="button" class="ctxbtn ctxkeep" id="hdrScoreBtn">Scoreboard</button>
+      <button type="button" class="ctxbtn ctxkeep" id="hdrFcBtn">Day forecast</button>
+      <button type="button" class="ctxbtn" data-ctxtext="how">How it works</button>
+    </nav>
+  </div>
+  <p class="sub">Live over/under calls for the close, from 6 months of pattern stats per coin — the system scores itself at every close, in the open.</p>
+  <p class="sub" style="margin-top:6px"><a href="learn/" style="font-weight:700">📚 Learn — the perpetuals tutorial &amp; lessons →</a> <span>what to look for in the data, real past charts with the signs drawn on, wave and snipe patterns, and how positions are managed.</span></p>
 </header>
 <div id="drawerBackdrop" hidden></div>
 <button class="edgetab left" id="oddsTab" type="button" title="Open the odds board">Odds</button>
@@ -429,8 +467,7 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
       <div class="simplrow" id="advSimplRow" hidden><button type="button" class="simplbtn" data-simpl="banner">Simplified</button></div>
       <div id="multBoard" class="multboard"><span class="mblbl">Big multipliers ahead</span><span class="mbquiet">No big-multiplier setups on the board right now.</span></div>
       <section class="card" id="snipeCard">
-        <h2 style="margin:0">🎯 Snipe Spotter — the 1–10% → 100% bounce</h2>
-        <p class="note" style="margin-top:4px">This spotter flags one event only: a perpetual window where the cheap side — the side priced at just 1–10% odds — shows wave signs of flipping to a near-lock before the close. When that bounce setup is live it shows here and on the coin's card. Nothing else gets flagged.</p>
+        <div class="secthead"><h2>🎯 Snipe Spotter — the 1–10% → 100% bounce</h2><button type="button" class="ctxbtn" data-ctxtext="snipe">How it works</button></div>
         <div id="snipeBody"><div class="note">Loading the spotter…</div></div>
       </section>
       <div id="cards"></div>
@@ -438,7 +475,8 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
   </div>
   <div class="duo">
   <section class="card" id="scoreCard">
-      <div class="boardhead"><span class="lbl" style="margin:0">System scoreboard — global</span><button class="boardbtn" id="scoreBtn" type="button">Scoreboard ▸</button></div>
+      <div class="boardhead"><span class="lbl" style="margin:0">System scoreboard — global</span><button class="boardbtn ctxkeep" id="scoreBtn" type="button">Scoreboard ▸</button></div>
+      <div class="note" id="scorePeek">loading system record…</div>
       <div id="scoreBoard" hidden>
       <div class="note">every visitor sees these same numbers · updated from the shared database</div>
       <div class="note" id="scoreSummary" style="margin-top:6px">loading system record…</div>
@@ -450,14 +488,16 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
   </section>
   <section class="card" id="forecastCard">
     <h2>Day forecast — when each market tends to move</h2>
-    <p class="note" style="margin-top:0">From the last 30+ days of hourly candles the server already tracks: for every coin and every hour of the day, how much it typically moves, how often that hour closed up, and an opportunity score blending the two with the coin's own hour-of-day habits. These are statistical tendencies from history — the hours when a coin has been lively and one-directional are simply the hours its patterns have been easiest to read. Cell hours are Eastern Time; hover any cell for its UTC hour and numbers.</p>
     <div id="fcBest"><div class="note">Loading the day forecast…</div></div>
+    <div class="row" style="margin-top:10px"><button class="boardbtn ctxkeep" id="fcBtn" type="button">Full forecast — every coin, every hour ▸</button></div>
+    <div id="fcDetail" hidden>
+    <p class="note" style="margin-top:0">From the last 30+ days of hourly candles the server already tracks: for every coin and every hour of the day, how much it typically moves, how often that hour closed up, and an opportunity score blending the two with the coin's own hour-of-day habits. These are statistical tendencies from history — the hours when a coin has been lively and one-directional are simply the hours its patterns have been easiest to read. Cell hours are Eastern Time; hover any cell for its UTC hour and numbers.</p>
     <div id="fcCoins"></div>
+    </div>
   </section>
   </div>
   <section class="card" id="alertsCard">
-    <h2>Wave alerts</h2>
-    <p class="note" style="margin-top:0">The system grades its own forecast record. When a pattern family — snipe setup, wave, or trend — lands 4 predictions in a row whose predicted closing value came within $1.00 of the actual close (value accuracy, not just picking the right side), and a fresh instance of that same pattern opens, the alert lands here with the system's suggested side.</p>
+    <div class="secthead"><h2>Wave alerts</h2><button type="button" class="ctxbtn" data-ctxtext="alerts">How alerts work</button></div>
     <div id="alertsList"><div class="note">Loading alerts…</div></div>
     <div class="lbl">Get wave alerts by text</div>
     <form id="smsForm">
@@ -470,7 +510,8 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
   </section>
 </main>
 <footer>
-  Predictions are probabilities built from pattern statistics — barrier distance to your line, volatility, momentum, and each coin's 6-month base rates. They are not guarantees, and short-horizon crypto direction is close to a coin flip: the base models' held-out record is printed on every card, and the scoreboard above shows the system's global record from the shared database — the same numbers every visitor sees, wins and losses alike. The snipe badge uses the hourly setup only, read on a ~4-hour window: on held-out data across all 20 coins, flagged setups produced the big move 23.1% of the time against a 14.4% unflagged base rate (1.61x lift). The 15-minute snipe tested as noise (lift under 1x) and is not used. Each card's forecast section stays collapsed until you open it — while it is closed, the page runs no forecast rendering or forecast data work at all. Inside it, the Estimate graph is a live prediction feed: the system's current predicted path — built from the coin's own recent swing rhythm, leg durations and sizes measured from the last two hours of 1-minute prices — flows in from the right and scrolls left past the live price bead, which stays centered and leaves a trail behind it. Drawn beside the real trail is the comparison line: what the system predicted for each past moment 1, 5 or 10 minutes before it happened (the graph's chips pick the age), so prediction and reality can be watched tracking or diverging in plain sight. It is a rhythm-matched estimate, not a promised path — and the scoreboard of record for these predictions is the system's own graded forecast-check record, kept on the server, not this picture. All tuning lives in one shared database on the server: the system scores its own predictions as they close and retunes separate weights for momentum, regime, and rise/fall asymmetry; confidence buckets that run hot get shrunk toward 50; a coin whose calls keep flip-flopping gets a wider no-call band and a steadier, dwell-held call; and the volatility inside every probability follows the last few hours of live market, blended with the 6-month base. This page only pulls the current global tuning as it loads and refreshes — each card's Global line shows the shared record it is running on. The Trend read on each call is a plain-language summary of those same pattern signals — trend state, how rises have been running against falls, swing timing, forecast slope, and this coin's hour-of-day habits over the 6-month history — read off the numbers at that moment, not a separate prediction and not a guarantee. The forecast-check graph freezes when you open it and zooms into the forecast's first 5, 10, 15 or 30 minutes: the actual price then draws over the frozen forecast minute by minute, with the system's measured error printed on the graph — so you can see exactly how close the prediction is tracking, and whether it is catching the trend shifts as they happen. The forecast-check graph draws the system's minute-by-minute predicted path — built from the coin's own recent swing rhythm (leg durations and sizes measured from the last two hours of 1-minute prices), waved forward and anchored to the system's drift expectation at the 30-minute mark. Still a rhythm-matched estimate, not a promised path. The system runs its own forecast checks on the server around the clock: it draws this same predicted path for every coin, grades it against the real price at 5, 10, 15 and 30 minutes as the results happen, and logs every result in the shared database that tunes future forecasts. This page only displays that record — there is no account and no sign-in, nothing is uploaded from your browser, and nothing about your visit is saved or used for learning. Data: Coinbase Exchange public feed. Not financial advice.
+  Predictions are probabilities from pattern statistics — not guarantees, and short-horizon crypto direction is close to a coin flip. The scoreboard shows the system's real global record, wins and losses alike. Data: Coinbase Exchange public feed. Not financial advice.
+  <div class="row" style="margin-top:8px"><button type="button" class="ctxbtn" data-ctxtext="full">Full explanation — how this page works</button></div>
 </footer>
 <script>
 "use strict";
@@ -636,12 +677,39 @@ function snapLineToPrice(sym){
   cs.lineFromStart = false;
   if (cs.price) setLine(sym, cs.price);
 }
+/* WEB18: a card's Details (offset slider, records, sources) open
+   in the ONE shared context window — the block is hosted there
+   while open and restored to the card when the window closes.
+   The persisted preference (LS_DET, unchanged) is applied at
+   card creation by applyDetailsHome WITHOUT opening the window:
+   it just leaves the block expanded in place, as before. */
 function setDetails(sym, open){
   const cs = coinState(sym);
   cs.detailsOpen = !!open;
   const m = lsGet(LS_DET, {}); m[sym] = cs.detailsOpen; lsSet(LS_DET, m);
+  if (cs.els.details){
+    if (cs.detailsOpen){
+      openCtxPanel(cs.els.detBtn, sym + " — details, records & sources", cs.els.details,
+        cs.els.root, () => syncDetailsClosed(sym));
+    } else closeCtxNode(cs.els.details);
+    cs.els.details.hidden = !cs.detailsOpen;
+  }
+  if (cs.els.detBtn) cs.els.detBtn.textContent = cs.detailsOpen ? "Details ▴" : "Details ▸";
+}
+function applyDetailsHome(sym){
+  const cs = coinState(sym);
   if (cs.els.details) cs.els.details.hidden = !cs.detailsOpen;
   if (cs.els.detBtn) cs.els.detBtn.textContent = cs.detailsOpen ? "Details ▴" : "Details ▸";
+}
+/* When the shared window closes a card's Details from outside
+   (another window opened, outside tap, Escape), the card's own
+   toggle state, label and persisted preference follow it closed. */
+function syncDetailsClosed(sym){
+  const cs = coinState(sym);
+  if (!cs.detailsOpen) return;
+  cs.detailsOpen = false;
+  const m = lsGet(LS_DET, {}); m[sym] = false; lsSet(LS_DET, m);
+  if (cs.els.detBtn) cs.els.detBtn.textContent = "Details ▸";
 }
 function setFCZoom(sym, z){
   const cs = coinState(sym);
@@ -706,10 +774,105 @@ const SIMPL_TEXT = {
     t: "This is the system's honest opinion on this coin right now. The badge says how predictable it looks (a coin sitting flat can be a bad bet even when nothing is 'wrong'). The suggested side is the side the system would pick, and the percentage is its real track record on this coin so far — its actual scored history, never a guarantee." }
 };
 const SIMPL = { pop: null, key: null, btn: null };
+/* ---------- WEB18: the pop-out is now the ONE shared context
+   window for the whole page. Three content modes share it:
+   (1) Simplified explainers (openSimpl, WEB13 — unchanged API),
+   (2) How-it-works texts (openCtxText, CTX_TEXT below), and
+   (3) live panels (openCtxPanel) — the scoreboard, the day-
+   forecast detail and each card's Details/records block are
+   MOVED into the window while it is open and restored to their
+   home slot when it closes, so there is exactly one instance of
+   every live section and every renderer/listener keeps working
+   untouched. One window at a time; opening anything first closes
+   whatever is open (restoring its panel home). ---------- */
+const CTX = { node: null, home: null, next: null, wasHidden: false, onclose: null };
 function closeSimpl(){
-  if (SIMPL.pop) SIMPL.pop.hidden = true;
+  if (CTX.node){
+    const node = CTX.node, onclose = CTX.onclose;
+    if (CTX.home && (CTX.home.insertBefore || CTX.home.appendChild)){
+      try {
+        if (CTX.next && CTX.next.parentNode === CTX.home) CTX.home.insertBefore(node, CTX.next);
+        else CTX.home.appendChild(node);
+      } catch (e) { /* node stays where it is rather than vanishing */ }
+    }
+    node.hidden = CTX.wasHidden;
+    CTX.node = null; CTX.home = null; CTX.next = null; CTX.onclose = null;
+    if (onclose) onclose();
+  }
+  if (SIMPL.pop){
+    SIMPL.pop.hidden = true;
+    if (SIMPL.pop.classList) SIMPL.pop.classList.remove("ctxpanel");
+  }
   if (SIMPL.btn && SIMPL.btn.classList) SIMPL.btn.classList.remove("on");
   SIMPL.key = null; SIMPL.btn = null;
+}
+function ctxFillText(pop, text){
+  const t = pop.querySelector(".simpl-t");
+  if (!t) return;
+  t.innerHTML = String(text).split("\n\n").map(par => "<p>" + escHtml(par) + "</p>").join("");
+}
+function placeCtxPop(anchor){
+  const pop = SIMPL.pop;
+  if (!pop) return;
+  const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { bottom: 0, right: 0 };
+  const vw = window.innerWidth || 1024, sx = window.scrollX || 0, sy = window.scrollY || 0;
+  pop.hidden = false;
+  pop.style.top = (r.bottom + sy + 6) + "px";
+  if (vw < 640){
+    pop.style.left = (sx + 10) + "px";
+  } else {
+    const w = Math.min(pop.classList && pop.classList.contains("ctxpanel") ? 720 : 400, vw - 20);
+    let left = r.right + sx - w;
+    left = Math.max(sx + 8, Math.min(left, sx + vw - w - 8));
+    pop.style.left = left + "px";
+  }
+}
+function ensureCtxPop(){
+  if (SIMPL.pop) return SIMPL.pop;
+  const pop = document.createElement("div");
+  pop.id = "simplPop"; pop.hidden = true;
+  pop.innerHTML = '<div class="simpl-h"></div><button type="button" class="simpl-x" aria-label="Close">✕</button><div class="simpl-t"></div><div class="ctx-body"></div>';
+  const x = pop.querySelector(".simpl-x");
+  if (x && x.addEventListener) x.addEventListener("click", closeSimpl);
+  document.body.appendChild(pop);
+  SIMPL.pop = pop;
+  return pop;
+}
+function openCtxPanel(btn, title, node, anchor, onclose){
+  if (!node) return;
+  if (CTX.node === node && SIMPL.pop && !SIMPL.pop.hidden) return;  // already hosting it
+  closeSimpl();
+  const pop = ensureCtxPop();
+  CTX.node = node;
+  CTX.home = node.parentNode || null;
+  CTX.next = node.nextSibling || null;
+  CTX.wasHidden = !!node.hidden;
+  CTX.onclose = onclose || null;
+  const body = pop.querySelector(".ctx-body");
+  if (body && body.appendChild) body.appendChild(node);
+  node.hidden = false;
+  pop.querySelector(".simpl-h").textContent = title || "";
+  ctxFillText(pop, "");
+  if (pop.classList) pop.classList.add("ctxpanel");
+  SIMPL.key = "panel"; SIMPL.btn = btn || null;
+  if (btn && btn.classList) btn.classList.add("on");
+  placeCtxPop(anchor || btn || node);
+}
+function closeCtxNode(node){
+  if (CTX.node && CTX.node === node) closeSimpl();
+}
+function openCtxText(btn, key){
+  const info = CTX_TEXT[key];
+  if (!info) return;
+  const fullKey = "ctx:" + key;
+  if (SIMPL.key === fullKey && SIMPL.btn === btn){ closeSimpl(); return; }
+  closeSimpl();
+  const pop = ensureCtxPop();
+  pop.querySelector(".simpl-h").textContent = info.h;
+  ctxFillText(pop, info.t);
+  SIMPL.key = fullKey; SIMPL.btn = btn;
+  if (btn && btn.classList) btn.classList.add("on");
+  placeCtxPop(btn);
 }
 function simplSection(btn, key){
   if (key === "banner") return $("#advStrip") || btn;
@@ -729,47 +892,56 @@ function openSimpl(btn){
   if (!info) return;
   if (SIMPL.key === key && SIMPL.btn === btn){ closeSimpl(); return; }
   closeSimpl();
-  if (!SIMPL.pop){
-    const pop = document.createElement("div");
-    pop.id = "simplPop"; pop.hidden = true;
-    pop.innerHTML = '<div class="simpl-h"></div><button type="button" class="simpl-x" aria-label="Close">✕</button><div class="simpl-t"></div>';
-    const x = pop.querySelector(".simpl-x");
-    if (x && x.addEventListener) x.addEventListener("click", closeSimpl);
-    document.body.appendChild(pop);
-    SIMPL.pop = pop;
-  }
-  const pop = SIMPL.pop;
+  const pop = ensureCtxPop();
   pop.querySelector(".simpl-h").textContent = info.h;
-  pop.querySelector(".simpl-t").textContent = info.t;
-  const sec = simplSection(btn, key) || btn;
-  const r = sec.getBoundingClientRect ? sec.getBoundingClientRect() : { bottom: 0, right: 0 };
-  const vw = window.innerWidth || 1024, sx = window.scrollX || 0, sy = window.scrollY || 0;
-  pop.hidden = false;
-  pop.style.top = (r.bottom + sy + 6) + "px";
-  if (vw < 640){
-    pop.style.left = (sx + 10) + "px";
-  } else {
-    const w = Math.min(400, vw - 20);
-    let left = r.right + sx - w;
-    left = Math.max(sx + 8, Math.min(left, sx + vw - w - 8));
-    pop.style.left = left + "px";
+  let text = info.t;
+  /* WEB18: the advisory explainer also carries THIS coin's full
+     advisory reasons — the card itself now shows only the first
+     reason as its one-line summary, so the complete list lives
+     here in the shared window. */
+  if (key === "advisory" && typeof ADVISORY !== "undefined" && ADVISORY && ADVISORY.coins){
+    const root = btn.closest ? btn.closest(".wcard") : null;
+    const sym = root && root.id ? root.id.replace(/^card-/, "") : null;
+    const a = sym ? ADVISORY.coins[sym] : null;
+    if (a && a.reasons && a.reasons.length)
+      text += "\n\nWhy " + sym + ", right now: " + a.reasons.join(" · ");
   }
+  ctxFillText(pop, text);
+  const sec = simplSection(btn, key) || btn;
+  placeCtxPop(sec);
   SIMPL.key = key; SIMPL.btn = btn;
   if (btn.classList) btn.classList.add("on");
 }
 document.addEventListener("click", ev => {
   const b = ev.target && ev.target.closest ? ev.target.closest(".simplbtn") : null;
-  if (b) openSimpl(b);
+  if (b){ openSimpl(b); return; }
+  const c = ev.target && ev.target.closest ? ev.target.closest("[data-ctxtext]") : null;
+  if (c) openCtxText(c, c.dataset ? c.dataset.ctxtext : null);
 });
 document.addEventListener("pointerdown", ev => {
   if (!SIMPL.pop || SIMPL.pop.hidden) return;
   const t = ev.target;
   if (!t) return;
   if (t === SIMPL.pop || (SIMPL.pop.contains && SIMPL.pop.contains(t))) return;
-  if (t.closest && t.closest(".simplbtn")) return;
+  if (t.closest && (t.closest(".simplbtn") || t.closest("[data-ctxtext]") || t.closest(".ctxkeep"))) return;
   closeSimpl();
 });
 document.addEventListener("keydown", ev => { if (ev.key === "Escape") closeSimpl(); });
+
+/* ---------- WEB18: How-it-works texts for the shared context
+   window — the walls of text that used to sit in the header, the
+   section intros and the page footer, stashed here verbatim and
+   opened from slim launcher buttons. ---------- */
+const CTX_TEXT = {
+  how: { h: "How Perpetual Helper works",
+    t: "Live prices for the cryptos you pick, a cycle timer synced to the market clock, and an over/under call for the close from 6 months of pattern stats per coin. Each cycle's call locks at the open — that locked call is the only one graded — while the live call keeps tracking every 10 seconds until the close. It scores itself at every close, in the open." },
+  snipe: { h: "Snipe Spotter — how it works",
+    t: "This spotter flags one event only: a perpetual window where the cheap side — the side priced at just 1–10% odds — shows wave signs of flipping to a near-lock before the close. When that bounce setup is live it shows here and on the coin's card. Nothing else gets flagged." },
+  alerts: { h: "Wave alerts — how they work",
+    t: "The system grades its own forecast record. When a pattern family — snipe setup, wave, or trend — lands 4 predictions in a row whose predicted closing value came within $1.00 of the actual close (value accuracy, not just picking the right side), and a fresh instance of that same pattern opens, the alert lands here with the system's suggested side." },
+  full: { h: "Full explanation — how this page works",
+    t: "Predictions are probabilities built from pattern statistics \u2014 barrier distance to your line, volatility, momentum, and each coin's 6-month base rates. They are not guarantees, and short-horizon crypto direction is close to a coin flip: the base models' held-out record is printed on every card, and the scoreboard above shows the system's global record from the shared database \u2014 the same numbers every visitor sees, wins and losses alike.\n\nThe snipe badge uses the hourly setup only, read on a ~4-hour window: on held-out data across all 20 coins, flagged setups produced the big move 23.1% of the time against a 14.4% unflagged base rate (1.61x lift). The 15-minute snipe tested as noise (lift under 1x) and is not used.\n\nEach card's forecast section stays collapsed until you open it \u2014 while it is closed, the page runs no forecast rendering or forecast data work at all. Inside it, the Estimate graph is a live prediction feed: the system's current predicted path \u2014 built from the coin's own recent swing rhythm, leg durations and sizes measured from the last two hours of 1-minute prices \u2014 flows in from the right and scrolls left past the live price bead, which stays centered and leaves a trail behind it. Drawn beside the real trail is the comparison line: what the system predicted for each past moment 1, 5 or 10 minutes before it happened (the graph's chips pick the age), so prediction and reality can be watched tracking or diverging in plain sight. It is a rhythm-matched estimate, not a promised path \u2014 and the scoreboard of record for these predictions is the system's own graded forecast-check record, kept on the server, not this picture.\n\nAll tuning lives in one shared database on the server: the system scores its own predictions as they close and retunes separate weights for momentum, regime, and rise/fall asymmetry; confidence buckets that run hot get shrunk toward 50; a coin whose calls keep flip-flopping gets a wider no-call band and a steadier, dwell-held call; and the volatility inside every probability follows the last few hours of live market, blended with the 6-month base. This page only pulls the current global tuning as it loads and refreshes \u2014 each card's Global line shows the shared record it is running on.\n\nThe Trend read on each call is a plain-language summary of those same pattern signals \u2014 trend state, how rises have been running against falls, swing timing, forecast slope, and this coin's hour-of-day habits over the 6-month history \u2014 read off the numbers at that moment, not a separate prediction and not a guarantee.\n\nThe forecast-check graph freezes when you open it and zooms into the forecast's first 5, 10, 15 or 30 minutes: the actual price then draws over the frozen forecast minute by minute, with the system's measured error printed on the graph \u2014 so you can see exactly how close the prediction is tracking, and whether it is catching the trend shifts as they happen. The forecast-check graph draws the system's minute-by-minute predicted path \u2014 built from the coin's own recent swing rhythm (leg durations and sizes measured from the last two hours of 1-minute prices), waved forward and anchored to the system's drift expectation at the 30-minute mark. Still a rhythm-matched estimate, not a promised path.\n\nThe system runs its own forecast checks on the server around the clock: it draws this same predicted path for every coin, grades it against the real price at 5, 10, 15 and 30 minutes as the results happen, and logs every result in the shared database that tunes future forecasts. This page only displays that record \u2014 there is no account and no sign-in, nothing is uploaded from your browser, and nothing about your visit is saved or used for learning. Data: Coinbase Exchange public feed. Not financial advice." }
+};
 
 /* ---------- setup UI ---------- */
 function buildCoinGrid(){
@@ -1178,7 +1350,7 @@ function addCard(sym){
     '<div class="lockedline" hidden></div>' +
     '<div class="cardpop" hidden>' +
     '<div class="cardadvice" hidden></div>' +
-    '<button class="detbtn" type="button">Details ▸</button>' +
+    '<button class="detbtn ctxkeep" type="button">Details ▸</button>' +
     '<div class="carddetails" hidden>' +
     '<div class="line-ctl"><label>Over / under line <span class="slider-val"></span></label>' +
     '<input type="range" class="line-slider" min="-10" max="10" step="0.1" value="0">' +
@@ -1277,7 +1449,7 @@ function addCard(sym){
   cs.els.detBtn.addEventListener("click", () => setDetails(sym, !cs.detailsOpen));
   cs.els.posUp.addEventListener("click", () => setCardSide(sym, "up"));
   cs.els.posDn.addEventListener("click", () => setCardSide(sym, "down"));
-  setDetails(sym, cs.detailsOpen);
+  applyDetailsHome(sym);
   applyFC30(sym);
   cs.els.slider.addEventListener("input", () => {
     let off = parseFloat(cs.els.slider.value);
@@ -2748,15 +2920,51 @@ let GLOBAL_POOL = null, GLOBAL_TOTALS = null;
    loadGlobal() still fetches and renderGlobalScore() still
    writes into #scoreSummary/#scoreBody exactly as before; the
    section simply starts hidden and re-renders on open. */
+/* WEB18: the scoreboard detail (summary + per-coin table) opens
+   in the shared context window; the card itself keeps a one-line
+   peek of the same totals. Data pipeline untouched — loadGlobal()
+   fetches and renderGlobalScore() writes #scoreSummary/#scoreBody
+   exactly as before; the board node is simply hosted in the
+   window while open and restored home when it closes. */
 let SCORE_OPEN = false;
 function setScoreOpen(open){
   SCORE_OPEN = !!open;
   const b = $("#scoreBoard"), btn = $("#scoreBtn");
-  if (b) b.hidden = !SCORE_OPEN;
   if (btn) btn.textContent = SCORE_OPEN ? "Scoreboard ▴" : "Scoreboard ▸";
-  if (SCORE_OPEN) renderGlobalScore();
+  if (SCORE_OPEN){
+    renderGlobalScore();
+    if (b) openCtxPanel(btn, "System scoreboard — global", b, $("#scoreCard"), syncScoreClosed);
+  } else if (b) closeCtxNode(b);
+}
+function syncScoreClosed(){
+  if (!SCORE_OPEN) return;
+  SCORE_OPEN = false;
+  const btn = $("#scoreBtn");
+  if (btn) btn.textContent = "Scoreboard ▸";
 }
 { const sb = $("#scoreBtn"); if (sb) sb.addEventListener("click", () => setScoreOpen(!SCORE_OPEN)); }
+{ const hb = $("#hdrScoreBtn"); if (hb) hb.addEventListener("click", () => setScoreOpen(!SCORE_OPEN)); }
+/* WEB18: same shared-window treatment for the day-forecast
+   detail — the best-windows summary (#fcBest) stays on the card;
+   the explainer + every-coin hour grid (#fcDetail) opens in the
+   window. renderDayForecast still writes #fcCoins untouched. */
+let FC_OPEN = false;
+function setFCOpen(open){
+  FC_OPEN = !!open;
+  const d = $("#fcDetail"), btn = $("#fcBtn");
+  if (btn) btn.textContent = FC_OPEN ? "Full forecast — every coin, every hour ▴" : "Full forecast — every coin, every hour ▸";
+  if (FC_OPEN){
+    if (d) openCtxPanel(btn, "Day forecast — every coin, every hour", d, $("#forecastCard"), syncFCClosed);
+  } else if (d) closeCtxNode(d);
+}
+function syncFCClosed(){
+  if (!FC_OPEN) return;
+  FC_OPEN = false;
+  const btn = $("#fcBtn");
+  if (btn) btn.textContent = "Full forecast — every coin, every hour ▸";
+}
+{ const fb = $("#fcBtn"); if (fb) fb.addEventListener("click", () => setFCOpen(!FC_OPEN)); }
+{ const hb = $("#hdrFcBtn"); if (hb) hb.addEventListener("click", () => setFCOpen(!FC_OPEN)); }
 
 async function loadGlobal(){
   const j = await fetchJSON(AUTH + "/api/perp/global");
@@ -3148,6 +3356,7 @@ function renderGlobalScore(){
   if (!sum || !tb) return;
   if (!GLOBAL_POOL){
     sum.textContent = "loading system record…";
+    const pk0 = $("#scorePeek"); if (pk0) pk0.textContent = sum.textContent;
     tb.innerHTML = '<tr><td colspan="6" class="note">loading system record…</td></tr>';
     return;
   }
@@ -3175,6 +3384,7 @@ function renderGlobalScore(){
   sum.textContent = "Predictions: " + Number(tScored).toLocaleString("en-US") + " scored · " +
     Number(tCalls).toLocaleString("en-US") + " calls · accuracy " + acc +
     " — Forecast checks: " + fcC + " correct · " + fcI + " incorrect · accuracy " + fcAcc;
+  const pk = $("#scorePeek"); if (pk) pk.textContent = sum.textContent;
   tb.innerHTML = rows.length ? rows.join("") :
     '<tr><td colspan="6" class="note">No scored predictions yet.</td></tr>';
 }
@@ -3404,7 +3614,10 @@ function renderAdvCard(sym){
     chip.hidden = false; chip.className = "sidechip none";
     chip.textContent = "No suggested side — NO EDGE";
   }
-  if (cs.els.advWhy) cs.els.advWhy.textContent = (a.reasons && a.reasons.length) ? a.reasons.join(" · ") : "";
+  /* WEB18: the card shows only the FIRST advisory reason as its
+     one-line summary — the full reason list rides in the card's
+     advisory Simplified window (openSimpl appends it there). */
+  if (cs.els.advWhy) cs.els.advWhy.textContent = (a.reasons && a.reasons.length) ? a.reasons[0] : "";
 }
 function renderAlerts(){
   const list = $("#alertsList");
@@ -3458,6 +3671,10 @@ function snipeRecordLine(rec){
 function snipeSpotRow(sp){
   const under = sp.side === "under";
   const nowPct = Math.round((sp.prob_now || 0) * 100);
+  /* WEB18 (§7): failure-odds from the cheap side's CURRENT success
+     probability (prob_now) — the label tightens as the bounce
+     develops, and the §7 gating suppresses it inside the band. */
+  const fo = failOddsLabel(sp.prob_now);
   return '<div class="spotrow"><span class="acoin">' + escHtml(sp.coin || "") + '</span>' +
     '<span class="spotbadge ' + (under ? "under" : "over") + '">' + (under ? "UNDER" : "OVER") + '</span>' +
     '<span class="atime">' + sp.horizon_min + 'm perpetual · closes in ' + fmtClock((sp.close_at || 0) - Date.now()) + '</span>' +
@@ -3466,6 +3683,7 @@ function snipeSpotRow(sp){
     ' — needs ~' + (sp.required_move_pct != null && isFinite(sp.required_move_pct) ? (+sp.required_move_pct).toFixed(2) : "—") +
     '% move to the line ' + fmtPrice(sp.line) + '</div>' +
     '<div class="pbar"><div style="width:' + nowPct + '%"></div></div>' +
+    (fo ? '<span class="failodds">' + fo + '</span>' : '') +
     (sp.signs && sp.signs.length ? '<div class="note" style="margin-top:4px">Signs: ' + sp.signs.map(escHtml).join(' · ') + '</div>' : '') +
     '</div>';
 }
@@ -3742,17 +3960,50 @@ const PAD_HZ = [5, 15, 30, 45, 60];
    opened now"); intro replaces the no-position opener when a
    surface needs its own (the cards' tap invite). Probabilities are
    the system's; nothing here places trades. */
+/* ---------- WEB18: fractional failure-odds label (BRIEF-MAP §7) --
+   Display-only formatter over a probability the page already has.
+   p = probability of the SUGGESTED side succeeding; q = 1 − p is
+   the failure probability. "1 in X" (X = round(1/q)) is the
+   frequency reading of q; "Y to 1" (Y = round(p/q)) reads as odds
+   AGAINST failure — the word "against" is mandatory, without it a
+   reader can invert the ratio. Two display defects from the raw
+   skeleton are gated out: the parenthetical is suppressed when
+   Y < 1 (it would print a meaningless "0 to 1" at low p), and the
+   whole label is suppressed inside the NO EDGE band
+   (|p − 0.5| < 0.07) — there failure odds are ≈ "1 in 2", a coin
+   flip dressed up as a call. At p ≥ 0.999 the frequency reads
+   "1 in ∞". Format exactly:
+   Odds of failure = "1 in {X}" (or "{Y} to 1" against)        */
+function failOddsLabel(p){
+  if (p == null || !isFinite(p)) return null;
+  if (Math.abs(p - 0.5) < 0.07 - 1e-9) return null;   // §7 band, inclusive at the boundary (float-safe)
+  if (p >= 0.999) return 'Odds of failure = "1 in ∞"';
+  const q = 1 - p;
+  const X = Math.round(1 / q), Y = Math.round(p / q);
+  let s = 'Odds of failure = "1 in ' + X + '"';
+  if (Y >= 1) s += ' (or "' + Y + ' to 1" against)';
+  return s;
+}
+function failOddsSpan(p){
+  const s = failOddsLabel(p);
+  /* the label is built only from numbers by failOddsLabel itself —
+     no user data — so it is inserted unescaped: its format quotes
+     are part of the §7 string. */
+  return s ? '<br><span class="failodds">' + s + "</span>" : "";
+}
 function positionAdvice(side, price, line, p, band, closePhrase, intro){
   const pct = x => Math.round(x * 100) + "%";
   const pOver = p, pUnder = 1 - p;
   const call = Math.abs(p - 0.5) >= band ? (p > 0.5 ? "OVER" : "UNDER") : null;
   const winP = call ? (call === "OVER" ? pOver : pUnder) : null;
+  const fo = winP != null ? failOddsLabel(winP) : null;
+  const foTxt = fo ? " " + fo + "." : "";
   if (!side){
     const head = intro || "No position picked.";
     if (call) return head + " Numbers first: " + closePhrase + " the system gives OVER " + pct(pOver) +
       " / UNDER " + pct(pUnder) + " against this line, and its call is " + call + " (" + pct(winP) +
       "). If you were entering now, the numbers favor the " + call + " side — the other side means betting against that " +
-      pct(winP) + "/" + pct(1 - winP) + " split. Likelihood, never a guarantee.";
+      pct(winP) + "/" + pct(1 - winP) + " split. Likelihood, never a guarantee." + foTxt;
     return head + " And the system has NO EDGE at this line: OVER " + pct(pOver) + " / UNDER " + pct(pUnder) +
       " " + closePhrase + " sits inside the no-call band. The honest move is to pass and wait for a line, or a market, where the numbers actually lean.";
   }
@@ -3779,15 +4030,15 @@ function positionAdvice(side, price, line, p, band, closePhrase, intro){
       : "Suggested action: your side leads on price, but the model gives it under 52% at the close — the lead is fragile. Cashing out early locks in what the market pays now instead of gambling on the close.";
     return "You're holding " + mine + " and it is the WINNING side right now — live price " + fmtPrice(price) +
       " vs your line " + fmtPrice(line) + ". The model gives your side " + pct(pMine) + " " + closePhrase +
-      " (the other side " + pct(pOther) + "). " + tail;
+      " (the other side " + pct(pOther) + "). " + tail + foTxt;
   }
   if (winNow === null) return "You're holding " + mine + " and the live price is sitting exactly ON your line " + fmtPrice(line) +
     " — neither side is winning yet. The model gives your side " + pct(pMine) + " " + closePhrase + " vs " + pct(pOther) + " for " + other + ". " +
-    "The system's own call at this line is " + call + " (" + pct(winP) + ").";
+    "The system's own call at this line is " + call + " (" + pct(winP) + ")." + foTxt;
   return "You're holding " + mine + " and it is the LOSING side right now — live price " + fmtPrice(price) +
     " vs your line " + fmtPrice(line) + ". The model gives your side only " + pct(pMine) + " " + closePhrase + "; flipping to " + other +
     " puts you on the side it favors at " + pct(pOther) + ". Your two exits, with the numbers: FLIP — close this side and take " + other +
-    " at " + pct(pOther) + "; or CASH OUT — sell now and cap the loss instead of risking the full contract at the close. Holding is a bet on a reversal the numbers don't currently support.";
+    " at " + pct(pOther) + "; or CASH OUT — sell now and cap the loss instead of risking the full contract at the close. Holding is a bet on a reversal the numbers don't currently support." + foTxt;
 }
 function cardPad(sym){
   const cs = coinState(sym);
@@ -3906,7 +4157,7 @@ async function cardPadEnter(sym){
         (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + ")</span>" : "") +
         '</td><td>' +
         (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + "</span>" : '<span class="note">NO EDGE</span>') +
-        "</td><td>" + (r.call ? Math.round(r.winP * 100) + "%" : "OVER " + Math.round(r.p * 100) + "% / UNDER " + Math.round((1 - r.p) * 100) + "%") + "</td></tr>").join("") +
+        "</td><td>" + (r.call ? Math.round(r.winP * 100) + "%" + failOddsSpan(r.winP) : "OVER " + Math.round(r.p * 100) + "% / UNDER " + Math.round((1 - r.p) * 100) + "%") + "</td></tr>").join("") +
       "</tbody></table>" +
       (rows.some(r => r.mkt)
         ? '<div class="note" style="margin-top:4px">' + (S.preset === "kalshi"
@@ -3979,7 +4230,7 @@ function renderPadCalls(sym){
       ' · <span class="cdft" data-cdh="' + r.h + '">' + fmtClock(r.remaining * 1000) + " left</span>" +
       (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + ")</span>" : "") +
       "</td><td>" +
-      (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + " " + Math.round(r.winP * 100) + "%</span>"
+      (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + " " + Math.round(r.winP * 100) + "%</span>" + failOddsSpan(r.winP)
               : '<span class="note">NO EDGE</span>') +
       "</td><td>" + fmtPrice(r.est) + "</td></tr>").join("") +
     "</tbody></table>" +
