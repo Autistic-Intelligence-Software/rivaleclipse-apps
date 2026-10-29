@@ -989,7 +989,7 @@ const PRESETS = {
   custom: {name: null, lens: [1, 5, 15, 30, 60], def: 15,
     note: "Your own windows and lines. The line roll still applies: every cycle opens with its line at the previous cycle's closing price, and a line you set by hand governs only the cycle in progress."},
   polymarket: {name: "Polymarket", lens: [5, 15, 60, 240], def: 15,
-    note: "Live-mirrors Polymarket's up/down markets — 5m / 15m / 1h / 4h windows. At every rollover each coin's line becomes Polymarket's actual price to beat for the new window, pulled from Polymarket's own price feed (Chainlink TWAP for 5m/15m/4h, its hourly price for 1h), and the live price follows the same feed. Coins Polymarket doesn't run fall back to the Coinbase window open — the card says which. Nothing is placed on Polymarket."},
+    note: "Live-mirrors Polymarket's up/down markets — 5m / 15m / 1h / 4h windows. At every rollover each coin's line becomes Polymarket's actual price to beat for the new window — calculated live from the same Chainlink stream Polymarket uses (the 60-second TWAP of the minute before the open for 5m/15m/4h, its hourly price for 1h) and confirmed against Polymarket's published price to beat — and the live price follows the same feed. Coins Polymarket doesn't run fall back to the Coinbase window open — the card says which. Nothing is placed on Polymarket."},
   kalshi: {name: "Kalshi", lens: [15, 60, 1440], def: 15,
     note: "Live-mirrors Kalshi's up/down markets. On the 15m window each coin's line becomes Kalshi's actual strike for the new window, pulled from Kalshi's public market data at every rollover (BTC, ETH, SOL, XRP, DOGE, NEAR — the coins Kalshi runs; others fall back to the Coinbase window open, and the card says which). Kalshi's 1h / 24h markets are strike ladders with no single target, so those windows keep the line roll. Nothing is placed on Kalshi."},
 };
@@ -1088,9 +1088,14 @@ async function marketTarget(sym, openAtMs){
     if (variant !== "hourly" && !PM_TWAP_COINS.includes(sym)) return null;
     const j = await pmPrice(sym, openAtMs, variant);
     if (j && isFinite(+j.openPrice) && +j.openPrice > 0)
-      // WEB19: surface the endpoint's forming flag — openPrice is a
-      // 60s TWAP, still converging while incomplete is true; the
-      // strike pass keeps re-reading until it clears.
+      // WEB19/WEB20: surface the endpoint's flag. openPrice is the
+      // Chainlink TWAP-60 of the minute BEFORE the open — final
+      // from the first successful read (probed live 2026-10-28:
+      // the 01:50Z 5m target printed final at T+0.7s and equalled
+      // the previous window's settled close to the last digit) —
+      // but boundary reads can miss outright or flicker to null,
+      // and the incomplete flag tracks the whole window's data,
+      // so the strike pass keeps re-reading until a settled read.
       return {price: +j.openPrice, src: "Polymarket price to beat", incomplete: !!j.incomplete};
     return null;
   }
@@ -1155,6 +1160,40 @@ async function applyMarketStrike(sym){
                      cycleOpenAt() === openAt && cs.strikePass === token;
   const t0 = Date.now();
   let applied = false, appliedPrice = null, lastRead = null;
+  /* WEB20 (Shane 2026-10-28: "figure out exactly how the next
+     target line is calculated for each exchange, and implement
+     that algorithm into our system"): calculate the line
+     ourselves FIRST, from the buffered RTDS Chainlink ticks,
+     using Polymarket's own formula (twap60Before — the TWAP-60
+     over the minute before the open). That lands the line the
+     instant the window opens, even when Polymarket's endpoint
+     misses or flickers at the boundary (the WEB19 failure mode).
+     The pass below still runs and Polymarket's settled openPrice
+     overrides ours the moment it lands — theirs is the number
+     the market settles on; ours is the same algorithm on the
+     same feed, filling the gap until theirs arrives. TWAP
+     variants only: the hourly variant's target is a Binance
+     candle open (no Chainlink TWAP exists to calculate, and
+     Binance's own API is geo-blocked from US clients), and
+     Kalshi publishes its finished strike at the open — see the
+     WEB20 note at twap60Before. */
+  if (S.preset === "polymarket" && !cs.lineMoved){
+    const variant = PM_VARIANT[S.lenMin];
+    if (variant && variant !== "hourly" && PM_TWAP_COINS.includes(sym)){
+      const mine = twap60Before(sym, openAt);
+      if (mine != null && isFinite(mine) && mine > 0){
+        cs._lastLine = mine;      // a calculated market target is not a user line move
+        cs.lineSrc = "Polymarket price to beat (Chainlink TWAP-60, calculated live)";
+        setLine(sym, mine);
+        cs.lineFromStart = false;
+        applied = true; appliedPrice = mine;
+        if (cs.snap && cs.snap.closeAt === S.cycle.closeAt && cs.snap.line !== mine){
+          cs.snap.line = mine;
+          renderLocked(sym);
+        }
+      }
+    }
+  }
   while (live()){
     if (cs.lineMoved) return applied;
     const t = await marketTarget(sym, openAt);
@@ -1311,7 +1350,84 @@ function rtdsPriceFromMsg(text){
   const envTs = Number(m.timestamp);
   return {sym: sym, price: price, tsMs: isFinite(ts) && ts > 0 ? ts : (isFinite(envTs) && envTs > 0 ? envTs : 0)};
 }
+/* ---------- WEB20: the target-line algorithms, implemented ----
+   Shane 2026-10-28: "figure out exactly how the next target line
+   is calculated for each exchange, and implement that algorithm
+   into our system."
+
+   POLYMARKET Up/Down (5m/15m/4h): the price to beat for the
+   window opening at T is Chainlink's 60-second TWAP over the
+   minute BEFORE the open — target(T) = TWAP of the Chainlink
+   price over [T-60s, T]. The closing value is the same average
+   over the window's last 60s, which is why consecutive windows
+   chain exactly (close of N == open of N+1 — verified live
+   2026-10-28 to the last digit). The 1h variant is the exception:
+   its target is the Binance 1h candle open, not a TWAP.
+   KALSHI 15M: the strike is the SIMPLE average of the sixty
+   one-second CF Benchmarks Real-Time Index prints in the minute
+   before the open (Kalshi's own rulebook wording; the closing
+   value is the same average over the minute before the close).
+   Same shape, different index — but the RTI print feed is not
+   public (Kalshi offers it only as an authenticated pass-through)
+   and Kalshi publishes the finished floor_strike the moment the
+   window opens, so there is no forming gap to fill: the published
+   strike pulled in marketTarget IS the algorithm's exact output.
+   For Polymarket the published openPrice can miss or flicker at
+   the boundary, so the tracker keeps the RTDS Chainlink ticks it
+   already receives and computes the TWAP itself (below); the
+   settled published value still overrides on arrival. */
+const RTDS_TICKS = {};   // sym -> [[tsMs, price], ...] ascending, ~last 200s
+function rtdsIngest(u){
+  if (!u || !(u.price > 0)) return;
+  const ts = u.tsMs > 0 ? u.tsMs : Date.now();
+  const arr = RTDS_TICKS[u.sym] || (RTDS_TICKS[u.sym] = []);
+  if (arr.length){
+    const lastTs = arr[arr.length - 1][0];
+    if (ts < lastTs) return;                        // out-of-order: drop
+    if (ts === lastTs){ arr[arr.length - 1][1] = u.price; return; }
+  }
+  arr.push([ts, u.price]);
+  // prune to ~200s, always keeping one tick at/before the cut so
+  // the price entering a span survives
+  const cut = ts - 200000;
+  let drop = 0;
+  while (drop < arr.length - 1 && arr[drop + 1][0] <= cut) drop++;
+  if (drop) arr.splice(0, drop);
+}
+/* Polymarket's price-to-beat formula, computed from the buffered
+   Chainlink ticks: the time-weighted average over the 60 seconds
+   BEFORE endMs. Stepwise integration — each tick's price holds
+   until the next tick, which is exactly how a TWAP weights prices
+   by the duration they cover. Returns null unless the buffer
+   genuinely covers the minute: the covered span must reach at
+   least 55 of the 60 seconds, and the newest tick must be within
+   10s of endMs (a silent socket must never strike a line). */
+function twap60Before(sym, endMs){
+  const arr = RTDS_TICKS[sym];
+  if (!arr || arr.length < 2) return null;
+  if (arr[arr.length - 1][0] < endMs - 10000) return null;
+  const start = endMs - 60000;
+  let i = -1;   // last tick at or before the span start
+  for (let k = 0; k < arr.length; k++){ if (arr[k][0] <= start) i = k; else break; }
+  let cur, last;
+  if (i >= 0){ cur = arr[i][1]; last = start; }
+  else {
+    if (arr[0][0] > start + 5000) return null;
+    cur = arr[0][1]; last = arr[0][0];
+  }
+  let acc = 0;
+  for (let k = i + 1; k < arr.length; k++){
+    const t = arr[k][0];
+    if (t >= endMs) break;
+    if (t > last){ acc += cur * (t - last); cur = arr[k][1]; last = t; }
+  }
+  acc += cur * (endMs - last);
+  const covered = endMs - (i >= 0 ? start : arr[0][0]);
+  if (covered < 55000) return null;
+  return acc / covered;
+}
 function rtdsStop(){
+  for (const k in RTDS_TICKS) delete RTDS_TICKS[k];
   if (RTDS_ST.ping != null){ clearInterval(RTDS_ST.ping); RTDS_ST.ping = null; }
   if (RTDS_ST.timer != null){ clearTimeout(RTDS_ST.timer); RTDS_ST.timer = null; }
   if (RTDS_ST.ws){ const w = RTDS_ST.ws; RTDS_ST.ws = null;
@@ -1353,6 +1469,7 @@ function rtdsEnsure(){
     const cs = S.coins[u.sym];
     if (!cs) return;
     cs.mktPrice = u.price; cs.mktPriceAt = Date.now(); cs.mktSrc = "rtds";
+    rtdsIngest(u);   // WEB20: buffer the tick — target lines are calculated from these
   };
   ws.onerror = () => { try { ws.close(); } catch (e) {} };
   ws.onclose = () => {
