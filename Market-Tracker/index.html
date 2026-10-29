@@ -648,6 +648,7 @@ function coinState(sym){
     mktLinesAt: 0,             // WEB17: last mktLines refresh pass (throttle)
     nextTarget: null,          // WEB12: the market target for the NEXT window, fetched while scoring this one
     strikePass: 0,             // WEB19: token of this coin's live applyMarketStrike convergence pass (only the newest pass may apply values)
+    padLock: {},               // WEB21: per-horizon FROZEN outlook rows {h: {closeAt, p, call, winP, est, line, mkt, lockedAt}} — see padCallsRows
     // WEB9 addendum (Shane 2026-10-28): the forecast section ALWAYS
     // starts collapsed — a stored ph.fc30 from an earlier session
     // must not re-expand it on load (that was burning data on
@@ -4362,23 +4363,71 @@ async function cardPadEnter(sym){
    mode the row's target is the market's own per-window price for
    that horizon when it publishes one (cs.mktLines), so the card
    and the mimicked market are always talking about the same
-   window and the same target. */
+   window and the same target.
+   WEB21 (Shane 2026-10-29): the WEB17 live recompute is GONE from
+   this panel. A call recomputed over the shrinking time left is
+   TRACKING, not a prediction — near the close its % mechanically
+   approaches certainty, so the panel read like a forecast that
+   grades itself on the final tick. The outlook now obeys the
+   same scoring-lock discipline as everything else the system
+   grades: each row is computed ONCE at its window's open, over
+   the FULL horizon, against the line resolved at that moment,
+   frozen in cs.padLock for the rest of the window, and labelled
+   with its lock time. Only the countdown stays live. The single
+   exception is a settle allowance in the window's first 20
+   seconds: if the resolved line changes there (the mimicked
+   market's published target landing a beat after the open — the
+   WEB19 convergence), the row re-locks once against the new line,
+   still over the full horizon. After 20s the row never moves. */
 function padCallsRows(sym){
   const cs = coinState(sym);
   if (!(cs.price > 0)) return null;
   const band = effBand(sym);
   const now = Date.now();
   const baseLine = (cs.lineSet && cs.line > 0) ? cs.line : cs.price;
+  if (!cs.padLock) cs.padLock = {};
   return PAD_HZ.map(h => {
-    const remaining = Math.max(1, (winBoundaryMs(now, h) - now) / 1000);
+    const closeAt = winBoundaryMs(now, h);
+    const remaining = Math.max(1, (closeAt - now) / 1000);
     const ml = mktLineFor(sym, h);
     const line = ml ? ml.price : baseLine;
-    const r = probOverAt(sym, cs.price, line, remaining);
+    const lock = cs.padLock[h];
+    const winAgeMs = now - (closeAt - h * 60000);
+    if (lock && lock.closeAt === closeAt &&
+        !(winAgeMs < 20000 && lock.line !== line)){
+      /* Frozen for this window — only the countdown is recomputed. */
+      return {h: h, p: lock.p, call: lock.call, winP: lock.winP,
+              est: lock.est, remaining: remaining, line: lock.line,
+              mkt: lock.mkt, lockedAt: lock.lockedAt};
+    }
+    /* Lock-time computation: the FULL horizon (h*60 seconds),
+       never the time left in the window. */
+    let r = null;
+    try { r = probOverAt(sym, cs.price, line, h * 60); } catch (e) { r = null; }
+    if (!r || !isFinite(r.p) || !isFinite(r.driftTotal)){
+      /* Price/features not ready yet: render the row the old live
+         way for THIS render only and leave it unlocked — the next
+         render retries the lock. A garbage row is never locked. */
+      let live = null;
+      try { live = probOverAt(sym, cs.price, line, remaining); } catch (e) { live = null; }
+      if (!live || !isFinite(live.p) || !isFinite(live.driftTotal))
+        return {h: h, p: 0.5, call: null, winP: null, est: cs.price,
+                remaining: remaining, line: line, mkt: ml ? ml.src : null, lockedAt: null};
+      const lcall = Math.abs(live.p - 0.5) >= band ? (live.p > 0.5 ? "OVER" : "UNDER") : null;
+      return {h: h, p: live.p, call: lcall,
+              winP: lcall ? (lcall === "OVER" ? live.p : 1 - live.p) : null,
+              est: cs.price * Math.exp(live.driftTotal),
+              remaining: remaining, line: line, mkt: ml ? ml.src : null, lockedAt: null};
+    }
     const call = Math.abs(r.p - 0.5) >= band ? (r.p > 0.5 ? "OVER" : "UNDER") : null;
-    return {h: h, p: r.p, call: call,
-            winP: call ? (call === "OVER" ? r.p : 1 - r.p) : null,
-            est: cs.price * Math.exp(r.driftTotal),
-            remaining: remaining, line: line, mkt: ml ? ml.src : null};
+    const fresh = {closeAt: closeAt, p: r.p, call: call,
+      winP: call ? (call === "OVER" ? r.p : 1 - r.p) : null,
+      est: cs.price * Math.exp(r.driftTotal),
+      line: line, mkt: ml ? ml.src : null, lockedAt: now};
+    cs.padLock[h] = fresh;
+    return {h: h, p: fresh.p, call: fresh.call, winP: fresh.winP,
+            est: fresh.est, remaining: remaining, line: fresh.line,
+            mkt: fresh.mkt, lockedAt: fresh.lockedAt};
   });
 }
 function renderPadCalls(sym){
@@ -4392,11 +4441,14 @@ function renderPadCalls(sym){
     : (cs.lineSet && cs.line > 0)
     ? "vs line " + fmtPrice(cs.line) + (cs.lineSrc ? " (" + cs.lineSrc + ")" : "")
     : "vs live price — no line set";
+  /* WEB21: the footnote states the lock discipline outright — the
+     old live-recompute wording is removed entirely. */
+  const lockNote = "Calls lock at each window's open and never update mid-window — the same opening call the system grades itself on. The countdown is the only live part of each row.";
   const foot = anyMkt
     ? (S.preset === "kalshi"
-      ? "15m target from Kalshi; other horizons vs the card line. Each row is the current window of its horizon — the call runs over the time left in it."
-      : "Targets from Polymarket's own per-window prices; horizons Polymarket doesn't run (30m/45m) vs the card line. Each row is the current window of its horizon — the call runs over the time left in it.")
-    : "Est. end value = the model's projected close for that perpetual, from the live price and the same math as the call. Each row is the current window of its horizon — the call runs over the time left in it.";
+      ? "15m target from Kalshi; other horizons vs the card line. " + lockNote
+      : "Targets from Polymarket's own per-window prices; horizons Polymarket doesn't run (30m/45m) vs the card line. " + lockNote)
+    : "Est. end value = the model's projected close for that perpetual, from the lock-time price and the same math as the call. " + lockNote;
   const html =
     '<div class="lbl" style="margin:12px 0 4px">Perpetual outlook — ' + lineRef + '</div>' +
     '<table><thead><tr><th>Perpetual</th><th>System call</th><th>Est. end value</th></tr></thead><tbody>' +
@@ -4406,6 +4458,9 @@ function renderPadCalls(sym){
       "</td><td>" +
       (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + " " + Math.round(r.winP * 100) + "%</span>" + failOddsSpan(r.winP)
               : '<span class="note">NO EDGE</span>') +
+      /* WEB21: every locked row says WHEN it locked (local clock);
+         an unlocked row (data not ready at the open) shows none. */
+      (r.lockedAt ? '<br><span class="note">locked ' + multTimeStr(r.lockedAt) + "</span>" : "") +
       "</td><td>" + fmtPrice(r.est) + "</td></tr>").join("") +
     "</tbody></table>" +
     '<div class="note" style="margin-top:4px">' + foot + '</div>';
