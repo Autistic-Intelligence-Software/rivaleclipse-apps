@@ -1660,7 +1660,7 @@ function updateLineUI(sym){
     (pinned ? " (past slider range)" : "") +
     (cs.lineSrc ? ' · <span class="lsrc">' + cs.lineSrc + "</span>" : "");
   cs.els.lmoved.hidden = !cs.lineMoved;
-  if (cs.lineMoved) cs.els.lmoved.textContent = "Line moved mid-cycle — the live view follows your new line, but grading stays on the call and line locked at the open.";
+  if (cs.lineMoved) cs.els.lmoved.textContent = "Line moved mid-cycle — grading stays on the call and line locked at the open; the card's call does not re-run against the new line.";
   renderReadouts(sym);
   // WEB10: keep this card's pad (live price / typed-line context) and
   // any other card's pad that targets this coin in step with the line.
@@ -2036,7 +2036,28 @@ function recordPredSnap(sym){
     const mf = k * 5 / 60, i = Math.min(9, Math.floor(mf)), fr = mf - i;
     path.push(pts[i] + (pts[i + 1] - pts[i]) * fr);
   }
-  cs.predBuf.push({t: now, path: path});
+  const snap = {t: now, path: path, sig: liveSigma(sym)};
+  /* WEB22 (Shane's immutable-prediction law, 2026-10-29): this
+     generation's experimental lines and band sigma are frozen
+     INTO the snapshot at generation time. drawForecast used to
+     re-derive both at render — the transform from the CURRENT
+     experiment diag (which moves when a new grade lands) and the
+     band from the CURRENT live sigma — so a segment already on
+     screen could change shape between ticks. Now a snapshot
+     carries everything its rendering needs, exactly as
+     generated; later diag/sigma states apply only to snapshots
+     generated after them. */
+  const aInfo = fcAdjInfo(sym);
+  if (aInfo && aInfo.slots && path[0] > 0){
+    const mPts = [];
+    for (let dt = 0; dt <= 600000; dt += 5000)
+      mPts.push({m: dt / 60000, v: snapValueAt(snap, dt)});
+    for (const s of aInfo.slots){
+      const tp = expTransformPath(mPts, path[0], s, aInfo.diag);
+      if (tp) snap[s.line === "A" ? "expA" : "expB"] = tp;
+    }
+  }
+  cs.predBuf.push(snap);
   while (cs.predBuf.length && cs.predBuf[0].t < now - EST_KEEP_MS) cs.predBuf.shift();
 }
 function snapValueAt(snap, dtMs){
@@ -2151,20 +2172,13 @@ function drawForecast(sym){
     const age0 = now - cur.t;
     for (let u = 0; u <= Math.min(span, 600000 - age0); u += 10000)
       eat(snapValueAt(cur, age0 + u));
-    // WEB14: transform the SAME future path the yellow line will
-    // draw into the two experimental lines, and count them in the
-    // frame so they can never clip off the top/bottom.
-    const info = fcAdjInfo(sym);
-    if (info && info.slots && cur.path && cur.path[0] > 0){
-      const mPts = [];
-      for (let dt = age0; dt <= Math.min(span + age0, 600000); dt += 5000)
-        mPts.push({m: dt / 60000, v: snapValueAt(cur, dt)});
-      for (const s of info.slots){
-        if (s.line === "A" && !FC_ADJ_SHOW.a) continue;
-        if (s.line === "B" && !FC_ADJ_SHOW.b) continue;
-        const tp = expTransformPath(mPts, cur.path[0], s, info.diag);
-        if (tp){ expDraw.push({line: s.line, pts: tp}); for (const q of tp) eat(q.v); }
-      }
+    // WEB22: the experimental lines counted in the frame are the
+    // ones frozen into THIS snapshot at its generation time
+    // (recordPredSnap) — never a fresh transform of the current
+    // experiment state, which moves as new grades land.
+    if (cur.path && cur.path[0] > 0){
+      if (FC_ADJ_SHOW.a && cur.expA){ expDraw.push({line: "A", pts: cur.expA}); for (const q of cur.expA) eat(q.v); }
+      if (FC_ADJ_SHOW.b && cur.expB){ expDraw.push({line: "B", pts: cur.expB}); for (const q of cur.expB) eat(q.v); }
     }
   }
   if (!(lo < hi)){ lo = price * 0.999; hi = price * 1.001; }
@@ -2181,7 +2195,9 @@ function drawForecast(sym){
   // RIGHT of center: the freshest snapshot's wavy path, feeding in,
   // with a light ±1σ band. dt is measured from the snapshot's own t.
   if (cur){
-    const sig = liveSigma(sym), age = now - cur.t;
+    // WEB22: the ±1σ band rides the sigma frozen at the snapshot's
+    // generation, not the live sigma of this render.
+    const sig = (cur.sig != null ? cur.sig : liveSigma(sym)), age = now - cur.t;
     const dtMax = Math.min(span + age, 600000);
     ctx.beginPath();
     for (let dt = age; dt <= dtMax; dt += 5000){
@@ -2199,9 +2215,10 @@ function drawForecast(sym){
       dt === age ? ctx.moveTo(x, yy) : ctx.lineTo(x, yy);
     }
     ctx.strokeStyle = "#f3d27a"; ctx.lineWidth = 2; ctx.stroke();
-    // WEB14: the experimental lines ride the same future path (A red,
-    // B blue — the fixed color contract), drawn over the main line
-    // so they stay visible even where they nearly overlap it.
+    // WEB14/WEB22: the experimental lines frozen with this snapshot
+    // ride its future path (A red, B blue — the fixed color
+    // contract), drawn over the main line so they stay visible even
+    // where they nearly overlap it.
     for (const e of expDraw){
       ctx.beginPath();
       e.pts.forEach((q, i) => {
@@ -3310,37 +3327,56 @@ function predict(sym){
   if (!side){
     cs.dwellSide = null; cs.dwellCount = 0;
     cs.lastCall = null;
-    cs.els.call.textContent = "NO EDGE"; cs.els.call.className = "call noedge";
-    cs.els.conf.textContent = "Probability sits at " + (p * 100).toFixed(0) + "% — inside this coin's ±" + Math.round(band * 100) +
-      "pt no-call band around 50" + (band > BAND_BASE + 0.001 ? " (widened in the global tuning: the system's recent calls kept flip-flopping)" : "") +
-      ". The model won't dress up a coin flip." +
-      (S.preset !== "custom" ? " " + cycleWinLabel() + " closes in " + fmtClock(S.cycle.closeAt - Date.now()) + "." : "");
-    cs.els.pbar.style.width = "0%";
   } else {
-    const over = side === "over", conf = over ? p : 1 - p;
     if (cs.dispSide === side) cs.dispP = p;
     cs.lastCall = {side: side, p: p};
-    cs.els.call.textContent = (over ? "OVER " : "UNDER ") + (conf * 100).toFixed(0) + "%";
-    cs.els.call.className = "call " + (over ? "over" : "under");
-    cs.els.conf.textContent = "Chance the close lands over your line: " + (p * 100).toFixed(1) + "% · closes in " + fmtClock(S.cycle.closeAt - Date.now()) +
-      (S.preset !== "custom" ? " · " + cycleWinLabel() : "");
-    cs.els.pbar.style.width = (conf * 100).toFixed(0) + "%";
   }
   if (side) cs.dispSide = side;
   cs.lastPredAt = Date.now();
   // SCORING LOCK (SCORING-LOCK-SPEC): the FIRST prediction computed
   // in a cycle is that cycle's prediction of record — call, p, and
   // the line as set at the open, frozen for the life of the cycle.
-  // Everything after is live tracking only: it may flip every 10s
-  // and follow mid-cycle line moves, but the close display (the
-  // outcome flash + Past strip) consumes ONLY this
-  // snapshot + the closing outcome. NO EDGE at the open (call null)
-  // locks in a no-call for the cycle, whatever appears later.
+  // Later ticks still recompute internally (line-move bookkeeping,
+  // flip counting), but WEB22: none of that is ever DISPLAYED as
+  // the cycle's call — the card shows only this snapshot (see the
+  // display block below), and the close display (the outcome flash
+  // + Past strip) consumes ONLY this snapshot + the closing
+  // outcome. NO EDGE at the open (call null) locks in a no-call
+  // for the cycle, whatever appears later.
   if (S.cycle.active && (!cs.snap || cs.snap.closeAt !== S.cycle.closeAt)){
     const tv = trendVerdict(sym, null);
     cs.snap = {closeAt: S.cycle.closeAt, call: cs.lastCall ? cs.lastCall.side : null,
                p: cs.lastPred.p, line: cs.line, pred: cs.lastPred,
                trendText: tv ? tv.text : null};
+  }
+  /* WEB22 (Shane's immutable-prediction law, 2026-10-29): the
+     card's call display — the big call, the probability line and
+     the bar — renders ONLY the locked opening snapshot above.
+     The live recompute still runs (it is what captures the snap
+     on the cycle's first tick, and it keeps the internal tracking
+     state), but it is never displayed for the current cycle: a
+     prediction value for a specific window does not bounce.
+     Price, distance-to-line, the countdown and the trend text
+     stay live — none of those is a prediction. */
+  const dsn = (cs.snap && cs.snap.closeAt === S.cycle.closeAt) ? cs.snap : null;
+  if (dsn){
+    if (!dsn.call){
+      cs.els.call.textContent = "NO EDGE"; cs.els.call.className = "call noedge";
+      cs.els.conf.textContent = "Locked at open: NO EDGE — the probability sat at " + (dsn.p * 100).toFixed(0) +
+        "% at the open, inside this coin's ±" + Math.round(band * 100) +
+        "pt no-call band around 50" + (band > BAND_BASE + 0.001 ? " (widened in the global tuning: the system's recent calls kept flip-flopping)" : "") +
+        ". The model won't dress up a coin flip." +
+        (S.preset !== "custom" ? " " + cycleWinLabel() + " closes in " + fmtClock(S.cycle.closeAt - Date.now()) + "." : "");
+      cs.els.pbar.style.width = "0%";
+    } else {
+      const over = dsn.call === "over", conf = over ? dsn.p : 1 - dsn.p;
+      cs.els.call.textContent = (over ? "OVER " : "UNDER ") + (conf * 100).toFixed(0) + "%";
+      cs.els.call.className = "call " + (over ? "over" : "under");
+      cs.els.conf.textContent = "Locked at open: chance the close lands over the opening line: " + (dsn.p * 100).toFixed(1) +
+        "% · closes in " + fmtClock(S.cycle.closeAt - Date.now()) +
+        (S.preset !== "custom" ? " · " + cycleWinLabel() : "");
+      cs.els.pbar.style.width = (conf * 100).toFixed(0) + "%";
+    }
   }
   renderTrendRead(sym);
   renderLocked(sym);
@@ -3355,9 +3391,9 @@ function renderLocked(sym){
   if (!S.cycle.active || !sn || sn.closeAt !== S.cycle.closeAt){ cs.els.locked.hidden = true; return; }
   let txt = sn.call
     ? "Locked at open: " + sn.call.toUpperCase() + " " + Math.round((sn.call === "over" ? sn.p : 1 - sn.p) * 100) +
-      "% · line " + fmtPrice(sn.line) + " — only this call is graded. The call above is live tracking and never counts."
+      "% · line " + fmtPrice(sn.line) + " — only this call is graded, and it is the only call this card shows for the cycle."
     : "Locked at open: NO EDGE · line " + fmtPrice(sn.line) +
-      " — this cycle grades as a no-call. The call above is live tracking and never counts.";
+      " — this cycle grades as a no-call, and it is the only call this card shows for the cycle.";
   if (sn.trendText) txt += " At the open — " + sn.trendText.replace(/^Trend read: /, "trend read: ");
   if (cs.els.locked.textContent !== txt) cs.els.locked.textContent = txt;
   cs.els.locked.hidden = false;
@@ -3386,8 +3422,8 @@ function startCycle(){
   // market's actual target for this window, as soon as it answers.
   if (marketActive()) S.selected.forEach(sym => applyMarketStrike(sym));
   $("#cycleStatus").textContent = S.preset !== "custom"
-    ? "Cycle running — live-mirroring " + PRESETS[S.preset].name + ": " + cycleWinLabel() + "s. Each coin's line is " + PRESETS[S.preset].name + "'s actual target for the window, pulled from its feed at the open — the source is named on each card. Each coin's call locks at the open (shown on its card) — only the locked call is graded; the live call just tracks."
-    : "Cycle running — " + S.lenMin + "m perpetuals, aligned to the wall clock. Each coin's line starts at the previous close's price (line roll on). Each coin's call locks at the open (shown on its card) — only the locked call is graded; the live call just tracks.";
+    ? "Cycle running — live-mirroring " + PRESETS[S.preset].name + ": " + cycleWinLabel() + "s. Each coin's line is " + PRESETS[S.preset].name + "'s actual target for the window, pulled from its feed at the open — the source is named on each card. Each coin's call locks at the open and is the only call its card shows for the cycle — it never updates mid-cycle, and only it is graded."
+    : "Cycle running — " + S.lenMin + "m perpetuals, aligned to the wall clock. Each coin's line starts at the previous close's price (line roll on). Each coin's call locks at the open and is the only call its card shows for the cycle — it never updates mid-cycle, and only it is graded.";
 }
 function stopCycle(){
   S.cycle.active = false;
@@ -3640,9 +3676,10 @@ async function priceTick(){
           if (Math.abs(nl - cs.line) > 1e-12){ cs.line = nl; cs._lastLine = nl; }
           updateLineUI(sym);
         }
-        // SCORING LOCK: the live tracking prediction recomputes on a
-        // 10-second cadence. Price + chart ticks stay on the fast
-        // loop; only the prediction readout is on the 10s clock.
+        // SCORING LOCK: the internal prediction recompute runs on a
+        // 10-second cadence (WEB22: its result is never displayed —
+        // the card shows the locked opening call). Price + chart
+        // ticks stay on the fast loop.
         if (S.cycle.active && Date.now() - (cs.lastPredAt || 0) >= 10000) predict(sym);
       }
       drawSpark(sym);
@@ -4062,7 +4099,8 @@ async function smsUnsubscribe(phone){
    probOverAt core and the SAME positionAdvice() builder as the
    per-card pads, so the card and the pad can never disagree.
    Cycle running + locked: advice runs against the LOCKED line
-   with the time actually left. Otherwise it runs against the
+   with the LOCKED opening probability (WEB22 — no live recompute
+   is printed for a running cycle). Otherwise it runs against the
    card's current line at the 30-minute horizon. WEB10: the
    advice + details block is a pop-out that exists ONLY while a
    side is chosen — with no side picked nothing of the block
@@ -4082,9 +4120,12 @@ function renderCardAdvice(sym){
   let txt = null;
   if (cs.price){
     if (S.cycle.active && cs.snap && cs.snap.closeAt === S.cycle.closeAt){
-      const T = Math.max(1, (S.cycle.closeAt - Date.now()) / 1000);
-      const r = probOverAt(sym, cs.price, cs.snap.line, T);
-      txt = positionAdvice(side, cs.price, cs.snap.line, r.p, effBand(sym),
+      /* WEB22: while a cycle runs, the advice prints the LOCKED
+         opening probability (cs.snap.p against the locked line) —
+         never a live recompute over the time left. The live price
+         still decides whether the user's own side is currently
+         winning or losing; that is position status, not a call. */
+      txt = positionAdvice(side, cs.price, cs.snap.line, cs.snap.p, effBand(sym),
         "at the close (" + fmtClock(S.cycle.closeAt - Date.now()) + " left)",
         side ? null : invite);
     } else if (cs.line){
@@ -4373,12 +4414,14 @@ async function cardPadEnter(sym){
    grades: each row is computed ONCE at its window's open, over
    the FULL horizon, against the line resolved at that moment,
    frozen in cs.padLock for the rest of the window, and labelled
-   with its lock time. Only the countdown stays live. The single
-   exception is a settle allowance in the window's first 20
-   seconds: if the resolved line changes there (the mimicked
-   market's published target landing a beat after the open — the
-   WEB19 convergence), the row re-locks once against the new line,
-   still over the full horizon. After 20s the row never moves. */
+   with its lock time. Only the countdown stays live. There are
+   NO exceptions: Shane's immutable-prediction law (2026-10-29)
+   supersedes the settle allowance this panel briefly had — even
+   if the mimicked market's published target lands a second after
+   the open, the locked row keeps the line it was generated
+   against and displays it. (The main card's WEB19 line
+   convergence pass is untouched; it moves the CARD's line, never
+   a generated prediction.) */
 function padCallsRows(sym){
   const cs = coinState(sym);
   if (!(cs.price > 0)) return null;
@@ -4392,10 +4435,10 @@ function padCallsRows(sym){
     const ml = mktLineFor(sym, h);
     const line = ml ? ml.price : baseLine;
     const lock = cs.padLock[h];
-    const winAgeMs = now - (closeAt - h * 60000);
-    if (lock && lock.closeAt === closeAt &&
-        !(winAgeMs < 20000 && lock.line !== line)){
-      /* Frozen for this window — only the countdown is recomputed. */
+    if (lock && lock.closeAt === closeAt){
+      /* Frozen for this window — only the countdown is recomputed.
+         The FIRST computation in the window is the row, even if
+         the resolved line has since changed (immutable law). */
       return {h: h, p: lock.p, call: lock.call, winP: lock.winP,
               est: lock.est, remaining: remaining, line: lock.line,
               mkt: lock.mkt, lockedAt: lock.lockedAt};
