@@ -311,6 +311,10 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
 .cpad-calls .padrefresh{margin-top:5px;font-size:11px;padding:3px 9px;border-radius:8px;background:#141424;border:1px solid var(--line);color:var(--txt);cursor:pointer}
 .cpad-calls .padrefresh[disabled]{opacity:.45;cursor:default}
 .cpad-calls .padliveest{color:#7fd4ff}
+.formstrip{margin-top:5px;line-height:1.35;font-size:13px}
+.formstrip .ft{position:relative;display:inline-block;width:15px;text-align:center}
+.formstrip .ft-up{color:var(--up)} .formstrip .ft-dn{color:var(--down)}
+.formstrip .ft-ov{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:10px;line-height:1;pointer-events:none}
 .padadvice{font-size:14.5px;line-height:1.6;margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:11px 13px;background:rgba(124,92,255,.06)}
 .cardpop{margin-top:8px}
 .cardpop[hidden]{display:none}
@@ -785,6 +789,7 @@ function coinState(sym){
     padNowBusy: false,         // WEB27: one manual now-view refresh in flight per card
     padLiveEst: {},            // WEB28: per-horizon DISPLAY-ONLY live estimates shown under the LOCKED outlook rows {h: {closeAt, p, call, winP, est, stampMs}} — written only by a manual outlook refresh tap (padRefreshCalls), keyed to the window's closeAt so a rolled window never shows the old estimate; never scored, never feeds padLock
     padCallsBusy: false,       // WEB28: one manual outlook refresh in flight per card
+    form: null,                // WEB29: recent-form strip data {h: [{close_at, dir, call, hit}]} from GET /api/perp/recent-calls — SETTLED canonical history only, display only; null until the first payload lands, and the strip renders nothing while null/empty
     waveTest: null,            // WEB23: FROZEN server row {closeAt, horizon, row} — replaced only on toggle-on / horizon change / cycle roll (see fetchWaveTest)
     waveTestOn: waveTestPref(sym).on,          // WEB23: default OFF (pref absent -> off)
     waveTestHorizon: waveTestPref(sym).horizon, // WEB23: 5|15|30|45|60, default = S.lenMin when valid else 15
@@ -3644,6 +3649,49 @@ function renderSources(sym){
   cs.els.src.hidden = false;
   if (cs.els.src.textContent !== txt) cs.els.src.textContent = txt;
 }
+/* WEB29 (Shane 2026-10-30): recent-form triangle strip — the past
+   10 SETTLED windows for each (coin, perpetual), from the server's
+   own canonical record (GET /api/perp/recent-calls): ▲ the window
+   closed over its open, ▼ under; a ⭕ around the triangle means the
+   system's OPENING call for that window was right, a ❌ over it
+   means it missed; a plain triangle means the system made no call
+   that window (NO EDGE). Display only — the page never writes
+   predictions and never recomputes a settled outcome; a row with
+   no settled windows renders no strip at all. One shared call
+   covers every watched coin (same pattern as loadSources);
+   unwatched coins are never fetched (WEB26). Rides the existing
+   refresh paths only: a boot stage and the staggered housekeeping
+   slot — no new timers. Until the endpoint is live the fetch
+   simply misses and the page behaves exactly as before. */
+async function loadRecentForm(){
+  if (!S.selected.length) return;
+  const j = await fetchJSON(AUTH + "/api/perp/recent-calls?coins=" + S.selected.join(","));
+  if (!j || !j.ok || !j.coins) return;
+  for (const sym of S.selected){
+    const cs = S.coins[sym]; if (!cs) continue;
+    cs.form = j.coins[sym] || {};
+    if (cs.padNow) renderPadNow(sym);
+    renderPadCalls(sym);
+  }
+}
+/* The strip for ONE horizon row of ONE coin's panel — nothing at
+   all when that (coin, horizon) has no settled windows yet. Capped
+   at the last 10 entries (the server caps too; this keeps the row
+   phone-width even if a payload ever runs long). Per-panel and
+   per-horizon independent: it reads only this coin's stored form
+   data for this row's horizon. */
+function formStripHTML(sym, h){
+  const cs = coinState(sym);
+  const arr = cs.form && cs.form[h];
+  if (!arr || !arr.length) return "";
+  const wins = arr.slice(-10);
+  return '<div class="formstrip" title="Last ' + wins.length + ' settled windows — ▲ closed over · ▼ closed under · ⭕ opening call right · ❌ opening call missed · plain = no call">' +
+    wins.map(w => {
+      const up = w.dir === "over";
+      const ov = w.call == null ? "" : '<span class="ft-ov">' + (w.hit ? "⭕" : "❌") + "</span>";
+      return '<span class="ft ' + (up ? "ft-up" : "ft-dn") + '">' + (up ? "▲" : "▼") + ov + "</span>";
+    }).join("") + "</div>";
+}
 function globalCoin(sym){
   const g = GLOBAL_POOL && GLOBAL_POOL[sym];
   return g && g.evidence === "live" ? g : null;
@@ -4203,6 +4251,7 @@ setInterval(() => {
     S.selected.forEach(sym => { const cs = S.coins[sym]; if (cs && !cs.fc30on) loadCoinCharts(sym); });
   if (S.loopN % 15 === 0 && S.selected.length) loadSources();
   if (S.loopN % 900 === 0) loadGlobal();
+  if (S.loopN % 900 === 300) loadRecentForm();
   if (S.loopN % 900 === 450) loadAdvisory();
   if (S.loopN % 900 === 600) loadDayForecast();
   if (S.loopN % 900 === 750) loadSnipe();
@@ -4863,7 +4912,7 @@ function padStampStr(ms){
    button and — once that row has been manually refreshed — its
    refreshed stamp. The countdown span keeps the cdft contract,
    so the 1s housekeeping tick keeps it live like every row. */
-function padNowRowInner(r, stampMs){
+function padNowRowInner(r, stampMs, sym){
   return "<td>" + (r.h === 60 ? "1 hour" : r.h + " min") +
     ' · <span class="cdft" data-cdh="' + r.h + '">' + fmtClock(r.remaining * 1000) + " left</span>" +
     (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + ")</span>" : "") +
@@ -4871,7 +4920,10 @@ function padNowRowInner(r, stampMs){
     (stampMs ? '<br><span class="note padstamp">↻ refreshed ' + padStampStr(stampMs) + " · live estimate</span>" : "") +
     "</td><td>" +
     (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + "</span>" : '<span class="note">NO EDGE</span>') +
-    "</td><td>" + (r.call ? Math.round(r.winP * 100) + "%" + failOddsSpan(r.winP) : "OVER " + Math.round(r.p * 100) + "% / UNDER " + Math.round((1 - r.p) * 100) + "%") + "</td>";
+    "</td><td>" + (r.call ? Math.round(r.winP * 100) + "%" + failOddsSpan(r.winP) : "OVER " + Math.round(r.p * 100) + "% / UNDER " + Math.round((1 - r.p) * 100) + "%") +
+    /* WEB29: this horizon's recent-form strip (settled history
+       only; empty string until the server has settled windows). */
+    (sym ? formStripHTML(sym, r.h) : "") + "</td>";
 }
 /* The full readout, rendered from the stored ctx (cs.padNow) —
    the exact markup cardPadEnter has always produced, plus the
@@ -4884,8 +4936,11 @@ function padNowHTML(sym){
     " · live " + fmtPrice(pn.price) + " · line is " + fmtPct(pn.line / pn.price - 1, true) + " vs live</div>" +
     '<div style="margin-top:6px"><button class="padrefresh" type="button" data-padrefresh="all">↻ Refresh prediction — all horizons</button></div>' +
     '<table><thead><tr><th>Close in</th><th>System call</th><th>Win probability</th></tr></thead><tbody>' +
-    rows.map(r => '<tr data-padrow="' + r.h + '">' + padNowRowInner(r, pn.stamps[r.h]) + "</tr>").join("") +
+    rows.map(r => '<tr data-padrow="' + r.h + '">' + padNowRowInner(r, pn.stamps[r.h], sym) + "</tr>").join("") +
     "</tbody></table>" +
+    (rows.some(r => { const a = coinState(sym).form && coinState(sym).form[r.h]; return a && a.length; })
+      ? '<div class="note" style="margin-top:4px">Recent form under each row: the last settled windows — ▲ closed over, ▼ closed under; ⭕ the system\'s opening call was right, ❌ it missed, plain = no call.</div>'
+      : "") +
     (rows.some(r => r.mkt)
       ? '<div class="note" style="margin-top:4px">' + (S.preset === "kalshi"
         ? "15m target from Kalshi; other horizons vs the line above."
@@ -5133,6 +5188,10 @@ function renderPadCalls(sym){
   /* WEB28: the footnote gains one sentence about the manual
      refresh — the WEB21 lock wording above stays verbatim. */
   const footFull = foot + " ↻ Refresh prediction adds a separate live estimate under a row, only when you tap it — the locked call itself never moves.";
+  /* WEB29: when any row carries a recent-form strip, the footnote
+     gains its legend (settled windows only). */
+  const anyForm = rows.some(r => { const a = cs.form && cs.form[r.h]; return a && a.length; });
+  const footShown = footFull + (anyForm ? " Recent-form triangles under each row: the last settled windows — ▲ closed over, ▼ closed under; ⭕ the opening call hit, ❌ it missed, plain = no call." : "");
   const busyAttr = cs.padCallsBusy ? " disabled" : "";
   const html =
     '<div class="lbl" style="margin:12px 0 4px">Perpetual outlook — ' + lineRef + '</div>' +
@@ -5165,10 +5224,14 @@ function renderPadCalls(sym){
       (le ? '<br><span class="note padliveest">↻ live estimate ' + multTimeStr(le.stampMs) + ": " +
             (le.call ? le.call + " " + Math.round(le.winP * 100) + "%" : "NO EDGE") +
             " · est " + fmtPrice(le.est) + "</span>" : "") +
+      /* WEB29: this horizon's recent-form strip — settled history
+         only, from the shared formStripHTML helper; empty until
+         the server has settled windows for this (coin, horizon). */
+      formStripHTML(sym, r.h) +
       "</td><td>" + fmtPrice(r.est) + "</td></tr>";
     }).join("") +
     "</tbody></table>" +
-    '<div class="note" style="margin-top:4px">' + footFull + '</div>';
+    '<div class="note" style="margin-top:4px">' + footShown + '</div>';
   if (out.innerHTML !== html) out.innerHTML = html;
 }
 /* ---------- WEB28 (Shane 2026-10-30): "Refresh prediction" for
@@ -5466,6 +5529,7 @@ buildCoinGrid();
   loadGlobal();
   priceTick();
   whenIdle(() => loadSources(), 1200);
+  whenIdle(() => loadRecentForm(), 1800);
   whenIdle(() => { loadAdvisory(); loadDayForecast(); }, 2500);
   whenIdle(() => loadSnipe(), 4000);
 })();
