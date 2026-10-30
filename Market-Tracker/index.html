@@ -5118,6 +5118,21 @@ async function cardPadEnter(sym){
    against and displays it. (The main card's WEB19 line
    convergence pass is untouched; it moves the CARD's line, never
    a generated prediction.) */
+/* WEB30 (2026-10-30 display-accuracy audit): does the mimicked
+   market publish a target for this (coin, horizon) at all? When it
+   does, an outlook row must not lock against the card line just
+   because the target fetch hasn't landed yet — see the deferral
+   inside padCallsRows. Mirrors the coverage rules refreshMktLines
+   and marketTarget already apply. */
+function mktCovers(sym, h){
+  if (!marketActive()) return false;
+  if (S.preset === "polymarket"){
+    const v = PM_VARIANT[h];
+    return !!v && (v === "hourly" || PM_TWAP_COINS.includes(sym));
+  }
+  if (S.preset === "kalshi") return h === 15 && !!KX_SERIES[sym];
+  return false;
+}
 function padCallsRows(sym){
   const cs = coinState(sym);
   if (!(cs.price > 0)) return null;
@@ -5138,6 +5153,40 @@ function padCallsRows(sym){
       return {h: h, p: lock.p, call: lock.call, winP: lock.winP,
               est: lock.est, remaining: remaining, line: lock.line,
               mkt: lock.mkt, lockedAt: lock.lockedAt};
+    }
+    /* WEB30: LOCK-RACE FIX (2026-10-30 display-accuracy audit —
+       Shane: "the target lines are never correct"). When the
+       mimicked market covers this horizon, the row's line must be
+       the market's own target for THIS window — but that target
+       lands a beat after the roll: the refreshMktLines fetch is
+       async, and Polymarket's endpoint flickers / 429s at
+       boundaries (measured live 2026-10-30). The first render
+       after a roll used to lock the row against the CARD line —
+       the cycle window's line, i.e. the wrong window's number for
+       this horizon — and, the lock being immutable, the row then
+       graded itself against that wrong line for the whole window
+       (measured in the audit harness: lock at card line 100, real
+       target 102 arrives, row still locked at 100). Now: while
+       the window is in its first 90s and the covered target has
+       not landed, the row renders UNLOCKED (live, exactly like
+       the not-ready path below) and retries the lock on the next
+       render. Once the target lands the row locks against it; if
+       90s pass with no target (endpoint down), it locks against
+       the resolved line as before rather than staying unlocked
+       forever. The immutable law is untouched: a locked row
+       never changes — this only stops a row from locking against
+       the wrong line in the first place. */
+    if (!ml && mktCovers(sym, h) && now - winStartMs(now, h) < 90000){
+      let live = null;
+      try { live = probOverAt(sym, cs.price, line, remaining); } catch (e) { live = null; }
+      if (!live || !isFinite(live.p) || !isFinite(live.driftTotal))
+        return {h: h, p: 0.5, call: null, winP: null, est: cs.price,
+                remaining: remaining, line: line, mkt: null, lockedAt: null};
+      const lcall = Math.abs(live.p - 0.5) >= band ? (live.p > 0.5 ? "OVER" : "UNDER") : null;
+      return {h: h, p: live.p, call: lcall,
+              winP: lcall ? (lcall === "OVER" ? live.p : 1 - live.p) : null,
+              est: cs.price * Math.exp(live.driftTotal),
+              remaining: remaining, line: line, mkt: null, lockedAt: null};
     }
     /* Lock-time computation: the FULL horizon (h*60 seconds),
        never the time left in the window. */
