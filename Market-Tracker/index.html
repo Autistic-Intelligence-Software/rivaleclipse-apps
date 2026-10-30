@@ -70,6 +70,11 @@ input[type=number]{background:#0c0c18;border:1px solid var(--line);color:var(--t
 .note{color:var(--mut);font-size:13px}
 #watchHead{display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;justify-content:space-between}
 #countdown{font-size:26px;font-weight:700;color:var(--gold2);font-variant-numeric:tabular-nums}
+#watchHeadRight{display:flex;align-items:baseline;gap:10px}
+/* WEB24: the Snipe Spotter minimize toggle — same gold glyph style
+   and size as #countdown, sitting at its right in the header. */
+#snipeMinBtn{font-size:26px;font-weight:700;color:var(--gold2);background:none;border:none;cursor:pointer;padding:0 2px;line-height:1}
+#snipeCard[hidden]{display:none}
 #cycleStatus{color:var(--mut);font-size:14px}
 #cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(700px,100%),1fr));gap:14px;margin-top:6px}
 .wcard{background:#0c0c18;border:1px solid var(--line);border-radius:16px;padding:14px;position:relative}
@@ -469,7 +474,10 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
     <section class="card" id="watchPanel">
       <div id="watchHead">
         <h2 style="margin:0">Watch panel</h2>
-        <div id="countdown">—</div>
+        <div id="watchHeadRight">
+          <div id="countdown">—</div>
+          <button id="snipeMinBtn" type="button" aria-expanded="true" aria-controls="snipeCard" title="Minimize the Snipe Spotter">—</button>
+        </div>
       </div>
       <div id="cycleStatus">Pick up to 6 cryptos, set each line, then press Start. Prices go live as soon as a coin is picked.</div>
       <div class="row" style="margin-top:8px;gap:8px;align-items:center">
@@ -632,6 +640,10 @@ const LS_FCADJ = "ph.fcAdj.v1";
    never posted anywhere, and the prediction itself is a frozen
    server row (see fetchWaveTest / cs.waveTest below). */
 const LS_WAVETEST = "ph.wavetest.v1";
+/* WEB24 (Shane 2026-10-29): the Snipe Spotter minimized flag —
+   one boolean display preference, persisted like the other ph.*
+   prefs (WEB8): it feeds nothing and is never posted anywhere. */
+const LS_SNIPE_MIN = "ph.snipe.min.v1";
 const WAVE_TEST_HZ = [5, 15, 30, 45, 60];
 /* WEB23 graph color: mint #2ee6a8, dashed — distinct on the
    Estimate (drawForecast) palette: actual #eceaf4 (white), main
@@ -3369,6 +3381,33 @@ function syncFCClosed(){
 }
 { const fb = $("#fcBtn"); if (fb) fb.addEventListener("click", () => setFCOpen(!FC_OPEN)); }
 { const hb = $("#hdrFcBtn"); if (hb) hb.addEventListener("click", () => setFCOpen(!FC_OPEN)); }
+/* WEB24 (Shane 2026-10-29): the gold dash at the top-right of the
+   Watch panel header minimizes the Snipe Spotter. The dash Shane
+   saw there is #countdown in its idle state — a live readout (it
+   shows the cycle clock while a perpetual runs), so the toggle is
+   its own button in the same spot and style, immediately to its
+   right. Tapping it collapses the whole #snipeCard block — title
+   row, spot rows, spotter record line, RECENTLY CLOSED SPOTS —
+   out of the way, and the glyph turns "+" while collapsed; the
+   rest of the Watch panel is untouched. Display state only
+   (WEB8): persisted as ph.snipe.min.v1, default expanded. */
+let SNIPE_MIN = !!lsGet(LS_SNIPE_MIN, false);
+function applySnipeMin(){
+  const card = $("#snipeCard"), btn = $("#snipeMinBtn");
+  if (card) card.hidden = SNIPE_MIN;
+  if (btn){
+    btn.textContent = SNIPE_MIN ? "+" : "—";
+    btn.setAttribute("aria-expanded", SNIPE_MIN ? "false" : "true");
+    btn.title = SNIPE_MIN ? "Show the Snipe Spotter" : "Minimize the Snipe Spotter";
+  }
+}
+function setSnipeMin(min){
+  SNIPE_MIN = !!min;
+  lsSet(LS_SNIPE_MIN, SNIPE_MIN);
+  applySnipeMin();
+}
+applySnipeMin();
+{ const mb = $("#snipeMinBtn"); if (mb) mb.addEventListener("click", () => setSnipeMin(!SNIPE_MIN)); }
 
 async function loadGlobal(){
   const j = await fetchJSON(AUTH + "/api/perp/global");
