@@ -337,6 +337,11 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
 .cpad-calls .padrefresh{margin-top:5px;font-size:11px;padding:3px 9px;border-radius:8px;background:#141424;border:1px solid var(--line);color:var(--txt);cursor:pointer}
 .cpad-calls .padrefresh[disabled]{opacity:.45;cursor:default}
 .cpad-calls .padliveest{color:#7fd4ff}
+/* WEB35: reason / explainer buttons — small, quiet, next to the
+   thing they explain; the text they open is generated at open
+   time from the stored prediction's own inputs. */
+.whybtn{margin-top:5px;font-size:11px;padding:3px 9px;border-radius:8px;background:#141424;border:1px solid var(--line);color:var(--txt);cursor:pointer}
+.predcheck{color:var(--gold2);font-weight:700}
 .formstrip{margin-top:5px;line-height:1.35;font-size:13px}
 .formstrip .ft{position:relative;display:inline-block;width:15px;text-align:center}
 .formstrip .ft-up{color:var(--up)} .formstrip .ft-dn{color:var(--down)}
@@ -879,7 +884,14 @@ function snapLineToPrice(sym){
    it just leaves the block expanded in place, as before. */
 function setDetails(sym, open){
   const cs = coinState(sym);
+  const wasOpen = cs.detailsOpen;
   cs.detailsOpen = !!open;
+  /* WEB35 LOAD-ONCE: expanding Details is the sources line's
+     refresh trigger — the collapsed section no longer refetches
+     in the background (housekeeping gates on anyDetailsOpen);
+     until expanded it shows its last-loaded state, marked as of
+     its load time. */
+  if (open && !wasOpen) loadSources();
   const m = lsGet(LS_DET, {}); m[sym] = cs.detailsOpen; lsSet(LS_DET, m);
   if (cs.els.details){
     if (cs.detailsOpen){
@@ -926,7 +938,15 @@ function setFC30(sym, on){
   const cs = coinState(sym);
   cs.fc30on = on;
   const m = lsGet(LS_FC30, {}); m[sym] = on; lsSet(LS_FC30, m);
-  if (on) captureFC30(sym); else cs.fcSnap = null;
+  if (on){
+    captureFC30(sym);
+    /* WEB35 LOAD-ONCE: expanding the forecast section refreshes
+       the 15m/1m series it draws from — once per expand. While
+       the section is open the housekeeping ladder keeps its
+       existing cadence; while collapsed, the section itself does
+       no work (drawSpark skips both draws). */
+    loadCoinCharts(sym);
+  } else cs.fcSnap = null;
   applyFC30(sym);
   drawSpark(sym);
 }
@@ -945,7 +965,7 @@ function applyFC30(sym){
   if (cs.els.fc30zoombtns) cs.els.fc30zoombtns.forEach(b => b.classList.toggle("on", b.dataset.fczoom === cs.fcZoom));
   if (cs.els.fc30age) cs.els.fc30age.textContent = cs.fc30on && cs.fcSnap
     ? "snapshot " + new Date(cs.fcSnap.t0).toLocaleTimeString() + " — frozen until closed"
-    : "";
+    : (cs.fc30on && cs.fcPendingSnap ? "checking for the current system snapshot…" : "");
   if (cs.fc30on) renderFC30Stat(sym);
 }
 
@@ -996,6 +1016,28 @@ function waveTestShiftLine(row){
   const word = row.sharp_high ? "Expected" : "possible";
   return (dir > 0 ? "📈 Sharp increase " : "📉 Sharp decrease ") + word + " in approx. " + n + " min";
 }
+/* WEB35 CHECK GATE (Shane 2026-10-30): the wave-test box and the
+   estimate graph render the stored row ONLY after it passes this
+   check — (a) identity: the row's close is still in the future,
+   i.e. it IS the row for the current window (a stale row from a
+   closed window must never render as if current), and the row's
+   own generated_at sits inside its own cycle; (b) completeness:
+   the displayed numbers are finite and the confidences/probabilities
+   are in range. A row that fails renders the plain checking state
+   below — never its numbers (the WEB34 lesson: unchecked content
+   is how wrong numbers reach the screen). */
+function waveTestCheck(row, horizon){
+  if (!row) return false;
+  const now = Date.now();
+  if (!(+row.close_at > now)) return false;
+  if (!(+row.generated_at > 0 && +row.generated_at <= now)) return false;
+  if (!(+row.close_at - +row.generated_at <= (+horizon || 0) * 60000 + 5000)) return false;
+  if (!isFinite(+row.est_value) || !isFinite(+row.margin_lo) || !isFinite(+row.margin_hi)) return false;
+  if (!(+row.value_conf >= 0 && +row.value_conf <= 100)) return false;
+  if (!(+row.shift_prob >= 0 && +row.shift_prob <= 1)) return false;
+  if (!(+row.shift_conf >= 0 && +row.shift_conf <= 100)) return false;
+  return true;
+}
 function waveTestHTML(sym){
   const cs = coinState(sym);
   const wt = cs.waveTest;
@@ -1004,6 +1046,9 @@ function waveTestHTML(sym){
     return cs.waveTestUnavailable
       ? '<div class="note wt-unavail">Test prediction unavailable right now.</div>'
       : '<div class="note wt-loading">Loading test prediction…</div>';
+  }
+  if (!waveTestCheck(row, wt.horizon)){
+    return '<div class="note wt-checking">Checking test prediction…</div>';
   }
   let html = '<div class="wtlabel">' + escHtml(row.label || "test prediction") + "</div>" +
     '<div class="wtpred">Prediction 1 — value</div>' +
@@ -1019,7 +1064,8 @@ function waveTestHTML(sym){
     '<div class="note">Large shift = the current wave ends by the close and the next wave\'s first 30 minutes reach the large-move threshold.</div>';
   if (row.grain_note) html += '<div class="note wt-grain">' + escHtml(row.grain_note) + "</div>";
   html += '<div class="note wttimes">Generated ' + new Date(+row.generated_at || 0).toLocaleString() +
-    " · Closes " + new Date(+row.close_at || 0).toLocaleString() + "</div>";
+    " · Closes " + new Date(+row.close_at || 0).toLocaleString() + "</div>" +
+    '<div><button type="button" class="whybtn wtwhy">Why this prediction?</button></div>';
   return html;
 }
 function updateWaveTestCountdown(sym){
@@ -1400,6 +1446,130 @@ function openSimpl(btn){
   placeCtxPop(sec);
   SIMPL.key = key; SIMPL.btn = btn;
   if (btn.classList) btn.classList.add("on");
+}
+/* ---------- WEB35: prediction reasons (Shane 2026-10-30) ---------
+   Every prediction's reason lives in this same shared window and
+   is composed ONLY when the user opens it — from the numbers the
+   page already holds for that exact prediction (the stored lock /
+   frozen row / frozen cycle snapshot). No fetches, no recompute:
+   the reason cites the same stored values the prediction displays,
+   so it can never drift onto a different basis than the row it
+   explains (the WEB34 rule). If a detail was not recorded with the
+   prediction, the text says so instead of inventing it. */
+function openDynText(btn, title, text){
+  const key = "dyn:" + title;
+  if (SIMPL.key === key && SIMPL.btn === btn){ closeSimpl(); return; }
+  closeSimpl();
+  const pop = ensureCtxPop();
+  pop.querySelector(".simpl-h").textContent = title;
+  ctxFillText(pop, text);
+  placeCtxPop(btn);
+  SIMPL.key = key; SIMPL.btn = btn;
+  if (btn && btn.classList) btn.classList.add("on");
+}
+function fmtDriftPct(x){ return (x >= 0 ? "+" : "") + (x * 100).toFixed(2) + "%"; }
+function driftPartsText(w){
+  if (!w || !w.driftRaw) return null;
+  const W = w.w || {}, D = w.driftRaw;
+  const part = (k, label) => (typeof D[k] === "number" && typeof W[k] === "number")
+    ? label + " " + fmtDriftPct(W[k] * D[k]) : null;
+  const parts = [part("mom", "recent momentum"), part("reg", "regime fit"), part("asym", "asymmetry")].filter(Boolean);
+  if (!parts.length || typeof w.driftTotal !== "number") return null;
+  return "Expected drift over the window: " + fmtDriftPct(w.driftTotal) +
+    " (" + parts.join(", ") + ").";
+}
+function outlookReasonText(sym, h){
+  const cs = coinState(sym);
+  const lock = cs.padLock && cs.padLock[h];
+  const hz = h === 60 ? "1 hour" : h + " min";
+  if (!lock) return "No locked call for the " + hz + " window yet. The call locks at the window's open; its reason is written from the locked numbers and appears here once it exists.";
+  const L = [];
+  L.push("Locked at " + new Date(lock.lockedAt).toLocaleTimeString() +
+    " for the window closing " + new Date(lock.closeAt).toLocaleTimeString() + ".");
+  L.push(lock.mkt
+    ? "Target line: " + fmtPrice(lock.line) + " — " + lock.mkt + "'s own target for this window (its price to beat), not a reconstruction."
+    : "Target line: " + fmtPrice(lock.line) + " — the line set on this card.");
+  if (lock.call){
+    L.push("Call: " + lock.call + " — the system put the chance of closing over the line at " +
+      pctCap(lock.p) + "%, and " + lock.call + " is the called side at " + pctCap(lock.winP) + "%.");
+  } else {
+    L.push("Call: NO EDGE — the chance of closing over the line was " + pctCap(lock.p) +
+      "%, inside the no-edge band around 50/50" +
+      (typeof lock.band === "number" ? " (a call needs at least " + Math.round(lock.band * 100) + " points of separation)" : "") +
+      ", so the system honestly made no call rather than guessing.");
+  }
+  L.push("Estimated close: " + fmtPrice(lock.est) + ".");
+  const w = lock.why;
+  if (w){
+    if (typeof w.price === "number")
+      L.push("Price when the call locked: " + fmtPrice(w.price) + " — " +
+        fmtDriftPct(w.price / lock.line - 1) + " from the line.");
+    const dp = driftPartsText(w);
+    if (dp) L.push(dp);
+    if (typeof w.sigmaT === "number")
+      L.push("Expected move size over this window (volatility): about " + (w.sigmaT * 100).toFixed(2) +
+        "% — a bigger expected move makes the same distance from the line less decisive.");
+    if (typeof w.z === "number")
+      L.push("Distance score (z): " + w.z.toFixed(2) + " — how many expected moves the price sat from the line, drift included; further from zero = stronger lean.");
+  } else {
+    L.push("The detailed inputs (price, drift, volatility at lock time) were not recorded with this call — calls locked from the next window on carry them. The call, probability, line and estimate above are the exact stored values.");
+  }
+  L.push("This reason was written just now from the locked call's own stored numbers — the same values the row displays. Nothing was recomputed and nothing was fetched.");
+  return L.join("\n\n");
+}
+function openOutlookReason(sym, h, btn){
+  openDynText(btn, sym + " — why this " + (h === 60 ? "1 hour" : h + " min") + " call?",
+    outlookReasonText(sym, h));
+}
+function waveReasonText(sym){
+  const cs = coinState(sym);
+  const wt = cs.waveTest;
+  const row = (wt && wt.horizon === cs.waveTestHorizon) ? wt.row : null;
+  if (!row) return "No test prediction is loaded for this card yet — there is nothing to explain.";
+  if (!waveTestCheck(row, wt.horizon))
+    return "This test prediction is still being checked against the current window, so its reason is not available yet. The box shows the stored row once the check passes.";
+  const L = [];
+  L.push("Value: the wave key (" + (row.key_version || "v2") + ") expects the close near " +
+    fmtPrice(row.est_value) + ", inside the margin " + fmtPrice(row.margin_lo) + " – " + fmtPrice(row.margin_hi) +
+    ". Confidence " + row.value_conf + "% is the key's own stored confidence rating for that estimate.");
+  L.push("Shift: " + Math.round(100 * (+row.shift_prob || 0)) +
+    "% chance of a large shift at the close — the current wave ends and the next wave's first 30 minutes reach the large-move threshold. Confidence " +
+    row.shift_conf + "%.");
+  const sl = waveTestShiftLine(row);
+  if (sl) L.push("Timing: " + sl + " — read from the row's stored shift direction, expected timing and sharpness flag.");
+  if (typeof row.sharp_prob === "number")
+    L.push("Sharpness: " + Math.round(100 * row.sharp_prob) + "% chance the coming move is sharp" +
+      (row.sharp_high ? " (flagged high)" : "") + ".");
+  if (row.grain_note) L.push(row.grain_note);
+  L.push("Generated " + new Date(+row.generated_at || 0).toLocaleString() +
+    " · closes " + new Date(+row.close_at || 0).toLocaleString() +
+    ". Written from the frozen row's own stored fields — the same values the box displays; nothing recomputed, nothing fetched.");
+  return L.join("\n\n");
+}
+function openWaveReason(sym, btn){
+  openDynText(btn, sym + " — why this test prediction?", waveReasonText(sym));
+}
+function cycleReasonText(sym){
+  const cs = coinState(sym);
+  const snap = cs.snap;
+  if (!snap) return "No cycle call has locked for this card yet. The call locks at the cycle open; its reason is written from the locked snapshot and appears here once it exists.";
+  const L = [];
+  L.push("Cycle call: " + (snap.call || "NO EDGE") + " vs the line " + fmtPrice(snap.line) +
+    ", closing " + new Date(snap.closeAt).toLocaleTimeString() + ".");
+  if (typeof snap.p === "number")
+    L.push("The system's chance of closing over the line: " + pctCap(snap.p) + "%.");
+  if (snap.trendText) L.push("The read frozen with the call: " + snap.trendText);
+  if (snap.pred && typeof snap.pred.driftTotal === "number")
+    L.push("Expected drift over the cycle, frozen with the call: " + fmtDriftPct(snap.pred.driftTotal) + ".");
+  if (snap.pred && typeof snap.pred.sigmaT === "number")
+    L.push("Expected move size over the cycle (volatility): about " + (snap.pred.sigmaT * 100).toFixed(2) + "%.");
+  if (snap.pred && typeof snap.pred.z === "number")
+    L.push("Distance score (z): " + snap.pred.z.toFixed(2) + " — how many expected moves the price sat from the line at the open, drift included.");
+  L.push("Written from the cycle snapshot frozen at the open — the same values the card displays; nothing recomputed, nothing fetched.");
+  return L.join("\n\n");
+}
+function openCycleReason(sym, btn){
+  openDynText(btn, sym + " — why this cycle call?", cycleReasonText(sym));
 }
 document.addEventListener("click", ev => {
   // WEB25: collapsed long-text expanders (alert paragraphs).
@@ -2015,7 +2185,7 @@ function addCard(sym){
     '<div class="swline"></div>' +
     '<div class="snipe" hidden></div>' +
     '<div class="bspot" hidden></div>' +
-    '<div class="pred"><div class="call noedge">NO CYCLE RUNNING</div><div class="conf">Set your line, then press Start — every call is for the close vs your line, never for right now.</div><div class="trendread" hidden></div><div class="pbar"><div style="width:0%"></div></div></div>' +
+    '<div class="pred"><div class="call noedge">NO CYCLE RUNNING</div><div class="conf">Set your line, then press Start — every call is for the close vs your line, never for right now.</div><div class="trendread" hidden></div><div class="pbar"><div style="width:0%"></div></div><div><button type="button" class="whybtn predwhy">Why this call?</button></div></div>' +
     '<div class="posbtns"><button type="button" class="posbtn up">(+) Up — I hold OVER</button><button type="button" class="posbtn down">(-) Down — I hold UNDER</button></div>' +
     '<div class="lockedline" hidden></div>' +
     '<div class="cardpop" hidden>' +
@@ -2071,6 +2241,7 @@ function addCard(sym){
     trend: el.querySelector(".trend"), swline: el.querySelector(".swline"),
     snipe: el.querySelector(".snipe"), bspot: el.querySelector(".bspot"),
     pred: el.querySelector(".pred"),
+    predWhy: el.querySelector(".predwhy"),
     call: el.querySelector(".pred .call"), conf: el.querySelector(".pred .conf"),
     tread: el.querySelector(".trendread"),
     posUp: el.querySelector(".posbtn.up"), posDn: el.querySelector(".posbtn.down"),
@@ -2123,6 +2294,16 @@ function addCard(sym){
   cs.els.fc30btn.addEventListener("click", () => setFC30(sym, !cs.fc30on));
   if (cs.els.tabtn) cs.els.tabtn.addEventListener("click", () => setTimingAssist(sym, !cs.timingOn));
   if (cs.els.wtbtn) cs.els.wtbtn.addEventListener("click", () => setWaveTest(sym, !cs.waveTestOn));
+  /* WEB35: the wave-test box's reason button is rebuilt with the
+     box HTML on every render, so it is wired by delegation on the
+     container, once. */
+  if (cs.els.wtcontent && typeof cs.els.wtcontent.addEventListener === "function")
+    cs.els.wtcontent.addEventListener("click", ev => {
+      const t = ev && ev.target;
+      const b = t && typeof t.closest === "function" ? t.closest(".wtwhy") : null;
+      if (b) openWaveReason(sym, b);
+    });
+  if (cs.els.predWhy) cs.els.predWhy.addEventListener("click", () => openCycleReason(sym, cs.els.predWhy));
   if (cs.els.wtHzBtns) cs.els.wtHzBtns.forEach(b =>
     b.addEventListener("click", () => setWaveTestHorizon(sym, +b.dataset.wth)));
   cs.els.detBtn.addEventListener("click", () => setDetails(sym, !cs.detailsOpen));
@@ -2767,7 +2948,11 @@ function drawForecast(sym){
   // visible plot width, translucent band margin_lo..margin_hi,
   // small "test" label. The frame (lo/hi) is NOT rescaled for
   // it — an out-of-frame estimate simply clips.
-  const wtGeom = (cs.waveTestOn && cs.waveTest && cs.waveTest.horizon === cs.waveTestHorizon)
+  /* WEB35: the frozen test line + band draw only when the stored
+     row passes the same check gate as the box (waveTestCheck) —
+     a stale row from a closed window draws nothing here either. */
+  const wtGeom = (cs.waveTestOn && cs.waveTest && cs.waveTest.horizon === cs.waveTestHorizon &&
+                  waveTestCheck(cs.waveTest.row, cs.waveTest.horizon))
     ? waveTestGeom(cs.waveTest.row) : null;
   if (wtGeom){
     const yHi = y(wtGeom.hi), yLo = y(wtGeom.lo), yEst = y(wtGeom.est);
@@ -2967,6 +3152,36 @@ function captureFC30(sym){
   const gs = GLOBAL_POOL && GLOBAL_POOL[sym] && GLOBAL_POOL[sym].fc &&
              GLOBAL_POOL[sym].fc.adj && GLOBAL_POOL[sym].fc.adj.snap;
   if (gs && Array.isArray(gs.pred) && gs.pred.length === 31 && gs.anchor > 0){
+    /* WEB35 CHECK GATE (Shane 2026-10-30): the server snapshot is
+       adopted ONLY if it passes — identity/currency: opened_at is
+       a real timestamp, not in the future, and less than one path
+       length (30 min) old, i.e. it is the CURRENT slot's snapshot;
+       completeness: every point of the main path finite, and the
+       adjusted paths finite where present. GLOBAL_POOL can be up
+       to 15 minutes old, so across a slot roll it can still hold
+       the PREVIOUS slot's frozen path — adopting that would draw
+       a closed window's prediction labeled "frozen until closed".
+       On a failed check the card goes check-pending instead: NO
+       local capture is substituted for the system snapshot, one
+       throttled global pull is fired, and loadGlobal re-captures
+       when fresh pool data lands. */
+    const nowG = Date.now();
+    const ptsOk = (arr) => arr == null ||
+      (Array.isArray(arr) && arr.length === 31 && arr.every(v => isFinite(+v)));
+    const snapOk = isFinite(+gs.opened_at) && +gs.opened_at <= nowG &&
+      nowG - +gs.opened_at < 30 * 60000 &&
+      gs.pred.every(v => isFinite(+v)) && ptsOk(gs.adjA) && ptsOk(gs.adjB);
+    if (!snapOk){
+      cs.fcSnap = null;
+      cs.fcPendingSnap = true;
+      if (!cs.fcPendingAt || nowG - cs.fcPendingAt > 60000){
+        cs.fcPendingAt = nowG;
+        loadGlobal();
+      }
+      if (cs.els.fc30age)
+        cs.els.fc30age.textContent = "checking for the current system snapshot…";
+      return null;
+    }
     const f = forecast30(sym);
     const toPts = (arr) => (Array.isArray(arr) && arr.length === 31)
       ? arr.map((p, m) => ({min: m, p: p})) : null;
@@ -2975,6 +3190,7 @@ function captureFC30(sym){
       medDurMin: f ? f.medDurMin : null, actuals: [],
       pred: toPts(gs.pred), adjA: toPts(gs.adjA), adjB: toPts(gs.adjB),
       server: true };
+    cs.fcPendingSnap = false;
     if (cs.els.fc30age)
       cs.els.fc30age.textContent = "system snapshot " + new Date(cs.fcSnap.t0).toLocaleTimeString() + " — frozen until closed";
     return cs.fcSnap;
@@ -3702,6 +3918,7 @@ function liveSigma(sym){
    global fetch hasn't landed or fails, predictions run on the same
    base params — there is no local fallback tuning to degrade to. */
 let GLOBAL_POOL = null, GLOBAL_TOTALS = null;
+let GLOBAL_AT = 0;   // WEB35: when the global payload was last loaded (as-of marking)
 /* WEB10 (Shane 2026-10-28): the global scoreboard lives in a
    collapsed-by-default section under the cards — same toggle
    pattern as the card details. The data pipeline is untouched:
@@ -3721,6 +3938,11 @@ function setScoreOpen(open){
   if (btn) btn.textContent = SCORE_OPEN ? "Scoreboard ▴" : "Scoreboard ▸";
   if (SCORE_OPEN){
     renderGlobalScore();
+    /* WEB35 LOAD-ONCE: the scoreboard is a collapsed section —
+       expanding it is its refresh trigger (the 15-min housekeeping
+       pull remains as the slow backstop). Until then it shows its
+       last-loaded state. */
+    loadGlobal();
     if (b) openCtxPanel(btn, "System scoreboard — global", b, $("#scoreCard"), syncScoreClosed);
   } else if (b) closeCtxNode(b);
 }
@@ -3742,7 +3964,7 @@ function setFCOpen(open){
   const d = $("#fcDetail"), btn = $("#fcBtn");
   if (btn) btn.textContent = FC_OPEN ? "Full forecast — every coin, every hour ▴" : "Full forecast — every coin, every hour ▸";
   if (FC_OPEN){
-    if (!DAYFC) loadDayForecast();   // WEB26: opened before the idle stage landed — pull it now
+    loadDayForecast();   // WEB35: expanding the forecast detail refreshes it (was WEB26: only if never loaded)
     if (d) openCtxPanel(btn, "Day forecast — every coin, every hour", d, $("#forecastCard"), syncFCClosed);
   } else if (d) closeCtxNode(d);
 }
@@ -3792,8 +4014,20 @@ async function loadGlobal(){
   const j = await fetchJSON(AUTH + "/api/perp/global");
   if (!j || !j.ok || !j.coins) return;
   GLOBAL_POOL = j.coins; GLOBAL_TOTALS = j.totals || null;
+  GLOBAL_AT = Date.now();
   renderGlobalScore();
   S.selected.forEach(sym => { renderGlobalLine(sym); renderFCRec(sym); renderFC30Stat(sym); if (S.cycle.active) predict(sym); });
+  /* WEB35: forecast sections waiting on the snapshot check gate
+     re-capture now that fresh pool data has landed — the pending
+     state resolves into the checked system snapshot (or stays
+     pending if the server's current slot has not opened yet). */
+  S.selected.forEach(sym => {
+    const cs = S.coins[sym];
+    if (cs && cs.fc30on && cs.fcPendingSnap && captureFC30(sym)){
+      applyFC30(sym);
+      drawSpark(sym);
+    }
+  });
 }
 /* Multi-source view (MULTISOURCE): one server call covers every
    watched coin. Pure enhancement layer — if the endpoint is
@@ -3801,12 +4035,20 @@ async function loadGlobal(){
    exactly as it did before (direct Coinbase). Predictions keep
    using the Coinbase reference either way. */
 let SRC_VIEW = null;
+let SRC_AT = 0;   // WEB35: when the sources view was last loaded (as-of marking)
 const SRC_NAMES = { coinbase: "Coinbase", kraken: "Kraken", bitstamp: "Bitstamp", gemini: "Gemini" };
+/* WEB35: is any watched card's Details section expanded? The
+   sources view renders only inside Details, so this is the gate
+   for its background refresh (see the housekeeping note). */
+function anyDetailsOpen(){
+  return S.selected.some(sym => { const cs = S.coins[sym]; return cs && cs.detailsOpen; });
+}
 async function loadSources(){
   if (!S.selected.length) return;
   const j = await fetchJSON(AUTH + "/api/perp/prices?coins=" + S.selected.join(","));
   if (!j || !j.ok || !j.coins) return;
   SRC_VIEW = j.coins;
+  SRC_AT = Date.now();
   S.selected.forEach(renderSources);
 }
 function renderSources(sym){
@@ -3826,6 +4068,10 @@ function renderSources(sym){
   if (v.spread_pct != null) txt += " · spread " + v.spread_pct.toFixed(2) + "%";
   if (v.price_source && v.price_source !== "coinbase") txt += " · priced by " + SRC_NAMES[v.price_source];
   if (v.disagree) txt += " · ⚠ sources disagree — server holds calls at NO EDGE";
+  /* WEB35: the sources line lives inside the collapsed Details —
+     it loads once and refreshes on expand, so it says when its
+     data is from. */
+  if (SRC_AT) txt += " · as of " + new Date(SRC_AT).toLocaleTimeString();
   cs.els.src.hidden = false;
   if (cs.els.src.textContent !== txt) cs.els.src.textContent = txt;
 }
@@ -4524,7 +4770,13 @@ setInterval(() => {
   }
   if (S.loopN % 180 === 0)
     S.selected.forEach(sym => { const cs = S.coins[sym]; if (cs && !cs.fc30on) loadCoinCharts(sym); });
-  if (S.loopN % 15 === 0 && S.selected.length) loadSources();
+  /* WEB35 LOAD-ONCE (Shane 2026-10-30): the sources line lives
+     inside each card's collapsed Details — it no longer refetches
+     in the background while every watched card's Details are
+     closed. It loads once at boot, refreshes when a Details
+     section is expanded (setDetails), and keeps this 15 s cadence
+     only while at least one card's Details are actually open. */
+  if (S.loopN % 15 === 0 && S.selected.length && anyDetailsOpen()) loadSources();
   /* WEB32: pad headers ("BTC live: —") render once at pad build /
      pad interaction — if the target coin's price had not landed
      yet, the header stayed blank forever while the card showed a
@@ -4600,7 +4852,9 @@ function renderAdvisory(){
       strip.hidden = false;
       strip.textContent = "Right now: " + best + " looks most predictable" +
         (a.reasons && a.reasons.length ? " — " + a.reasons[0] : "") +
-        (a.side ? " · suggested side " + a.side + " (" + (a.side_horizon_min || 30) + "m, " + pctCap(a.side_p || 0) + ")"
+        (a.side ? " · suggested side " + a.side + " (" + (a.side_horizon_min || 30) + "m" +
+                  /* WEB35 sanity: no % without a finite stored probability */
+                  (a.side_p != null && isFinite(+a.side_p) ? ", " + pctCap(a.side_p) : "") + ")"
                 : " · no side call (NO EDGE)");
     } else strip.hidden = true;
     const sr = $("#advSimplRow");
@@ -4627,7 +4881,10 @@ function renderAdvCard(sym){
   } else b.hidden = true;
   if (a.side){
     chip.hidden = false; chip.className = "sidechip";
-    chip.textContent = "Suggested: " + a.side + " (" + (a.side_horizon_min || 30) + "m, " + pctCap(a.side_p || 0) + ")";
+    /* WEB35 sanity: a suggested side without a finite stored
+       probability shows the side only — never a fabricated %. */
+    chip.textContent = "Suggested: " + a.side + " (" + (a.side_horizon_min || 30) + "m" +
+      (a.side_p != null && isFinite(+a.side_p) ? ", " + pctCap(a.side_p) : "") + ")";
   } else {
     chip.hidden = false; chip.className = "sidechip none";
     chip.textContent = "No suggested side — NO EDGE";
@@ -5488,6 +5745,57 @@ function mktCovers(sym, h){
   if (S.preset === "kalshi") return h === 15 && !!KX_SERIES[sym];
   return false;
 }
+/* ---------- WEB35 CHECK GATE: Perpetual Outlook (Shane
+   2026-10-30) ------------------------------------------------
+   A locked outlook row renders ONLY after this check passes:
+   (a) identity — the lock belongs to the CURRENT window for this
+       horizon (closeAt match, and it was taken inside its own
+       window), so a stale or foreign lock can never render as
+       the current call;
+   (b) market basis — in market mode, a lock claiming a market
+       basis is checked against the market-line observation it
+       was taken from: if the window's market line on hand was
+       fetched at or before the lock was taken and disagrees
+       with the lock's line, the stored row is inconsistent and
+       does not render. A market line REFETCHED after the lock
+       is a different observation (Polymarket's endpoint flickers
+       at boundaries — WEB30) and is never the lock's basis: the
+       lock is authoritative once taken (WEB28), and checking a
+       stored row against a fresh fetch is exactly the WEB34
+       divergent-basis class this gate exists to kill. The
+       lock-time guarantee itself is WEB30's: a covered row
+       cannot lock before its target lands (90 s bounded fallback
+       records mkt=null, honestly basis-less);
+   (c) sanity — probability finite and in [0,1], estimate and
+       line finite and positive, the call consistent with the
+       stored probability and the band recorded AT LOCK TIME
+       (never today's band — the WEB34 rule: check against the
+       row's own basis, not a fresh recompute).
+   A failed check renders the plain pending state — the lock is
+   left untouched (immutable), it simply does not display. */
+function outlookLockCheck(sym, h, lock, closeAt){
+  if (!lock) return false;
+  if (lock.closeAt !== closeAt) return false;
+  if (!(lock.lockedAt >= closeAt - h * 60000 && lock.lockedAt <= closeAt)) return false;
+  if (!(typeof lock.p === "number" && isFinite(lock.p) && lock.p >= 0 && lock.p <= 1)) return false;
+  if (!(isFinite(lock.est) && lock.est > 0)) return false;
+  if (!(isFinite(lock.line) && lock.line > 0)) return false;
+  if (!(lock.call === null || lock.call === "OVER" || lock.call === "UNDER")) return false;
+  if (lock.call){
+    const wp = lock.call === "OVER" ? lock.p : 1 - lock.p;
+    if (!(typeof lock.winP === "number" && isFinite(lock.winP) && Math.abs(lock.winP - wp) < 1e-9)) return false;
+    if (typeof lock.band === "number" && Math.abs(lock.p - 0.5) < lock.band) return false;
+  } else {
+    if (lock.winP != null) return false;
+    if (typeof lock.band === "number" && Math.abs(lock.p - 0.5) >= lock.band) return false;
+  }
+  if (lock.mkt && marketActive()){
+    const ml = mktLineFor(sym, h);
+    if (ml && typeof ml.at === "number" && ml.at <= lock.lockedAt &&
+        Math.abs(ml.price - lock.line) > Math.max(1e-9, lock.line * 1e-9)) return false;
+  }
+  return true;
+}
 function padCallsRows(sym){
   const cs = coinState(sym);
   if (!(cs.price > 0)) return null;
@@ -5504,10 +5812,16 @@ function padCallsRows(sym){
     if (lock && lock.closeAt === closeAt){
       /* Frozen for this window — only the countdown is recomputed.
          The FIRST computation in the window is the row, even if
-         the resolved line has since changed (immutable law). */
-      return {h: h, p: lock.p, call: lock.call, winP: lock.winP,
-              est: lock.est, remaining: remaining, line: lock.line,
-              mkt: lock.mkt, lockedAt: lock.lockedAt};
+         the resolved line has since changed (immutable law).
+         WEB35: and it renders only if the stored lock passes the
+         check gate above; a failed check shows the pending state
+         (the lock itself is never altered or deleted). */
+      if (outlookLockCheck(sym, h, lock, closeAt))
+        return {h: h, p: lock.p, call: lock.call, winP: lock.winP,
+                est: lock.est, remaining: remaining, line: lock.line,
+                mkt: lock.mkt, lockedAt: lock.lockedAt, checked: true};
+      return {h: h, pending: true, remaining: remaining, line: lock.line,
+              mkt: lock.mkt, lockedAt: null};
     }
     /* WEB30: LOCK-RACE FIX (2026-10-30 display-accuracy audit —
        Shane: "the target lines are never correct"). When the
@@ -5530,47 +5844,52 @@ function padCallsRows(sym){
        the resolved line as before rather than staying unlocked
        forever. The immutable law is untouched: a locked row
        never changes — this only stops a row from locking against
-       the wrong line in the first place. */
+       the wrong line in the first place. (WEB35: the interim
+       UNLOCKED-live rendering this paragraph describes is
+       superseded — pending rows now show the checking state;
+       see the branch itself.) */
     if (!ml && mktCovers(sym, h) && now - winStartMs(now, h) < 90000){
-      let live = null;
-      try { live = probOverAt(sym, cs.price, line, remaining); } catch (e) { live = null; }
-      if (!live || !isFinite(live.p) || !isFinite(live.driftTotal))
-        return {h: h, p: 0.5, call: null, winP: null, est: cs.price,
-                remaining: remaining, line: line, mkt: null, lockedAt: null};
-      const lcall = Math.abs(live.p - 0.5) >= band ? (live.p > 0.5 ? "OVER" : "UNDER") : null;
-      return {h: h, p: live.p, call: lcall,
-              winP: lcall ? (lcall === "OVER" ? live.p : 1 - live.p) : null,
-              est: cs.price * Math.exp(live.driftTotal),
-              remaining: remaining, line: line, mkt: null, lockedAt: null};
+      /* WEB35 (Shane 2026-10-30): while the covered target is in
+         flight the row renders the plain CHECKING state — WEB30's
+         interim live-recompute display is superseded by Shane's
+         check-before-render rule: an unlocked, unchecked number
+         is never shown, and no client-side recompute may stand in
+         for the stored prediction. The lock discipline is
+         unchanged: nothing locks until the target lands (or the
+         90s bounded fallback below), and a locked row never moves. */
+      return {h: h, pending: true, remaining: remaining, line: line,
+              mkt: null, lockedAt: null};
     }
     /* Lock-time computation: the FULL horizon (h*60 seconds),
        never the time left in the window. */
     let r = null;
     try { r = probOverAt(sym, cs.price, line, h * 60); } catch (e) { r = null; }
     if (!r || !isFinite(r.p) || !isFinite(r.driftTotal)){
-      /* Price/features not ready yet: render the row the old live
-         way for THIS render only and leave it unlocked — the next
-         render retries the lock. A garbage row is never locked. */
-      let live = null;
-      try { live = probOverAt(sym, cs.price, line, remaining); } catch (e) { live = null; }
-      if (!live || !isFinite(live.p) || !isFinite(live.driftTotal))
-        return {h: h, p: 0.5, call: null, winP: null, est: cs.price,
-                remaining: remaining, line: line, mkt: ml ? ml.src : null, lockedAt: null};
-      const lcall = Math.abs(live.p - 0.5) >= band ? (live.p > 0.5 ? "OVER" : "UNDER") : null;
-      return {h: h, p: live.p, call: lcall,
-              winP: lcall ? (lcall === "OVER" ? live.p : 1 - live.p) : null,
-              est: cs.price * Math.exp(live.driftTotal),
-              remaining: remaining, line: line, mkt: ml ? ml.src : null, lockedAt: null};
+      /* Price/features not ready yet: WEB35 — the row shows the
+         checking state and stays unlocked; the next render
+         retries the lock. A garbage row is never locked, and no
+         substitute live number is displayed in its place. */
+      return {h: h, pending: true, remaining: remaining, line: line,
+              mkt: ml ? ml.src : null, lockedAt: null};
     }
     const call = Math.abs(r.p - 0.5) >= band ? (r.p > 0.5 ? "OVER" : "UNDER") : null;
     const fresh = {closeAt: closeAt, p: r.p, call: call,
       winP: call ? (call === "OVER" ? r.p : 1 - r.p) : null,
       est: cs.price * Math.exp(r.driftTotal),
-      line: line, mkt: ml ? ml.src : null, lockedAt: now};
+      line: line, mkt: ml ? ml.src : null, lockedAt: now,
+      /* WEB35: the lock records its own basis — the band in force
+         and the inputs the call was computed from — written ONCE
+         with the lock, never updated. The check gate verifies
+         against these stored values, and the row's "Why this
+         call?" reason is composed from them at open time. */
+      band: band,
+      why: {price: cs.price, z: r.z, sigmaT: r.sigmaT,
+            driftTotal: r.driftTotal, driftRaw: r.driftRaw || null,
+            w: effW(sym)}};
     cs.padLock[h] = fresh;
     return {h: h, p: fresh.p, call: fresh.call, winP: fresh.winP,
             est: fresh.est, remaining: remaining, line: fresh.line,
-            mkt: fresh.mkt, lockedAt: fresh.lockedAt};
+            mkt: fresh.mkt, lockedAt: fresh.lockedAt, checked: true};
   });
 }
 function renderPadCalls(sym){
@@ -5587,18 +5906,17 @@ function renderPadCalls(sym){
   /* WEB21: the footnote states the lock discipline outright — the
      old live-recompute wording is removed entirely. */
   const lockNote = "Calls lock at each window's open and never update mid-window — the same opening call the system grades itself on. The countdown is the only live part of each row.";
-  const foot = anyMkt
-    ? (S.preset === "kalshi"
-      ? "Only Kalshi's own window is shown in this mode — the 15m row, target from Kalshi. " + lockNote
-      : "Targets from Polymarket's own per-window prices — only Polymarket's own windows are shown in this mode. " + lockNote)
-    : "Est. end value = the model's projected close for that perpetual, from the lock-time price and the same math as the call. " + lockNote;
-  /* WEB28: the footnote gains one sentence about the manual
-     refresh — the WEB21 lock wording above stays verbatim. */
-  const footFull = foot + " ↻ Refresh prediction adds a separate live estimate under a row, only when you tap it — the locked call itself never moves.";
   /* WEB29: when any row carries a recent-form strip, the footnote
      gains its legend (settled windows only). */
   const anyForm = rows.some(r => { const a = cs.form && cs.form[r.h]; return a && a.length; });
-  const footShown = footFull + (anyForm ? " Recent-form triangles under each row: the last settled windows — ▲ closed over, ▼ closed under; ⭕ the opening lean was right, ❌ it was wrong, plain = no lean (reference only)." : "");
+  /* WEB35 (Shane 2026-10-30): the visible footnote is now just the
+     one-line lock discipline + the form legend. The full
+     explanation that used to sit here (mode/targets text, the
+     est-end-value definition, the WEB28 refresh sentence, the
+     check description) moved into the "How the outlook works"
+     pop-out below (outlookExplainText) — same words, opened on
+     demand instead of always on screen. */
+  const footShown = lockNote + (anyForm ? " Recent-form triangles under each row: the last settled windows — ▲ closed over, ▼ closed under; ⭕ the opening lean was right, ❌ it was wrong, plain = no lean (reference only)." : "");
   const busyAttr = cs.padCallsBusy ? " disabled" : "";
   const html =
     '<div class="lbl" style="margin:12px 0 4px">Perpetual outlook — ' + lineRef + '</div>' +
@@ -5618,6 +5936,19 @@ function renderPadCalls(sym){
       const lk = cs.padLock && cs.padLock[r.h];
       const le = (r.lockedAt && lk && cs.padLiveEst && cs.padLiveEst[r.h] &&
                   cs.padLiveEst[r.h].closeAt === lk.closeAt) ? cs.padLiveEst[r.h] : null;
+      /* WEB35: a pending row (call not locked yet, or the stored
+         lock failed the check gate) renders the plain checking
+         state — horizon + countdown + settled form history only.
+         No call, no probability, no estimate, no refresh/why
+         buttons: an unchecked number never reaches the screen. */
+      if (r.pending){
+        return "<tr><td>" + (r.h === 60 ? "1 hour" : r.h + " min") +
+        ' · <span class="cdft" data-cdh="' + r.h + '">' + fmtClock(r.remaining * 1000) + " left</span>" +
+        (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + ")</span>" : "") +
+        '</td><td><span class="note predcheck">checking…</span>' +
+        formStripHTML(sym, r.h) +
+        "</td><td>—</td></tr>";
+      }
       return "<tr><td>" + (r.h === 60 ? "1 hour" : r.h + " min") +
       ' · <span class="cdft" data-cdh="' + r.h + '">' + fmtClock(r.remaining * 1000) + " left</span>" +
       (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + ")</span>" : "") +
@@ -5631,6 +5962,9 @@ function renderPadCalls(sym){
       (le ? '<br><span class="note padliveest">↻ live estimate ' + multTimeStr(le.stampMs) + ": " +
             (le.call ? le.call + " " + pctCap(le.winP) : "NO EDGE") +
             " · est " + fmtPrice(le.est) + "</span>" : "") +
+      /* WEB35: this call's reason — composed at open time from
+         the lock's own stored inputs (outlookReasonText). */
+      '<br><button class="whybtn" type="button" data-padwhy="' + r.h + '">Why this call?</button>' +
       /* WEB29: this horizon's recent-form strip — settled history
          only, from the shared formStripHTML helper; empty until
          the server has settled windows for this (coin, horizon). */
@@ -5638,8 +5972,26 @@ function renderPadCalls(sym){
       "</td><td>" + fmtPrice(r.est) + "</td></tr>";
     }).join("") +
     "</tbody></table>" +
-    '<div class="note" style="margin-top:4px">' + footShown + '</div>';
+    '<div class="note" style="margin-top:4px">' + footShown +
+    ' <button type="button" class="whybtn" data-padexplain="1">How the outlook works ▸</button></div>';
   if (out.innerHTML !== html) out.innerHTML = html;
+}
+/* WEB35: the outlook's full explanation — the text that used to
+   fill the table's footnote (mode/targets wording, the
+   est-end-value definition, the WEB28 refresh sentence) plus the
+   check-gate description. Composed at open time from the current
+   mode; no fetches. */
+function outlookExplainText(){
+  const head = marketActive()
+    ? (S.preset === "kalshi"
+      ? "Only Kalshi's own window is shown in this mode — the 15m row, target from Kalshi."
+      : "Targets from Polymarket's own per-window prices — only Polymarket's own windows are shown in this mode.")
+    : "Est. end value = the model's projected close for that perpetual, from the lock-time price and the same math as the call.";
+  return head +
+    "\n\nCalls lock at each window's open and never update mid-window — the same opening call the system grades itself on. The countdown is the only live part of each row." +
+    "\n\n↻ Refresh prediction adds a separate live estimate under a row, only when you tap it — the locked call itself never moves." +
+    "\n\nCheck before render (WEB35): a row displays only after its stored call passes a check — it must be the lock for the current window, its probability finite and in range, its call consistent with the probability and the no-edge band recorded when it locked, and in market mode its line must equal the market's own target for the window. While a call is still being generated or checked, the row shows “checking…” — never an unchecked number." +
+    "\n\nEach row's “Why this call?” button explains that exact call from its own locked numbers.";
 }
 /* ---------- WEB28 (Shane 2026-10-30): "Refresh prediction" for
    the LOCKED Perpetual Outlook --------------------------------
@@ -5734,7 +6086,17 @@ function initCardPad(sym){
   if (cs.els.padCalls && typeof cs.els.padCalls.addEventListener === "function")
     cs.els.padCalls.addEventListener("click", ev => {
       const t = ev && ev.target;
-      const b = t && typeof t.closest === "function" ? t.closest("[data-padcallrefresh]") : null;
+      if (!t || typeof t.closest !== "function") return;
+      /* WEB35: per-row reason + the outlook explainer — same
+         delegation, composed at open from stored values. */
+      const wb = t.closest("[data-padwhy]");
+      if (wb && typeof wb.getAttribute === "function"){
+        openOutlookReason(sym, +wb.getAttribute("data-padwhy"), wb);
+        return;
+      }
+      const xb = t.closest("[data-padexplain]");
+      if (xb){ openDynText(xb, "How the outlook works", outlookExplainText()); return; }
+      const b = t.closest("[data-padcallrefresh]");
       if (!b || typeof b.getAttribute !== "function") return;
       const v = b.getAttribute("data-padcallrefresh");
       if (v == null) return;
@@ -5938,7 +6300,11 @@ buildCoinGrid();
   whenIdle(() => loadSources(), 1200);
   whenIdle(() => loadRecentForm(), 1800);
   whenIdle(() => { loadAdvisory(); loadDayForecast(); }, 2500);
-  whenIdle(() => loadSnipe(), 4000);
+  /* WEB35 LOAD-ONCE: a MINIMIZED Snipe Spotter is a collapsed
+     section — it does not load at boot; expanding it pulls it
+     (setSnipeMin already loads on expand). An expanded spotter
+     keeps the WEB32 load-once + manual-↻ discipline. */
+  whenIdle(() => { if (!SNIPE_MIN) loadSnipe(); }, 4000);
 })();
 </script>
 </body>
