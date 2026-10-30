@@ -274,6 +274,17 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
 .wtrow{margin-top:2px}
 .wt-grain{margin-top:6px}
 .wt-countdown{margin-top:6px;font-variant-numeric:tabular-nums}
+/* WEB25: the frozen shift-timing line inside the test box */
+.wtshift{margin-top:6px;font-weight:700}
+/* WEB25: scoreboard forecast HIT (green) / MISS (red) headers */
+.fchit{color:#2ee6a8;font-weight:800}
+.fcmiss{color:#ff4747;font-weight:800}
+/* WEB25 declutter: long list text (wave-alert paragraphs) starts
+   collapsed — headline preview visible, full text behind a tap */
+.xfull[hidden]{display:none}
+.xfull{margin-top:4px}
+.xmore{background:none;border:none;color:var(--gold2);cursor:pointer;
+  font-size:12.5px;font-weight:700;padding:2px 0;text-decoration:underline}
 /* ---------- WEB10: wide two-column cards, per-card pad, scoreboard
    collapse, advice pop-out (Shane 2026-10-28 annotated sketches) --- */
 .cardrow{display:flex;gap:14px;align-items:flex-start}
@@ -366,7 +377,14 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
   text-transform:uppercase}
 .simplbtn:hover{border-color:var(--gold)}
 .simplbtn.on{border-color:var(--gold);background:#1c1808;color:var(--gold2)}
-#simplPop{position:absolute;z-index:57;width:min(400px,calc(100vw - 20px));
+/* WEB25: the shared context window is a viewport-FIXED centered
+   overlay with a backdrop — it opens in front of the user wherever
+   they are scrolled to (the scoreboard button in the header used
+   to appear dead because the window rendered down at its section). */
+#ctxBackdrop{position:fixed;inset:0;background:rgba(3,3,10,.66);z-index:56}
+#ctxBackdrop[hidden]{display:none}
+#simplPop{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:57;
+  width:min(400px,calc(100vw - 20px));max-height:86vh;overflow-y:auto;
   background:#101020;border:1px solid var(--gold);border-radius:14px;padding:13px 28px 13px 15px;
   box-shadow:0 14px 44px rgba(0,0,0,.6);font-size:14.5px;line-height:1.6;color:var(--txt)}
 #simplPop[hidden]{display:none}
@@ -382,7 +400,7 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
    open in it — one at a time, anchored under the invoking section,
    closed by outside tap or Escape. Panel mode widens the window
    and scrolls; the default view keeps only essentials on screen. */
-#simplPop.ctxpanel{width:min(720px,calc(100vw - 20px));max-height:78vh;overflow-y:auto}
+#simplPop.ctxpanel{width:min(720px,calc(100vw - 20px));max-height:86vh;overflow-y:auto}
 #simplPop .ctx-body{margin-top:2px}
 #simplPop .ctx-body .note:first-child{margin-top:0}
 .ctx-body table{width:100%}
@@ -411,8 +429,10 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
       <button type="button" class="ctxbtn" data-ctxtext="how">How it works</button>
     </nav>
   </div>
-  <p class="sub">Live over/under calls for the close, from 6 months of pattern stats per coin — the system scores itself at every close, in the open.</p>
-  <p class="sub" style="margin-top:6px"><a href="learn/" style="font-weight:700">📚 Learn — the perpetuals tutorial &amp; lessons →</a> <span>what to look for in the data, real past charts with the signs drawn on, wave and snipe patterns, and how positions are managed.</span></p>
+  <!-- WEB25 declutter: the header tagline + Learn description moved
+       into the "How it works" context text (CTX_TEXT.how) — the
+       header keeps only the wordmark, title, nav and the Learn link. -->
+  <p class="sub" style="margin-top:6px"><a href="learn/" style="font-weight:700">📚 Learn — the perpetuals tutorial &amp; lessons →</a></p>
 </header>
 <div id="drawerBackdrop" hidden></div>
 <button class="edgetab left" id="oddsTab" type="button" title="Open the odds board">Odds</button>
@@ -503,7 +523,7 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
       <div class="note">every visitor sees these same numbers · updated from the shared database</div>
       <div class="note" id="scoreSummary" style="margin-top:6px">loading system record…</div>
       <table id="scoreTable">
-        <thead><tr><th>Coin</th><th>Scored</th><th>Calls</th><th>Hit rate</th><th>Forecast ✓</th><th>Forecast ✗</th></tr></thead>
+        <thead><tr><th>Coin</th><th>Scored</th><th>Calls</th><th>Hit rate</th><th>Forecast <span class="fchit">HIT</span></th><th>Forecast <span class="fcmiss">MISS</span></th></tr></thead>
         <tbody id="scoreBody"><tr><td colspan="6" class="note">loading system record…</td></tr></tbody>
       </table>
       </div>
@@ -532,8 +552,10 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
   </section>
 </main>
 <footer>
-  Predictions are probabilities from pattern statistics — not guarantees, and short-horizon crypto direction is close to a coin flip. The scoreboard shows the system's real global record, wins and losses alike. Data: Coinbase Exchange public feed. Not financial advice.
-  <div class="row" style="margin-top:8px"><button type="button" class="ctxbtn" data-ctxtext="full">Full explanation — how this page works</button></div>
+  <!-- WEB25 declutter: the footer disclaimer prose lives in the
+       Full explanation context text (CTX_TEXT.full, first
+       paragraph) — the footer keeps only the launcher. -->
+  <div class="row"><button type="button" class="ctxbtn" data-ctxtext="full">Full explanation — how this page works</button></div>
 </footer>
 <script>
 "use strict";
@@ -844,6 +866,30 @@ function waveTestGeom(row){
   if (!row || !isFinite(+row.est_value)) return null;
   return { est: +row.est_value, lo: +row.margin_lo, hi: +row.margin_hi, color: WAVE_TEST_COLOR };
 }
+/* WEB25 (Shane 2026-10-30): the timing arrow + panel line inputs,
+   read ONLY from the stored frozen row's WEB25 fields — the shift
+   moment (generated_at + shift_eta_min), the expected next leg's
+   direction, and the sharpness wording gate. Nothing here reads a
+   live price, the trend, or the clock beyond the stored row, so
+   re-rendering under mutated live inputs is byte-identical. */
+function waveTestArrow(row){
+  if (!row) return null;
+  const dir = +row.shift_dir, eta = +row.shift_eta_min, gen = +row.generated_at;
+  if (!(dir === 1 || dir === -1) || !isFinite(eta) || !(gen > 0)) return null;
+  return { atMs: gen + eta * 60000, dir,
+    glyph: dir > 0 ? "⬆️" : "⬇️",
+    color: dir > 0 ? "#2ee6a8" : "#ff4747" };
+}
+function waveTestShiftLine(row){
+  if (!row) return null;
+  const dir = +row.shift_dir, eta = +row.shift_eta_min;
+  if (!(dir === 1 || dir === -1) || !isFinite(eta)) return null;
+  const n = Math.round(eta / 5) * 5;
+  // "Expected" only when the frozen row's sharpness is in the top
+  // band; otherwise the honest lowercase "possible".
+  const word = row.sharp_high ? "Expected" : "possible";
+  return (dir > 0 ? "📈 Sharp increase " : "📉 Sharp decrease ") + word + " in approx. " + n + " min";
+}
 function waveTestHTML(sym){
   const cs = coinState(sym);
   const wt = cs.waveTest;
@@ -861,6 +907,9 @@ function waveTestHTML(sym){
     '<div class="wtpred">Prediction 2 — shift</div>' +
     '<div class="wtrow">Large shift at close: ' + Math.round(100 * (+row.shift_prob || 0)) + "%</div>" +
     '<div class="wtrow">Confidence: ' + row.shift_conf + "%</div>" +
+    // WEB25: the expected-shift line — timing + direction from the
+    // frozen row's shift fields, wording gated on sharp_high.
+    ((() => { const sl = waveTestShiftLine(row); return sl ? '<div class="wtrow wtshift">' + sl + "</div>" : ""; })()) +
     '<div class="note">Large shift = the current wave ends by the close and the next wave\'s first 30 minutes reach the large-move threshold.</div>';
   if (row.grain_note) html += '<div class="note wt-grain">' + escHtml(row.grain_note) + "</div>";
   html += '<div class="note wttimes">Generated ' + new Date(+row.generated_at || 0).toLocaleString() +
@@ -987,7 +1036,11 @@ const SIMPL = { pop: null, key: null, btn: null };
    untouched. One window at a time; opening anything first closes
    whatever is open (restoring its panel home). ---------- */
 const CTX = { node: null, home: null, next: null, wasHidden: false, onclose: null };
+/* WEB25: the shared window's backdrop — shown with the window,
+   hidden with it; tapping it closes the window. */
+let CTXBD = null;
 function closeSimpl(){
+  if (CTXBD) CTXBD.hidden = true;
   if (CTX.node){
     const node = CTX.node, onclose = CTX.onclose;
     if (CTX.home && (CTX.home.insertBefore || CTX.home.appendChild)){
@@ -1015,21 +1068,24 @@ function ctxFillText(pop, text){
 function placeCtxPop(anchor){
   const pop = SIMPL.pop;
   if (!pop) return;
-  const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { bottom: 0, right: 0 };
-  const vw = window.innerWidth || 1024, sx = window.scrollX || 0, sy = window.scrollY || 0;
+  /* WEB25: no scroll-dependent placement any more — the window is
+     viewport-fixed and centered by CSS (#simplPop), with the
+     backdrop behind it, so it opens in front of the user wherever
+     the page is scrolled to. The anchor argument is kept for the
+     existing call sites and ignored. Any inline top/left left by
+     pre-WEB25 opens is cleared so it can't fight the centering. */
+  pop.style.top = ""; pop.style.left = "";
   pop.hidden = false;
-  pop.style.top = (r.bottom + sy + 6) + "px";
-  if (vw < 640){
-    pop.style.left = (sx + 10) + "px";
-  } else {
-    const w = Math.min(pop.classList && pop.classList.contains("ctxpanel") ? 720 : 400, vw - 20);
-    let left = r.right + sx - w;
-    left = Math.max(sx + 8, Math.min(left, sx + vw - w - 8));
-    pop.style.left = left + "px";
-  }
+  if (CTXBD) CTXBD.hidden = false;
 }
 function ensureCtxPop(){
   if (SIMPL.pop) return SIMPL.pop;
+  if (!CTXBD){
+    CTXBD = document.createElement("div");
+    CTXBD.id = "ctxBackdrop"; CTXBD.hidden = true;
+    if (CTXBD.addEventListener) CTXBD.addEventListener("click", closeSimpl);
+    document.body.appendChild(CTXBD);
+  }
   const pop = document.createElement("div");
   pop.id = "simplPop"; pop.hidden = true;
   pop.innerHTML = '<div class="simpl-h"></div><button type="button" class="simpl-x" aria-label="Close">✕</button><div class="simpl-t"></div><div class="ctx-body"></div>';
@@ -1114,6 +1170,9 @@ function openSimpl(btn){
   if (btn.classList) btn.classList.add("on");
 }
 document.addEventListener("click", ev => {
+  // WEB25: collapsed long-text expanders (alert paragraphs).
+  const m = ev.target && ev.target.closest ? ev.target.closest(".xmore") : null;
+  if (m){ toggleXpand(m); return; }
   const b = ev.target && ev.target.closest ? ev.target.closest(".simplbtn") : null;
   if (b){ openSimpl(b); return; }
   const c = ev.target && ev.target.closest ? ev.target.closest("[data-ctxtext]") : null;
@@ -1135,7 +1194,7 @@ document.addEventListener("keydown", ev => { if (ev.key === "Escape") closeSimpl
    opened from slim launcher buttons. ---------- */
 const CTX_TEXT = {
   how: { h: "How Perpetual Helper works",
-    t: "Live prices for the cryptos you pick, a cycle timer synced to the market clock, and an over/under call for the close from 6 months of pattern stats per coin. Each cycle's call locks at the open — that locked call is the only one graded — while the live call keeps tracking every 10 seconds until the close. It scores itself at every close, in the open." },
+    t: "Live prices for the cryptos you pick, a cycle timer synced to the market clock, and an over/under call for the close from 6 months of pattern stats per coin. Each cycle's call locks at the open — that locked call is the only one graded — while the live call keeps tracking every 10 seconds until the close. It scores itself at every close, in the open.\n\n📚 Learn — the perpetuals tutorial & lessons (the Learn link at the top of the page): what to look for in the data, real past charts with the signs drawn on, wave and snipe patterns, and how positions are managed." },
   snipe: { h: "Snipe Spotter — how it works",
     t: "This spotter flags one event only: a perpetual window where the cheap side — the side priced at just 1–10% odds — shows wave signs of flipping to a near-lock before the close. When that bounce setup is live it shows here and on the coin's card. Nothing else gets flagged." },
   alerts: { h: "Wave alerts — how they work",
@@ -2421,6 +2480,21 @@ function drawForecast(sym){
     ctx.strokeStyle = wtGeom.color; ctx.setLineDash([7, 5]); ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
     ctx.font = "bold 13px system-ui"; ctx.fillStyle = wtGeom.color;
     ctx.fillText("test", 8, clamp(yEst - 6, 14, H - 20));
+    // WEB25: the timing arrow — at the frozen row's expected shift
+    // moment (generated_at + shift_eta_min, clamped into the
+    // visible window), a green ⬆️ ABOVE the estimate line when the
+    // expected next leg runs up, a red ⬇️ BELOW it when it runs
+    // down. Inside the same wtGeom gate as the line itself: trial
+    // OFF (or no frozen row) draws neither. Frozen-row values only.
+    const wtArrow = waveTestArrow(cs.waveTest.row);
+    if (wtArrow){
+      const ax = clamp(X(wtArrow.atMs), 16, W - 16);
+      ctx.font = "19px system-ui"; ctx.fillStyle = wtArrow.color;
+      ctx.textAlign = "center";
+      ctx.fillText(wtArrow.glyph, ax,
+        wtArrow.dir > 0 ? clamp(yEst - 12, 22, H - 26) : clamp(yEst + 27, 32, H - 6));
+      ctx.textAlign = "left";
+    }
   }
   // RIGHT of center: the freshest snapshot's wavy path, feeding in,
   // with a light ±1σ band. dt is measured from the snapshot's own t.
@@ -4092,6 +4166,27 @@ function renderAdvCard(sym){
      advisory Simplified window (openSimpl appends it there). */
   if (cs.els.advWhy) cs.els.advWhy.textContent = (a.reasons && a.reasons.length) ? a.reasons[0] : "";
 }
+/* WEB25 declutter: long alert text (the server's snipe-spot
+   paragraphs) no longer displays in full by default — the row
+   shows a headline preview and the full text sits in a collapsed
+   .xfull block behind a "Full text" tap. Short alerts render
+   whole, exactly as before. */
+function alertTextHTML(text){
+  const t = String(text || "");
+  if (t.length <= 160) return "<div>" + escHtml(t) + "</div>";
+  const cut = t.slice(0, 160), sp = cut.lastIndexOf(" ");
+  const head = (sp > 80 ? cut.slice(0, sp) : cut) + "…";
+  return "<div>" + escHtml(head) + "</div>" +
+    '<div class="xfull" hidden>' + escHtml(t) + "</div>" +
+    '<button type="button" class="xmore">Full text ▸</button>';
+}
+function toggleXpand(btn){
+  const box = btn && btn.parentNode;
+  const full = box && box.querySelector ? box.querySelector(".xfull") : null;
+  if (!full) return;
+  full.hidden = !full.hidden;
+  btn.textContent = full.hidden ? "Full text ▸" : "Full text ▾";
+}
 function renderAlerts(){
   const list = $("#alertsList");
   if (list){
@@ -4101,7 +4196,7 @@ function renderAlerts(){
       const d = new Date(typeof raw === "number" && raw < 1e12 ? raw * 1000 : raw);
       const when = isFinite(d.getTime()) ? d.toLocaleString() : "";
       return '<div class="alertrow"><span class="acoin">' + escHtml(al.coin || "") + '</span>' +
-        '<span class="atime">' + escHtml(when) + '</span><div>' + escHtml(al.text || "") + "</div></div>";
+        '<span class="atime">' + escHtml(when) + '</span>' + alertTextHTML(al.text || "") + "</div>";
     }).join("") : '<div class="note">No wave alerts yet — when a pattern family strings together 4 value-accurate predictions and a fresh instance opens, the alert lands here.</div>';
   }
   const st = $("#smsState");
