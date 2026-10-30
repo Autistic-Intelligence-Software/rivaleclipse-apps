@@ -265,6 +265,32 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
    under the forecast-section toggle, styled on .cardadvice. */
 .wavetest{margin-top:2px}
 .wtbtn.on{color:#2ee6a8;font-weight:800;text-decoration:underline}
+/* ---------- WEB33: Timing Assist (Shane 2026-10-30) ----------
+   Per-card toggle in the card header (switch + state word) and a
+   banner zone above the chart. ON: one large timing-action
+   banner when the stored wave-test row's flagged shift supports
+   it, plus the honesty caption. OFF: the zone carries the plain
+   estimated-value-at-closing line instead. */
+.tabtn{display:inline-flex;align-items:center;gap:7px;background:none;border:none;cursor:pointer;
+  color:var(--mut);font-size:12.5px;font-weight:700;padding:0}
+.tabtn .tasw{width:34px;height:19px;border-radius:999px;background:#26263a;border:1px solid var(--line);
+  position:relative;flex:none}
+.tabtn .tasw::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;
+  background:#9a96ad}
+.tabtn.on{color:var(--txt)}
+.tabtn.on .tasw{background:rgba(46,230,168,.25);border-color:rgba(46,230,168,.6)}
+.tabtn.on .tasw::after{left:17px;background:#2ee6a8}
+.tabtn .taon{color:#2ee6a8}
+.tabtn .taoff{color:#ff5f7a}
+.tazone{margin-top:10px}
+.tazone[hidden]{display:none}
+.tabanner{font-size:24px;font-weight:900;letter-spacing:.02em;line-height:1.15}
+.tabanner.prep{color:#ffd257}
+.tabanner.buy{color:#2ee6a8}
+.tabanner.sell{color:#ff4747}
+.tacap{color:var(--mut);font-size:11.5px;margin-top:3px}
+.taest{font-size:15px;font-weight:700;color:var(--txt)}
+.taest b{color:var(--gold2)}
 .wtbox{margin-top:8px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;
   background:rgba(46,230,168,.05);font-size:13.5px;line-height:1.55}
 .wtbox[hidden]{display:none}
@@ -602,6 +628,7 @@ function setCardSide(sym, side){
   if (cardSide(sym) === side) delete SIDES[sym]; else SIDES[sym] = side;
   try { localStorage.setItem(LS_SIDE, JSON.stringify(SIDES)); } catch (e) {}
   renderCardAdvice(sym);
+  renderTimingAssist(sym);   // WEB33: the held side is a Timing Assist input — re-render its zone on the same tap
 }
 const $ = s => document.querySelector(s);
 
@@ -717,6 +744,10 @@ const LS_FCADJ = "ph.fcAdj.v1";
    never posted anywhere, and the prediction itself is a frozen
    server row (see fetchWaveTest / cs.waveTest below). */
 const LS_WAVETEST = "ph.wavetest.v1";
+/* WEB33 (Shane 2026-10-30): per-coin Timing Assist toggle —
+   { SYM: bool }. Display preference ONLY, like every other ph.*
+   pref (WEB8): it feeds nothing and is never posted anywhere. */
+const LS_TIMING = "ph.timing.v1";
 /* WEB24 (Shane 2026-10-29): the Snipe Spotter minimized flag —
    one boolean display preference, persisted like the other ph.*
    prefs (WEB8): it feeds nothing and is never posted anywhere. */
@@ -747,6 +778,18 @@ function saveWaveTestPref(sym, on, horizon){
   const mm = (m && typeof m === "object" && !Array.isArray(m)) ? m : {};
   mm[sym] = { on: !!on, horizon: WAVE_TEST_HZ.includes(+horizon) ? +horizon : waveTestDefaultHorizon() };
   lsSet(LS_WAVETEST, mm);
+}
+/* WEB33: Timing Assist per-coin pref — default OFF (pref absent
+   -> off), mirroring the wave-test pref's discipline. */
+function timingPref(sym){
+  const m = lsGet(LS_TIMING, {});
+  return !!(m && typeof m === "object" && !Array.isArray(m) && m[sym]);
+}
+function saveTimingPref(sym, on){
+  const m = lsGet(LS_TIMING, {});
+  const mm = (m && typeof m === "object" && !Array.isArray(m)) ? m : {};
+  mm[sym] = !!on;
+  lsSet(LS_TIMING, mm);
 }
 let FC_ADJ_SHOW = (() => { const v = lsGet(LS_FCADJ, {a: true, b: true});
   return { a: !v || v.a !== false, b: !v || v.b !== false }; })();
@@ -797,6 +840,7 @@ function coinState(sym){
     waveTestHorizon: waveTestPref(sym).horizon, // WEB23: 5|15|30|45|60, default = S.lenMin when valid else 15
     waveTestBusy: false,       // WEB23: one in-flight GET per card
     waveTestUnavailable: false, // WEB23: last fetch failed with no current-cycle row to keep showing
+    timingOn: timingPref(sym),   // WEB33: Timing Assist toggle — default OFF (pref absent -> off)
     // WEB9 addendum (Shane 2026-10-28): the forecast section ALWAYS
     // starts collapsed — a stored ph.fc30 from an earlier session
     // must not re-expand it on load (that was burning data on
@@ -1065,6 +1109,132 @@ function checkWaveTest(sym){
   if (!cs.waveTest || cs.waveTest.horizon !== cs.waveTestHorizon || cs.waveTest.closeAt <= Date.now())
     return fetchWaveTest(sym);
   return null;
+}
+
+/* ---------- WEB33: Timing Assist (Shane 2026-10-30) ----------
+   Per-card toggle in the card header (his mockups, 2026-10-30
+   15:58). The banner zone sits above the card's chart.
+   ON: large timing-action banners driven ONLY by signals the
+   card already holds —
+     · the stored FROZEN wave-test row (cs.waveTest.row): the
+       sharp flag (row.sharp_high — the wave-key flag rule whose
+       timing evaluation measured 42.5% precision vs a 27.5%
+       base), the flagged shift's direction (row.shift_dir) and
+       its moment (row.generated_at + row.shift_eta_min);
+     · the live price (cs.price) vs the card's line (cs.line) —
+       the same pair the card's own distance readout uses;
+     · the held side (cardSide, ph.side.v1);
+     · the row's own window (row.close_at) for "before the
+       close" and staleness.
+   Three states, evaluated in sell -> buy -> prepare order:
+     SELL HOLDINGS NOW! — a side is held AND a flagged adverse
+       shift is due within ~10 min, OR the held side is currently
+       winning into a flagged reversal that lands before the
+       close.
+     BUY UP NOW! / BUY DOWN NOW! — the flagged shift is imminent
+       (ETA <= ~5 min) and its side has not crossed the line yet
+       (still cheap to enter).
+     PREPARE TO BUY SOON! — the flagged shift is due within
+       ~15 min and price still sits on the cheap side of the line.
+   No state triggers -> the zone shows NOTHING (no filler state).
+   OFF: the zone instead shows the card's existing forecast
+   estimate at its selected horizon ("Estimated value at
+   closing: $X" — timingEstClose below).
+   Display only: this block reads state and writes only the
+   zone's DOM. It never touches padLock, the locked outlook
+   calls, scoring, stored predictions, or the wave-test rows;
+   it fetches nothing and starts no timer — renders ride the
+   toggle/side handlers and the existing 1s housekeeping tick. */
+function timingAssistState(row, price, line, side, nowMs){
+  // Pure evaluation over values the card already holds. Every
+  // state requires the row's sharp flag — the flag IS the
+  // measured-precision signal; an unflagged shift shows nothing.
+  if (!row || !row.sharp_high) return null;
+  const dir = +row.shift_dir, eta = +row.shift_eta_min,
+        gen = +row.generated_at, closeAt = +row.close_at;
+  if (!(dir === 1 || dir === -1) || !isFinite(eta) || !(gen > 0) || !(closeAt > nowMs)) return null;
+  if (!(price > 0) || !(line > 0) || price === line) return null;
+  const shiftAt = gen + eta * 60000;
+  const etaMin = (shiftAt - nowMs) / 60000;
+  // The flagged side has not crossed yet: for an up shift the
+  // price is still BELOW the line (cheap entry), for a down
+  // shift still ABOVE it.
+  const cheap = dir === 1 ? price < line : price > line;
+  const held = (side === "up" || side === "down") ? side : null;
+  const adverse = !!held && ((held === "up" && dir === -1) || (held === "down" && dir === 1));
+  const winning = !!held && ((held === "up" && price > line) || (held === "down" && price < line));
+  if (adverse && ((etaMin > 0 && etaMin <= 10) || (winning && shiftAt > nowMs && shiftAt < closeAt)))
+    return { kind: "sell", text: "SELL HOLDINGS NOW!" };
+  if (etaMin > 0 && etaMin <= 5 && cheap)
+    return { kind: "buy", text: dir === 1 ? "BUY UP NOW!" : "BUY DOWN NOW!" };
+  if (etaMin > 5 && etaMin <= 15 && cheap)
+    return { kind: "prepare", text: "PREPARE TO BUY SOON!" };
+  return null;
+}
+function timingEstClose(sym){
+  // The card's existing forecast/estimate readout for the OFF
+  // zone: the frozen forecast-check path's value at the card's
+  // selected forecast horizon (cs.fcZoom). Prefers the card's
+  // own captured snapshot (cs.fcSnap — exactly what its forecast
+  // graph draws); falls back to the server snapshot the global
+  // payload already carries for watched coins. Read-only: it
+  // captures nothing, fetches nothing, mutates nothing.
+  const cs = coinState(sym);
+  const zm = FCZ_MIN[cs.fcZoom] || 30;
+  if (cs.fcSnap && Array.isArray(cs.fcSnap.pred) && cs.fcSnap.pred.length){
+    for (const pt of cs.fcSnap.pred)
+      if (pt && pt.min === zm && isFinite(pt.p)) return pt.p;
+    const last = cs.fcSnap.pred[cs.fcSnap.pred.length - 1];
+    if (last && isFinite(last.p)) return last.p;
+  }
+  const gs = GLOBAL_POOL && GLOBAL_POOL[sym] && GLOBAL_POOL[sym].fc &&
+             GLOBAL_POOL[sym].fc.adj && GLOBAL_POOL[sym].fc.adj.snap;
+  if (gs && Array.isArray(gs.pred) && gs.pred.length === 31 && isFinite(gs.pred[zm]))
+    return gs.pred[zm];
+  return null;
+}
+function renderTimingAssist(sym){
+  const cs = coinState(sym);
+  if (!cs.els || !cs.els.tazone) return;
+  const zone = cs.els.tazone;
+  let html = "";
+  if (cs.timingOn){
+    // Read the SAME stored row the test-prediction box shows —
+    // never a refetch, never a recomputation of the row itself.
+    const wt = cs.waveTest;
+    const row = (wt && wt.horizon === cs.waveTestHorizon) ? wt.row : null;
+    const st = timingAssistState(row, cs.price, cs.line, cardSide(sym), Date.now());
+    if (st) html = '<div class="tabanner ' + st.kind + '">' + st.text + "</div>" +
+      '<div class="tacap">Timing Assist — from the wave-timing signal; an aid, not a promise.</div>';
+  } else {
+    const est = timingEstClose(sym);
+    if (est != null)
+      html = '<div class="taest">Estimated value at closing: <b>' + fmtPrice(est) + "</b></div>";
+  }
+  zone.hidden = !html;
+  if (zone.innerHTML !== html) zone.innerHTML = html;
+}
+function applyTimingAssist(sym){
+  // Sync the header toggle to state + render the zone. Renders
+  // only — never fetches (the wave-test row arrives on its own
+  // WEB23 triggers and the zone re-reads it on the 1s tick).
+  const cs = coinState(sym);
+  if (cs.els && cs.els.tabtn){
+    cs.els.tabtn.classList.toggle("on", !!cs.timingOn);
+    if (cs.els.tabtn.setAttribute) cs.els.tabtn.setAttribute("aria-pressed", cs.timingOn ? "true" : "false");
+  }
+  if (cs.els && cs.els.tastate){
+    cs.els.tastate.textContent = cs.timingOn ? "ON" : "OFF";
+    cs.els.tastate.className = cs.timingOn ? "taon" : "taoff";
+  }
+  renderTimingAssist(sym);
+}
+function setTimingAssist(sym, on){
+  const cs = coinState(sym);
+  cs.timingOn = !!on;
+  saveTimingPref(sym, cs.timingOn);
+  applyTimingAssist(sym);
+  return cs.timingOn;
 }
 
 /* ---------- WEB13: "Simplified" explainers (Shane 2026-10-28) ----
@@ -1813,12 +1983,13 @@ function addCard(sym){
   el.className = "wcard"; el.id = "card-" + sym;
   el.innerHTML =
     '<div class="cardrow"><div class="cardmain">' +
-    '<div class="wtop"><h3>' + sym + '</h3><span class="chg">24h —</span></div>' +
+    '<div class="wtop"><h3>' + sym + '</h3><button type="button" class="tabtn" aria-pressed="false"><span class="tasw"></span><span>Timing Assist: <b class="tastate taoff">OFF</b></span></button><span class="chg">24h —</span></div>' +
     '<div class="simplrow"><button type="button" class="simplbtn" data-simpl="advisory">Simplified</button></div>' +
     '<div class="advrow"><span class="advbadge" hidden></span><span class="sidechip" hidden></span></div>' +
     '<div class="advwhy"></div>' +
     '<div class="price">—</div>' +
     '<div class="readouts"><span class="ro">Line $<input class="ro-line-in" type="number" step="any" inputmode="decimal" placeholder="—" title="Type the perpetual contract price — sets your line exactly"></span><span class="ro">Current <b class="ro-cur">—</b></span><span class="ro-dist">—</span></div>' +
+    '<div class="tazone" hidden></div>' +
     '<div class="simplrow"><button type="button" class="simplbtn" data-simpl="chart">Simplified</button></div>' +
     '<div class="livewrap"><canvas class="spark" width="1040" height="300"></canvas><div class="pill" hidden></div></div>' +
     '<div class="zoomrow"><div class="zoomseg">' +
@@ -1923,6 +2094,8 @@ function addCard(sym){
     fc30wrap: el.querySelector(".fc30wrap"), fc30: el.querySelector(".fc30"),
     fc30stat: el.querySelector(".fc30stat"), fc30btn: el.querySelector(".fc30btn"),
     fc30age: el.querySelector(".fc30age"),
+    tabtn: el.querySelector(".tabtn"), tastate: el.querySelector(".tastate"),
+    tazone: el.querySelector(".tazone"),
     wtbtn: el.querySelector(".wtbtn"), wtbox: el.querySelector(".wtbox"),
     wtcontent: el.querySelector(".wtcontent"), wtCountdown: el.querySelector(".wt-countdown"),
     wtHzBtns: el.querySelectorAll(".wtseg button"),
@@ -1948,6 +2121,7 @@ function addCard(sym){
     b.addEventListener("click", () => setFCAdjShow(b.dataset.adj, !FC_ADJ_SHOW[b.dataset.adj]));
   });
   cs.els.fc30btn.addEventListener("click", () => setFC30(sym, !cs.fc30on));
+  if (cs.els.tabtn) cs.els.tabtn.addEventListener("click", () => setTimingAssist(sym, !cs.timingOn));
   if (cs.els.wtbtn) cs.els.wtbtn.addEventListener("click", () => setWaveTest(sym, !cs.waveTestOn));
   if (cs.els.wtHzBtns) cs.els.wtHzBtns.forEach(b =>
     b.addEventListener("click", () => setWaveTestHorizon(sym, +b.dataset.wth)));
@@ -1957,6 +2131,7 @@ function addCard(sym){
   applyDetailsHome(sym);
   applyFC30(sym);
   applyWaveTest(sym);
+  applyTimingAssist(sym);
   if (cs.waveTestOn) fetchWaveTest(sym);   // WEB23: a persisted ON toggle fetches its frozen row on card build
   cs.els.slider.addEventListener("input", () => {
     let off = parseFloat(cs.els.slider.value);
@@ -4332,6 +4507,11 @@ setInterval(() => {
   // any ON test box, plus the cycle-roll check (fetches only when
   // the stored row's close_at has passed; see checkWaveTest).
   for (const sym of S.selected){ const wcs = S.coins[sym]; if (wcs && wcs.waveTestOn) checkWaveTest(sym); }
+  // WEB33: Timing Assist zones re-evaluate on this SAME existing
+  // 1s tick — the ETA counts down and the price-vs-line side can
+  // flip with the clock, so the banner must re-read its inputs
+  // here. Render only: no fetch, no new timer.
+  for (const sym of S.selected){ const tac = S.coins[sym]; if (tac && tac.els && tac.els.tazone) renderTimingAssist(sym); }
   // WEB26 refresh ladder: decision data (hourly candles) keeps
   // the 60 s cadence; the graph series refresh on a slower 180 s
   // pass — except coins whose forecast section is open, which
