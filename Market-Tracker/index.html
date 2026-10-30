@@ -624,11 +624,35 @@ function fmtClock(ms){
 function acctGone(){
   try { location.href = "/Market-Tracker/acct/sign-in"; } catch (e) {}
 }
+/* Perf fix item 5 (Shane 2026-10-30, wave-test-perf spec): every
+   fetchJSON call carries a ~10 s AbortController timeout. A
+   stalled request used to hang forever — worst in the wave-test
+   box, whose busy latch only clears when the fetch settles, so a
+   server stall rendered as "never loads". Now a stall resolves
+   as null, the same as any other failed read, and the existing
+   retry paths (housekeeping passes, staged refreshes, on-demand
+   pulls) recover on their own. The timer covers the body read
+   too (it clears only after r.json() settles). Guarded for
+   environments without AbortController — the test harness stubs
+   fetch without one, and there the call stays the old unbounded
+   one while the harness's fetches settle instantly anyway. */
+const FETCH_TIMEOUT_MS = 10000;
 async function fetchJSON(url){
-  try { const r = await fetch(url, {cache: "no-store"});
+  let timer = null;
+  try {
+    const opts = {cache: "no-store"};
+    if (typeof AbortController === "function"){
+      const ctl = new AbortController();
+      opts.signal = ctl.signal;
+      timer = setTimeout(() => { try { ctl.abort(); } catch (e) {} }, FETCH_TIMEOUT_MS);
+    }
+    const r = await fetch(url, opts);
     if (r && r.status === 401 && typeof url === "string" && url.indexOf(AUTH) === 0) acctGone();
-    if (!r.ok) return null; return await r.json(); }
+    if (!r.ok) return null;
+    return await r.json();
+  }
   catch (e) { return null; }
+  finally { if (timer != null) clearTimeout(timer); }
 }
 function lsGet(k, dflt){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : dflt; } catch (e) { return dflt; } }
 function lsSet(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
