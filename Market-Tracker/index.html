@@ -790,6 +790,8 @@ function coinState(sym){
     padLiveEst: {},            // WEB28: per-horizon DISPLAY-ONLY live estimates shown under the LOCKED outlook rows {h: {closeAt, p, call, winP, est, stampMs}} — written only by a manual outlook refresh tap (padRefreshCalls), keyed to the window's closeAt so a rolled window never shows the old estimate; never scored, never feeds padLock
     padCallsBusy: false,       // WEB28: one manual outlook refresh in flight per card
     form: null,                // WEB29: recent-form strip data {h: [{close_at, dir, call, hit}]} from GET /api/perp/recent-calls — SETTLED canonical history only, display only; null until the first payload lands, and the strip renders nothing while null/empty
+    formPm: null,              // WEB31: in Polymarket mode, per-window {open, close} from Polymarket's own posted prices, keyed h:startMs — the strip re-grades its markers on the market's values (see loadFormPm); completed windows are immutable, so entries are cached for the session
+    formPmBusy: false,         // WEB31: one Polymarket strip pass in flight per card
     waveTest: null,            // WEB23: FROZEN server row {closeAt, horizon, row} — replaced only on toggle-on / horizon change / cycle roll (see fetchWaveTest)
     waveTestOn: waveTestPref(sym).on,          // WEB23: default OFF (pref absent -> off)
     waveTestHorizon: waveTestPref(sym).horizon, // WEB23: 5|15|30|45|60, default = S.lenMin when valid else 15
@@ -1308,7 +1310,7 @@ const PRESETS = {
   custom: {name: null, lens: [1, 5, 15, 30, 60], def: 15,
     note: "Your own windows and lines. The line roll still applies: every cycle opens with its line at the previous cycle's closing price, and a line you set by hand governs only the cycle in progress."},
   polymarket: {name: "Polymarket", lens: [5, 15, 60, 240], def: 15,
-    note: "Live-mirrors Polymarket's up/down markets — 5m / 15m / 1h / 4h windows. At every rollover each coin's line becomes Polymarket's actual price to beat for the new window — calculated live from the same Chainlink stream Polymarket uses (the 60-second TWAP of the minute before the open for 5m/15m/4h, its hourly price for 1h) and confirmed against Polymarket's published price to beat — and the live price follows the same feed. Coins Polymarket doesn't run fall back to the Coinbase window open — the card says which. Nothing is placed on Polymarket."},
+    note: "Live-mirrors Polymarket's up/down markets — 5m / 15m / 1h / 4h windows. In this mode everything follows Polymarket itself: the live price is Polymarket's own feed, each coin's line is Polymarket's actual price to beat for the window (confirmed against Polymarket's published price to beat), cycles grade on Polymarket's posted close, and the panels show only Polymarket's own windows. A coin/window Polymarket doesn't run keeps the Coinbase window open for the card's cycle line only — the card says which. Nothing is placed on Polymarket."},
   kalshi: {name: "Kalshi", lens: [15, 60, 1440], def: 15,
     note: "Live-mirrors Kalshi's up/down markets. On the 15m window each coin's line becomes Kalshi's actual strike for the new window, pulled from Kalshi's public market data at every rollover (BTC, ETH, SOL, XRP, DOGE, NEAR — the coins Kalshi runs; others fall back to the Coinbase window open, and the card says which). Kalshi's 1h / 24h markets are strike ladders with no single target, so those windows keep the line roll. Nothing is placed on Kalshi."},
 };
@@ -3675,7 +3677,50 @@ async function loadRecentForm(){
     cs.form = j.coins[sym] || {};
     if (cs.padNow) renderPadNow(sym);
     renderPadCalls(sym);
+    if (S.preset === "polymarket") loadFormPm(sym);
   }
+}
+/* WEB31 (Shane 2026-10-30, market data-plane rule — CLOSING VALUE):
+   in Polymarket mode the recent-form markers re-grade on
+   Polymarket's OWN posted target + close for each settled window,
+   not the server's Coinbase-graded outcome. The 2026-10-30 BTC
+   verification harness measured the two outcome sources
+   disagreeing on 11.7% of 5m windows (17/145) in a single day —
+   every one a window Polymarket posted as OVER while Coinbase's
+   close said UNDER (a persistent +$24–26 source basis) — so a
+   marker graded on Coinbase contradicts what the user watched
+   settle on Polymarket. The system's canonical record is NOT
+   touched (it stays the system's own record, and the markers
+   remain user-reference-only per the 15:12 ruling); this only
+   changes which closing value the MARKERS are checked against
+   while the Polymarket data plane is selected. Fetches ride the
+   existing proxy; a miss keeps the server grading for that
+   window. Completed windows never change, so results cache for
+   the session. */
+async function loadFormPm(sym){
+  const cs = coinState(sym);
+  if (!cs.form || cs.formPmBusy) return;
+  cs.formPmBusy = true;
+  try {
+    if (!cs.formPm) cs.formPm = {};
+    let changed = false;
+    for (const h of [5, 15, 60]){
+      if (!PM_VARIANT[h] || (h !== 60 && !PM_TWAP_COINS.includes(sym))) continue;
+      for (const w of (cs.form[h] || [])){
+        const startMs = w.close_at - h * 60000, key = h + ":" + startMs;
+        if (cs.formPm[key]) continue;
+        const j = await pmPrice(sym, startMs, PM_VARIANT[h]);
+        if (j && j.completed && isFinite(+j.openPrice) && +j.openPrice > 0 && isFinite(+j.closePrice) && +j.closePrice > 0){
+          cs.formPm[key] = {open: +j.openPrice, close: +j.closePrice};
+          changed = true;
+        }
+      }
+    }
+    if (changed){
+      if (cs.padNow) renderPadNow(sym);
+      renderPadCalls(sym);
+    }
+  } finally { cs.formPmBusy = false; }
 }
 /* The strip for ONE horizon row of ONE coin's panel — nothing at
    all when that (coin, horizon) has no settled windows yet. Capped
@@ -3688,10 +3733,21 @@ function formStripHTML(sym, h){
   const arr = cs.form && cs.form[h];
   if (!arr || !arr.length) return "";
   const wins = arr.slice(-10);
-  return '<div class="formstrip" title="Last ' + wins.length + ' settled windows — ▲ closed over · ▼ closed under · ⭕ the system\'s lean was right · ❌ the lean was wrong · plain = no lean — reference only">' +
+  /* WEB31: in Polymarket mode a window with a Polymarket posted
+     target + close on file grades on THOSE values (see
+     loadFormPm); any other window keeps the server grading. */
+  const pmMode = S.preset === "polymarket";
+  return '<div class="formstrip" title="Last ' + wins.length + ' settled windows — ▲ closed over · ▼ closed under · ⭕ the system\'s lean was right · ❌ the lean was wrong · plain = no lean — reference only' + (pmMode ? ' — in Polymarket mode, windows are checked against Polymarket\'s own posted target + close' : '') + '">' +
     wins.map(w => {
-      const up = w.dir === "over";
-      const ov = w.call == null ? "" : '<span class="ft-ov">' + (w.hit ? "⭕" : "❌") + "</span>";
+      let up = w.dir === "over", hit = w.hit;
+      if (pmMode && cs.formPm){
+        const pm = cs.formPm[h + ":" + (w.close_at - h * 60000)];
+        if (pm){
+          up = pm.close > pm.open;
+          hit = w.call == null ? null : ((w.call === "over") === up);
+        }
+      }
+      const ov = w.call == null ? "" : '<span class="ft-ov">' + (hit ? "⭕" : "❌") + "</span>";
       return '<span class="ft ' + (up ? "ft-up" : "ft-dn") + '">' + (up ? "▲" : "▼") + ov + "</span>";
     }).join("") + "</div>";
 }
@@ -3970,6 +4026,22 @@ async function scoreCycle(){
           await new Promise(r => setTimeout(r, 3000));
       }
     }
+    if (final == null && marketActive()){
+      /* WEB31 (Shane 2026-10-30, market data-plane rule): in a
+         market mode the closing value IS the market's own posted
+         close — the chained next target when the market published
+         it (that value is the posted close by the chaining
+         identity), otherwise nothing. If the market's close has
+         not landed after the retry loop, the cycle is left
+         UNGRADED rather than graded against a Coinbase print:
+         a verdict computed off another exchange's close is how
+         the page contradicted the market's posted result. The
+         line roll below still uses the market's next target when
+         it exists; the convergence pass strikes it when it lands. */
+      cs.els.flash.textContent = "Cycle closed — " + PRESETS[S.preset].name + "'s posted close hasn't landed yet, so this cycle isn't graded against any other source.";
+      cs.els.flash.className = "flashmsg";
+      continue;
+    }
     if (final == null){
       const t = await fetchJSON(CB + "/products/" + sym + "-USD/ticker");
       final = t && isFinite(+t.price) ? +t.price : cs.price;
@@ -4143,10 +4215,19 @@ async function priceTick(){
       cs.mktLinesAt = Date.now();
       refreshMktLines(sym);
     }
-    if (tickPrice == null){
+    if (tickPrice == null && S.preset !== "polymarket"){
       const t = await fetchJSON(CB + "/products/" + sym + "-USD/ticker");
       if (t && isFinite(+t.price)) tickPrice = +t.price;
     }
+    /* WEB31 (Shane 2026-10-30, market data-plane rule): in
+       Polymarket mode the live price is Polymarket's own feed or
+       it is nothing — the Coinbase ticker is NOT a fallback. A
+       full Polymarket-feed miss leaves the last Polymarket price
+       standing for that tick rather than silently repricing the
+       card off another exchange while the mode promises
+       Polymarket's stats. (Kalshi mode still prices off Coinbase
+       for now — Kalshi's settlement feed is not public; its
+       data-plane pass comes with the Kalshi phase.) */
     if (tickPrice != null){
       cs.price = tickPrice;
       cs.ticks.push({t: Date.now(), p: cs.price});
@@ -4882,10 +4963,22 @@ function padSnapToMarket(sym){
    drift apart: per horizon, the market's own target for the
    current window when one is published, else the given line,
    over the time remaining in that window. */
+/* WEB31 (Shane 2026-10-30, market data-plane rule — AVAILABILITY):
+   in a market mode the panels show only the windows the selected
+   market itself runs for this coin (Polymarket: its mapped
+   5m/15m/1h windows; Kalshi: its 15m series) — a horizon the
+   market doesn't run is not presented as a market window.
+   None/Custom shows the system's own five perpetual horizons.
+   Coverage reuses WEB30's mktCovers so the panels, the lock
+   deferral and the target fetcher all agree on what exists. */
+function padHzFor(sym){
+  if (!marketActive()) return PAD_HZ;
+  return PAD_HZ.filter(h => mktCovers(sym, h));
+}
 function padNowRows(tsym, price, line){
   const band = effBand(tsym);
   const nowE = Date.now();
-  return PAD_HZ.map(h => {
+  return padHzFor(tsym).map(h => {
     const remaining = Math.max(1, (winBoundaryMs(nowE, h) - nowE) / 1000);
     const ml = mktLineFor(tsym, h);
     const r = probOverAt(tsym, price, ml ? ml.price : line, remaining);
@@ -4946,8 +5039,8 @@ function padNowHTML(sym){
       : "") +
     (rows.some(r => r.mkt)
       ? '<div class="note" style="margin-top:4px">' + (S.preset === "kalshi"
-        ? "15m target from Kalshi; other horizons vs the line above."
-        : "Targets from Polymarket's own per-window prices; horizons Polymarket doesn't run (30m/45m) vs the line above.") + "</div>"
+        ? "Only Kalshi's own window is shown in this mode — the 15m row, target from Kalshi."
+        : "Targets from Polymarket's own per-window prices — only Polymarket's own windows are shown in this mode.") + "</div>"
       : "") +
     '<div class="note" style="margin-top:8px">' + pn.posLine + "</div>" +
     '<div class="padadvice">' + pn.advice + "</div>" +
@@ -4978,8 +5071,10 @@ function renderPadNow(sym){
    source chain priceTick uses: the RTDS Chainlink print while
    it is ≤5s fresh (it is pushed live — nothing fresher exists
    to pull), else the Polymarket hourly-variant poll, else the
-   Coinbase ticker. null when every source misses (the refresh
-   then recomputes from the last tick price instead). */
+   Coinbase ticker. WEB31: in Polymarket mode the chain ENDS at
+   Polymarket's own sources (no Coinbase fallback — see
+   priceTick). null when every allowed source misses (the
+   refresh then recomputes from the last tick price instead). */
 async function freshPricePull(sym){
   const cs = coinState(sym);
   if (S.preset === "polymarket"){
@@ -4990,6 +5085,7 @@ async function freshPricePull(sym){
       return cs.mktPrice;
     }
     if (cs.mktPrice && Date.now() - cs.mktPriceAt < 30000) return cs.mktPrice;
+    return null;
   }
   const t = await fetchJSON(CB + "/products/" + sym + "-USD/ticker");
   if (t && isFinite(+t.price) && +t.price > 0) return +t.price;
@@ -5140,7 +5236,7 @@ function padCallsRows(sym){
   const now = Date.now();
   const baseLine = (cs.lineSet && cs.line > 0) ? cs.line : cs.price;
   if (!cs.padLock) cs.padLock = {};
-  return PAD_HZ.map(h => {
+  return padHzFor(sym).map(h => {
     const closeAt = winBoundaryMs(now, h);
     const remaining = Math.max(1, (closeAt - now) / 1000);
     const ml = mktLineFor(sym, h);
@@ -5234,8 +5330,8 @@ function renderPadCalls(sym){
   const lockNote = "Calls lock at each window's open and never update mid-window — the same opening call the system grades itself on. The countdown is the only live part of each row.";
   const foot = anyMkt
     ? (S.preset === "kalshi"
-      ? "15m target from Kalshi; other horizons vs the card line. " + lockNote
-      : "Targets from Polymarket's own per-window prices; horizons Polymarket doesn't run (30m/45m) vs the card line. " + lockNote)
+      ? "Only Kalshi's own window is shown in this mode — the 15m row, target from Kalshi. " + lockNote
+      : "Targets from Polymarket's own per-window prices — only Polymarket's own windows are shown in this mode. " + lockNote)
     : "Est. end value = the model's projected close for that perpetual, from the lock-time price and the same math as the call. " + lockNote;
   /* WEB28: the footnote gains one sentence about the manual
      refresh — the WEB21 lock wording above stays verbatim. */
