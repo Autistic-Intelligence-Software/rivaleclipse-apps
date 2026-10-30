@@ -519,7 +519,7 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
       <div class="simplrow" id="advSimplRow" hidden><button type="button" class="simplbtn" data-simpl="banner">Simplified</button></div>
       <div id="multBoard" class="multboard"><span class="mblbl">Big multipliers ahead</span><span class="mbquiet">No big-multiplier setups on the board right now.</span></div>
       <section class="card" id="snipeCard">
-        <div class="secthead"><h2>🎯 Snipe Spotter — the 1–10% → 100% bounce</h2><button type="button" class="ctxbtn" data-ctxtext="snipe">How it works</button></div>
+        <div class="secthead"><h2>🎯 Snipe Spotter — cheap sides that can still close in profit</h2><button type="button" class="ctxbtn" id="snipeRefreshBtn" title="Reload the spotter">↻ Refresh spotter</button><button type="button" class="ctxbtn" data-ctxtext="snipe">How it works</button></div>
         <div id="snipeBody"><div class="note">Loading the spotter…</div></div>
       </section>
       <div id="cards"></div>
@@ -1258,7 +1258,7 @@ const CTX_TEXT = {
   how: { h: "How Perpetual Helper works",
     t: "Live prices for the cryptos you pick, a cycle timer synced to the market clock, and an over/under call for the close from 6 months of pattern stats per coin. Each cycle's call locks at the open — that locked call is the only one graded — while the live call keeps tracking every 10 seconds until the close. It scores itself at every close, in the open.\n\n📚 Learn — the perpetuals tutorial & lessons (the Learn link at the top of the page): what to look for in the data, real past charts with the signs drawn on, wave and snipe patterns, and how positions are managed." },
   snipe: { h: "Snipe Spotter — how it works",
-    t: "This spotter flags one event only: a perpetual window where the cheap side — the side priced at just 1–10% odds — shows wave signs of flipping to a near-lock before the close. When that bounce setup is live it shows here and on the coin's card. Nothing else gets flagged." },
+    t: "This spotter flags one event only: a perpetual window where one side is priced cheap — 28% odds or lower — while the wave signs say it can still cross the line and close in profit. A spot wins only if it closes in profit; the record counts exactly that. The panel loads once and never refreshes itself — tap ↻ Refresh spotter for the latest spots. Nothing else gets flagged." },
   alerts: { h: "Wave alerts — how they work",
     t: "The system grades its own forecast record. When a pattern family — snipe setup, wave, or trend — lands 4 predictions in a row whose predicted closing value came within $1.00 of the actual close (value accuracy, not just picking the right side), and a fresh instance of that same pattern opens, the alert lands here with the system's suggested side." },
   full: { h: "Full explanation — how this page works",
@@ -1290,7 +1290,7 @@ function toggleCoin(sym, on, box){
   document.getElementById("coin-" + sym).classList.toggle("on", on);
   $("#selCount").textContent = S.selected.length + " / 6 selected";
   lsSet(LS_SEL, S.selected);
-  if (on){ addCard(sym); stageCoinLoad(sym); }
+  if (on){ addCard(sym); stageCoinLoad(sym); whenIdle(() => loadRecentForm(sym), 600); }
   else { removeCard(sym); }
   syncAllPadSelects();
 }
@@ -3609,6 +3609,9 @@ function setSnipeMin(min){
 }
 applySnipeMin();
 { const mb = $("#snipeMinBtn"); if (mb) mb.addEventListener("click", () => setSnipeMin(!SNIPE_MIN)); }
+/* WEB32: the spotter's manual refresh — the ONLY post-load update
+   path for the panel (Shane 2026-10-30: load once, then pause). */
+{ const rb = $("#snipeRefreshBtn"); if (rb) rb.addEventListener("click", () => loadSnipe()); }
 
 async function loadGlobal(){
   const j = await fetchJSON(AUTH + "/api/perp/global");
@@ -3668,17 +3671,25 @@ function renderSources(sym){
    refresh paths only: a boot stage and the staggered housekeeping
    slot — no new timers. Until the endpoint is live the fetch
    simply misses and the page behaves exactly as before. */
-async function loadRecentForm(){
-  if (!S.selected.length) return;
-  const j = await fetchJSON(AUTH + "/api/perp/recent-calls?coins=" + S.selected.join(","));
-  if (!j || !j.ok || !j.coins) return;
-  for (const sym of S.selected){
-    const cs = S.coins[sym]; if (!cs) continue;
+/* WEB32: the form fetch is PER COIN (parallel). The old single
+   batch request scaled with the watchlist and could exceed the
+   fetch timeout on a slow tick — one failure sank every coin's
+   strips at once, and a coin added to the watchlist after boot
+   waited for the next 15-minute housekeeping batch. Each coin
+   now lands (or fails) on its own and re-renders its own card;
+   toggleCoin fires a one-coin load the moment a coin is added. */
+async function loadRecentForm(only){
+  const coins = only ? [only] : S.selected.slice();
+  if (!coins.length) return;
+  await Promise.all(coins.map(async (sym) => {
+    const j = await fetchJSON(AUTH + "/api/perp/recent-calls?coins=" + encodeURIComponent(sym));
+    if (!j || !j.ok || !j.coins) return;
+    const cs = S.coins[sym]; if (!cs) return;
     cs.form = j.coins[sym] || {};
     if (cs.padNow) renderPadNow(sym);
     renderPadCalls(sym);
     if (S.preset === "polymarket") loadFormPm(sym);
-  }
+  }));
 }
 /* WEB31 (Shane 2026-10-30, market data-plane rule — CLOSING VALUE):
    in Polymarket mode the recent-form markers re-grade on
@@ -4068,7 +4079,7 @@ async function scoreCycle(){
       const right = (snap.call === "over") === closedOver;
       cls = right ? "right" : "wrong";
       msg = (right ? "RIGHT — " : "WRONG — ") + "locked at open: " + snap.call.toUpperCase() + " " +
-        Math.round((snap.call === "over" ? snap.p : 1 - snap.p) * 100) + "%, closed " +
+        pctCap(snap.call === "over" ? snap.p : 1 - snap.p) + ", closed " +
         (closedOver ? "OVER" : "UNDER") + " the opening line at " + fmtPrice(final) + ".";
     }
     cs.els.flash.textContent = msg; cs.els.flash.className = "flashmsg " + cls;
@@ -4334,11 +4345,24 @@ setInterval(() => {
   if (S.loopN % 180 === 0)
     S.selected.forEach(sym => { const cs = S.coins[sym]; if (cs && !cs.fc30on) loadCoinCharts(sym); });
   if (S.loopN % 15 === 0 && S.selected.length) loadSources();
+  /* WEB32: pad headers ("BTC live: —") render once at pad build /
+     pad interaction — if the target coin's price had not landed
+     yet, the header stayed blank forever while the card showed a
+     live price (Shane's 2026-10-30 BTC shot). Re-render any pad
+     whose target price has moved since its header last drew. */
+  if (S.loopN % 5 === 0) for (const sym of S.selected){
+    const csx = S.coins[sym];
+    if (!csx || !csx.pad || !csx.els || !csx.els.padLive) continue;
+    const tp = (S.coins[csx.pad.target] || {}).price || 0;
+    if (tp > 0 && csx.pad._plShown !== tp){ csx.pad._plShown = tp; padRender(sym); }
+  }
   if (S.loopN % 900 === 0) loadGlobal();
   if (S.loopN % 900 === 300) loadRecentForm();
   if (S.loopN % 900 === 450) loadAdvisory();
   if (S.loopN % 900 === 600) loadDayForecast();
-  if (S.loopN % 900 === 750) loadSnipe();
+  /* WEB32 (Shane 2026-10-30): the Snipe Spotter NO LONGER
+     auto-refreshes — it loads once and freezes until the user
+     taps its Refresh button (same discipline as the app). */
 }, 1000);
 /* WEB5: the actual-overlay sweep animation — redraws only the open
    forecast graphs (the frozen forecast itself never changes; just
@@ -4396,7 +4420,7 @@ function renderAdvisory(){
       strip.hidden = false;
       strip.textContent = "Right now: " + best + " looks most predictable" +
         (a.reasons && a.reasons.length ? " — " + a.reasons[0] : "") +
-        (a.side ? " · suggested side " + a.side + " (" + (a.side_horizon_min || 30) + "m, " + Math.round((a.side_p || 0) * 100) + "%)"
+        (a.side ? " · suggested side " + a.side + " (" + (a.side_horizon_min || 30) + "m, " + pctCap(a.side_p || 0) + ")"
                 : " · no side call (NO EDGE)");
     } else strip.hidden = true;
     const sr = $("#advSimplRow");
@@ -4423,7 +4447,7 @@ function renderAdvCard(sym){
   } else b.hidden = true;
   if (a.side){
     chip.hidden = false; chip.className = "sidechip";
-    chip.textContent = "Suggested: " + a.side + " (" + (a.side_horizon_min || 30) + "m, " + Math.round((a.side_p || 0) * 100) + "%)";
+    chip.textContent = "Suggested: " + a.side + " (" + (a.side_horizon_min || 30) + "m, " + pctCap(a.side_p || 0) + ")";
   } else {
     chip.hidden = false; chip.className = "sidechip none";
     chip.textContent = "No suggested side — NO EDGE";
@@ -4471,15 +4495,18 @@ function renderAlerts(){
     ? "SMS alerts are LIVE — subscribers get a text the moment a proven wave pattern lines up again."
     : "SMS sending activates when the alert provider is connected; alerts already appear here live.";
 }
-/* ---------- SNIPE SPOTTER (Shane 2026-10-28): the 1-10% bounce ----
-   A VIEW of the server spotter (GET /api/perp/snipe), polled on the
-   same cadence as the advisory. The spotter specializes in ONE
-   event: a perpetual side priced at 1-10% odds whose wave signs say
-   it can bounce to ~100% and close in profit. The page renders the
-   server's live spots, its closed-spot outcomes, and its own graded
-   record next to the same event's unspotted base rate — real
-   numbers only, nothing ranked or dressed up. A failed poll leaves
-   the last render untouched. */
+/* ---------- SNIPE SPOTTER (Shane 2026-10-28) ---------------------
+   A VIEW of the server spotter (GET /api/perp/snipe). The spotter
+   specializes in ONE event: a perpetual side priced cheap (≤28%
+   odds) whose wave signs say it can cross the line and close in
+   profit — a spot is graded a win only when it closes in profit
+   (corrected definition, Shane 2026-10-29). The page renders the
+   server's live spots, its closed-spot outcomes, and its graded
+   record next to the same windows' unspotted base rate — real
+   numbers only. WEB32 (Shane 2026-10-30): NO client-side
+   auto-refresh — the panel loads once (boot / un-minimize) and
+   then only on the ↻ Refresh spotter button. A failed load
+   leaves the last render untouched. */
 let SNIPE = null;
 async function loadSnipe(){
   const j = await fetchJSON(AUTH + "/api/perp/snipe");
@@ -4488,17 +4515,25 @@ async function loadSnipe(){
   renderSnipe();
   renderMultBoard();
 }
+/* WEB32 (Shane 2026-10-30): the record line is rebuilt on the
+   CORRECTED snipe definition (his 2026-10-29 ruling): a spot is a
+   cheap side at ≤28% odds, and a WIN is closing in profit — the
+   record is judged on closed-in-profit, not on odds reached. The
+   old line rendered the retired bounce-era fields (bounced /
+   profit / bounce_rate), which the server fold no longer
+   populates — they sat at 0 forever while the real fields
+   (won / win_rate, verified live: 1,727 of 5,216 = 33.2% vs a
+   21.9% unspotted base) went undisplayed, printing the nonsense
+   "0 hit · 0 closed in profit (0%)" under a healthy record. */
 function snipeRecordLine(rec){
   if (!rec || !(rec.spots > 0))
     return "Spotter record: no spots graded yet — the record starts with the first closed spot.";
   const pct = (r) => (r == null || !isFinite(r)) ? null : Math.round(r * 100) + "%";
-  let t = "Spotter record: " + rec.spots + " spotted · " + (rec.bounced || 0) + " hit ~100%";
-  const br = pct(rec.bounce_rate); if (br) t += " (" + br + ")";
-  t += " · " + (rec.profit || 0) + " closed in profit";
-  const pr = pct(rec.profit_rate); if (pr) t += " (" + pr + ")";
+  let t = "Spotter record: " + rec.spots + " spotted · " + (rec.won || 0) + " closed in profit";
+  const wr = pct(rec.win_rate); if (wr) t += " (" + wr + ")";
   if (rec.base_windows > 0){
-    t += " — same event unspotted: bounced " + (rec.base_bounced || 0) + "/" + rec.base_windows;
-    const bb = pct(rec.base_bounce_rate); if (bb) t += " (" + bb + ")";
+    t += " — same windows unspotted: " + (rec.base_won || 0) + "/" + rec.base_windows + " closed in profit";
+    const bb = pct(rec.base_win_rate); if (bb) t += " (" + bb + ")";
     t += ".";
   }
   return t;
@@ -4523,7 +4558,9 @@ function snipeSpotRow(sp){
     '</div>';
 }
 function snipeRecentRow(r){
-  const outcome = r.bounced ? (r.won ? "BOUNCED + closed in profit" : "bounced, missed the close") : "never bounced";
+  /* WEB32: outcome text follows the corrected definition — the
+     only question is whether the cheap side closed in profit. */
+  const outcome = r.won ? "closed in profit" : "closed out of profit";
   return '<div class="spotrecent"><span class="acoin">' + escHtml(r.coin || "") + '</span> ' +
     (r.side === "under" ? "UNDER" : "OVER") + ' ' + r.horizon_min + 'm · <b>' + outcome + '</b>' +
     ' <span class="note">peak odds ' + Math.round((r.max_prob || 0) * 100) + '% · closed ' + fmtPrice(r.close_price) +
@@ -4538,7 +4575,7 @@ function renderSnipeBadges(){
     if (!sp){ b.hidden = true; b.textContent = ""; continue; }
     b.hidden = false;
     b.textContent = "🎯 SNIPE SPOT: " + (sp.side === "under" ? "UNDER" : "OVER") + " side at " +
-      Math.round((sp.prob_now || 0) * 100) + "% — bounce setup for the " + sp.horizon_min +
+      Math.round((sp.prob_now || 0) * 100) + "% — cheap-side setup for the " + sp.horizon_min +
       "m close " + new Date(sp.close_at || 0).toLocaleTimeString();
   }
 }
@@ -4549,7 +4586,7 @@ function renderSnipe(){
   const spots = SNIPE.spots || [], recent = SNIPE.recent || [];
   let html = spots.length
     ? spots.map(snipeSpotRow).join("")
-    : '<div class="note">No snipe setups live right now — this spotter only fires on the 1–10% → 100% bounce pattern, so quiet is normal.</div>';
+    : '<div class="note">No snipe setups live right now — this spotter only fires when a side is priced at 28% or lower with a real path to close in profit, so quiet is normal.</div>';
   html += '<div class="spotrec">' + escHtml(snipeRecordLine(SNIPE.record)) + '</div>';
   if (recent.length)
     html += '<div class="lbl" style="margin:10px 0 2px">Recently closed spots (last 24h)</div>' + recent.map(snipeRecentRow).join("");
@@ -4813,12 +4850,23 @@ const PAD_HZ = [5, 15, 30, 45, 60];
    flip dressed up as a call. At p ≥ 0.999 the frequency reads
    "1 in ∞". Format exactly:
    Odds of failure = "1 in {X}" (or "{Y} to 1" against)        */
+/* WEB32: a probability displayed as a whole percent is capped to
+   [1, 99] — a model probability is never a certainty, and "100%"
+   / "0%" on a call row reads as a guarantee the system never has. */
+function pctCap(x){
+  if (x == null || !isFinite(x)) return "—";
+  return Math.min(99, Math.max(1, Math.round(x * 100))) + "%";
+}
 function failOddsLabel(p){
   if (p == null || !isFinite(p)) return null;
   if (Math.abs(p - 0.5) < 0.07 - 1e-9) return null;   // §7 band, inclusive at the boundary (float-safe)
-  if (p >= 0.999) return 'Odds of failure = "1 in ∞"';
-  const q = 1 - p;
-  const X = Math.round(1 / q), Y = Math.round(p / q);
+  /* WEB32 (Shane 2026-10-30): the old p ≥ 0.999 branch printed
+     "1 in ∞" — a probability display must never show ∞ (or an
+     absurd frequency). The frequency math now runs on p clamped
+     to 0.99, so the largest label is "1 in 100". */
+  const pc = Math.min(p, 0.99);
+  const q = 1 - pc;
+  const X = Math.round(1 / q), Y = Math.round(pc / q);
   let s = 'Odds of failure = "1 in ' + X + '"';
   if (Y >= 1) s += ' (or "' + Y + ' to 1" against)';
   return s;
@@ -4831,7 +4879,7 @@ function failOddsSpan(p){
   return s ? '<br><span class="failodds">' + s + "</span>" : "";
 }
 function positionAdvice(side, price, line, p, band, closePhrase, intro){
-  const pct = x => Math.round(x * 100) + "%";
+  const pct = x => pctCap(x);   // WEB32: never print 100%/0% for a model probability
   const pOver = p, pUnder = 1 - p;
   const call = Math.abs(p - 0.5) >= band ? (p > 0.5 ? "OVER" : "UNDER") : null;
   const winP = call ? (call === "OVER" ? pOver : pUnder) : null;
@@ -4992,8 +5040,23 @@ function padNowRows(tsym, price, line){
 function padNowAdvice(tsym, price, line, rows){
   const head = rows.find(r => r.h === 30) || rows[0];
   const side = cardSide(tsym);
-  const advice = positionAdvice(side, price, line, head.p, effBand(tsym),
-    "at the 30m close", side ? null : "No position picked above.");
+  /* WEB32 (Shane 2026-10-30): the advice text must cite numbers
+     that are true of the line and horizon it names. Two defects
+     met here: (1) the close phrase was hardcoded "at the 30m
+     close" while market mode has no 30m row, so the fallback head
+     row (5m) was quoted under a 30m label; (2) head.p is computed
+     against the head row's own line — in market mode the market's
+     target, not the typed line this text says "against this
+     line". Fix: the phrase names the head row's actual horizon,
+     and when the head row ran against a different line, p is
+     recomputed against the typed line over the head window's
+     remaining time, so every figure in the paragraph belongs to
+     the line and close it names. (In custom mode the 30m row runs
+     against the typed line already — unchanged.) */
+  const headP = (head && isFinite(head.line) && Math.abs(head.line - line) > 1e-9 && head.remaining > 0)
+    ? probOverAt(tsym, price, line, head.remaining / 60) : head.p;
+  const advice = positionAdvice(side, price, line, headP, effBand(tsym),
+    "at the " + (head.h === 60 ? "1 hour" : head.h + " min") + " close", side ? null : "No position picked above.");
   const winNow = price > line ? "up" : price < line ? "down" : null;
   const posLine = !side ? "No position selected — tap (+) Up or (-) Down on the " + tsym + " card if you hold a side."
     : "Your side: " + (side === "up" ? "OVER (Up)" : "UNDER (Down)") + " — currently " +
@@ -5016,7 +5079,7 @@ function padNowRowInner(r, stampMs, sym){
     (stampMs ? '<br><span class="note padstamp">↻ refreshed ' + padStampStr(stampMs) + " · live estimate</span>" : "") +
     "</td><td>" +
     (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + "</span>" : '<span class="note">NO EDGE</span>') +
-    "</td><td>" + (r.call ? Math.round(r.winP * 100) + "%" + failOddsSpan(r.winP) : "OVER " + Math.round(r.p * 100) + "% / UNDER " + Math.round((1 - r.p) * 100) + "%") +
+    "</td><td>" + (r.call ? pctCap(r.winP) + failOddsSpan(r.winP) : "OVER " + pctCap(r.p) + " / UNDER " + pctCap(1 - r.p)) +
     /* WEB29: this horizon's recent-form strip (settled history
        only; empty string until the server has settled windows). */
     (sym ? formStripHTML(sym, r.h) : "") + "</td>";
@@ -5032,9 +5095,11 @@ function padNowHTML(sym){
     " · live " + fmtPrice(pn.price) + " · line is " + fmtPct(pn.line / pn.price - 1, true) + " vs live</div>" +
     '<div style="margin-top:6px"><button class="padrefresh" type="button" data-padrefresh="all">↻ Refresh prediction — all horizons</button></div>' +
     '<table><thead><tr><th>Close in</th><th>System call</th><th>Win probability</th></tr></thead><tbody>' +
-    rows.map(r => '<tr data-padrow="' + r.h + '">' + padNowRowInner(r, pn.stamps[r.h], sym) + "</tr>").join("") +
+    /* WEB32: the strip belongs to the rows' coin — the pad's
+       TARGET coin (pn.tsym), not necessarily the card's coin. */
+    rows.map(r => '<tr data-padrow="' + r.h + '">' + padNowRowInner(r, pn.stamps[r.h], pn.tsym) + "</tr>").join("") +
     "</tbody></table>" +
-    (rows.some(r => { const a = coinState(sym).form && coinState(sym).form[r.h]; return a && a.length; })
+    (rows.some(r => { const a = coinState(pn.tsym).form && coinState(pn.tsym).form[r.h]; return a && a.length; })
       ? '<div class="note" style="margin-top:4px">Recent form under each row: the last settled windows — ▲ closed over, ▼ closed under; ⭕ the system\'s opening lean was right, ❌ the lean was wrong, plain = no lean. Reference only — the system ignores these markers.</div>'
       : "") +
     (rows.some(r => r.mkt)
@@ -5364,13 +5429,13 @@ function renderPadCalls(sym){
       (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + ")</span>" : "") +
       '<br><button class="padrefresh" type="button" data-padcallrefresh="' + r.h + '" aria-label="Refresh prediction for the ' + (r.h === 60 ? "1 hour" : r.h + " min") + ' perpetual"' + busyAttr + '>↻ Refresh prediction</button>' +
       "</td><td>" +
-      (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + " " + Math.round(r.winP * 100) + "%</span>" + failOddsSpan(r.winP)
+      (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + " " + pctCap(r.winP) + "</span>" + failOddsSpan(r.winP)
               : '<span class="note">NO EDGE</span>') +
       /* WEB21: every locked row says WHEN it locked (local clock);
          an unlocked row (data not ready at the open) shows none. */
       (r.lockedAt ? '<br><span class="note">locked ' + multTimeStr(r.lockedAt) + "</span>" : "") +
       (le ? '<br><span class="note padliveest">↻ live estimate ' + multTimeStr(le.stampMs) + ": " +
-            (le.call ? le.call + " " + Math.round(le.winP * 100) + "%" : "NO EDGE") +
+            (le.call ? le.call + " " + pctCap(le.winP) : "NO EDGE") +
             " · est " + fmtPrice(le.est) + "</span>" : "") +
       /* WEB29: this horizon's recent-form strip — settled history
          only, from the shared formStripHTML helper; empty until
