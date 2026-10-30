@@ -308,6 +308,9 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
 .cpad-out .padrefresh{margin-top:5px;font-size:11px;padding:3px 9px;border-radius:8px;background:#141424;border:1px solid var(--line);color:var(--txt);cursor:pointer}
 .cpad-out .padrefresh[disabled]{opacity:.45;cursor:default}
 .cpad-out .padstamp{color:var(--gold2)}
+.cpad-calls .padrefresh{margin-top:5px;font-size:11px;padding:3px 9px;border-radius:8px;background:#141424;border:1px solid var(--line);color:var(--txt);cursor:pointer}
+.cpad-calls .padrefresh[disabled]{opacity:.45;cursor:default}
+.cpad-calls .padliveest{color:#7fd4ff}
 .padadvice{font-size:14.5px;line-height:1.6;margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:11px 13px;background:rgba(124,92,255,.06)}
 .cardpop{margin-top:8px}
 .cardpop[hidden]{display:none}
@@ -780,6 +783,8 @@ function coinState(sym){
     padLock: {},               // WEB21: per-horizon FROZEN outlook rows {h: {closeAt, p, call, winP, est, line, mkt, lockedAt}} — see padCallsRows
     padNow: null,              // WEB27: the ENTER now-view readout ctx {tsym, line, usedLive, price, rows, stamps, posLine, advice} — display only, see padRefreshNow
     padNowBusy: false,         // WEB27: one manual now-view refresh in flight per card
+    padLiveEst: {},            // WEB28: per-horizon DISPLAY-ONLY live estimates shown under the LOCKED outlook rows {h: {closeAt, p, call, winP, est, stampMs}} — written only by a manual outlook refresh tap (padRefreshCalls), keyed to the window's closeAt so a rolled window never shows the old estimate; never scored, never feeds padLock
+    padCallsBusy: false,       // WEB28: one manual outlook refresh in flight per card
     waveTest: null,            // WEB23: FROZEN server row {closeAt, horizon, row} — replaced only on toggle-on / horizon change / cycle roll (see fetchWaveTest)
     waveTestOn: waveTestPref(sym).on,          // WEB23: default OFF (pref absent -> off)
     waveTestHorizon: waveTestPref(sym).horizon, // WEB23: 5|15|30|45|60, default = S.lenMin when valid else 15
@@ -5125,22 +5130,110 @@ function renderPadCalls(sym){
       ? "15m target from Kalshi; other horizons vs the card line. " + lockNote
       : "Targets from Polymarket's own per-window prices; horizons Polymarket doesn't run (30m/45m) vs the card line. " + lockNote)
     : "Est. end value = the model's projected close for that perpetual, from the lock-time price and the same math as the call. " + lockNote;
+  /* WEB28: the footnote gains one sentence about the manual
+     refresh — the WEB21 lock wording above stays verbatim. */
+  const footFull = foot + " ↻ Refresh prediction adds a separate live estimate under a row, only when you tap it — the locked call itself never moves.";
+  const busyAttr = cs.padCallsBusy ? " disabled" : "";
   const html =
     '<div class="lbl" style="margin:12px 0 4px">Perpetual outlook — ' + lineRef + '</div>' +
+    /* WEB28 (Shane 2026-10-30): the outlook table gets the same
+       Refresh prediction controls the ENTER now-view got in
+       WEB27 — one per horizon row plus one per card. The buttons
+       are wired by delegation on this container (initCardPad),
+       because this panel re-renders on price ticks. */
+    '<div style="margin-top:2px"><button class="padrefresh" type="button" data-padcallrefresh="all"' + busyAttr + '>↻ Refresh prediction — all horizons</button></div>' +
     '<table><thead><tr><th>Perpetual</th><th>System call</th><th>Est. end value</th></tr></thead><tbody>' +
-    rows.map(r => "<tr><td>" + (r.h === 60 ? "1 hour" : r.h + " min") +
+    rows.map(r => {
+      /* WEB28: this window's manually-pulled live estimate for the
+         row, if one exists — keyed to the lock's closeAt, so a
+         rolled window never shows the previous window's estimate.
+         Display only: it sits UNDER the locked call and never
+         replaces any locked value. */
+      const lk = cs.padLock && cs.padLock[r.h];
+      const le = (r.lockedAt && lk && cs.padLiveEst && cs.padLiveEst[r.h] &&
+                  cs.padLiveEst[r.h].closeAt === lk.closeAt) ? cs.padLiveEst[r.h] : null;
+      return "<tr><td>" + (r.h === 60 ? "1 hour" : r.h + " min") +
       ' · <span class="cdft" data-cdh="' + r.h + '">' + fmtClock(r.remaining * 1000) + " left</span>" +
       (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + ")</span>" : "") +
+      '<br><button class="padrefresh" type="button" data-padcallrefresh="' + r.h + '" aria-label="Refresh prediction for the ' + (r.h === 60 ? "1 hour" : r.h + " min") + ' perpetual"' + busyAttr + '>↻ Refresh prediction</button>' +
       "</td><td>" +
       (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + " " + Math.round(r.winP * 100) + "%</span>" + failOddsSpan(r.winP)
               : '<span class="note">NO EDGE</span>') +
       /* WEB21: every locked row says WHEN it locked (local clock);
          an unlocked row (data not ready at the open) shows none. */
       (r.lockedAt ? '<br><span class="note">locked ' + multTimeStr(r.lockedAt) + "</span>" : "") +
-      "</td><td>" + fmtPrice(r.est) + "</td></tr>").join("") +
+      (le ? '<br><span class="note padliveest">↻ live estimate ' + multTimeStr(le.stampMs) + ": " +
+            (le.call ? le.call + " " + Math.round(le.winP * 100) + "%" : "NO EDGE") +
+            " · est " + fmtPrice(le.est) + "</span>" : "") +
+      "</td><td>" + fmtPrice(r.est) + "</td></tr>";
+    }).join("") +
     "</tbody></table>" +
-    '<div class="note" style="margin-top:4px">' + foot + '</div>';
+    '<div class="note" style="margin-top:4px">' + footFull + '</div>';
   if (out.innerHTML !== html) out.innerHTML = html;
+}
+/* ---------- WEB28 (Shane 2026-10-30): "Refresh prediction" for
+   the LOCKED Perpetual Outlook --------------------------------
+   Shane's screenshot: the WEB27 refresh buttons landed on the
+   ENTER now-view, but the Perpetual Outlook table under it — the
+   locked SYSTEM CALL / EST. END VALUE rows — had none, and he
+   wants them per crypto for all watched currencies (the outlook
+   renders inside every coin card, so every watched coin gets
+   them). A tap reuses the WEB27 machinery — freshPricePull for a
+   genuinely fresh price and refreshMktLines(sym, forceH) to
+   bypass the 20s latch, scoped to the tapped horizon — then
+   recomputes that horizon with probOverAt over the time
+   REMAINING in its window, against the LOCKED row's own line
+   (lock.line: the card line or the market per-window target the
+   lock was generated against), with the estimate projected from
+   the fresh price exactly as the outlook projects its own
+   (price * exp(driftTotal)).
+   IMMUTABILITY — the whole point of the panel: the result is
+   stored ONLY in cs.padLiveEst (display state, keyed to the
+   lock's closeAt) and rendered as an extra "↻ live estimate"
+   line UNDER the locked row. padRefreshCalls never writes
+   padLock, never calls setLine, and its numbers are never
+   stored server-side or scored anywhere. Manual taps only:
+   no timers, no polling. */
+async function padRefreshCalls(sym, hOnly){
+  const cs = coinState(sym), out = cs.els && cs.els.padCalls;
+  if (!out || cs.padCallsBusy) return null;
+  if (!(cs.price > 0)) return null;
+  cs.padCallsBusy = true; renderPadCalls(sym);
+  try {
+    const fp = await freshPricePull(sym);
+    if (fp) cs.price = fp;
+    const price = cs.price;
+    if (!(price > 0)) return null;
+    if (marketActive()) await refreshMktLines(sym, hOnly == null ? true : hOnly);
+    /* Ensures the current windows' locks exist (the same call
+       every render makes) and returns the locked rows; existing
+       locks come back untouched. */
+    const rows = padCallsRows(sym);
+    if (!rows) return null;
+    const band = effBand(sym);
+    const now = Date.now();
+    if (!cs.padLiveEst) cs.padLiveEst = {};
+    const done = [];
+    for (const row of rows){
+      if (hOnly != null && row.h !== hOnly) continue;
+      const lock = cs.padLock && cs.padLock[row.h];
+      /* Only a LOCKED row gets a live-estimate companion; an
+         unlocked row is already computed live on every render. */
+      if (!lock || !row.lockedAt) continue;
+      const remaining = Math.max(1, (lock.closeAt - now) / 1000);
+      let r = null;
+      try { r = probOverAt(sym, price, lock.line, remaining); } catch (e) { r = null; }
+      if (!r || !isFinite(r.p) || !isFinite(r.driftTotal)) continue;
+      const call = Math.abs(r.p - 0.5) >= band ? (r.p > 0.5 ? "OVER" : "UNDER") : null;
+      cs.padLiveEst[row.h] = {closeAt: lock.closeAt, p: r.p, call: call,
+        winP: call ? (call === "OVER" ? r.p : 1 - r.p) : null,
+        est: price * Math.exp(r.driftTotal), stampMs: now};
+      done.push(row.h);
+    }
+    renderPadCalls(sym);
+    return {sym: sym, price: price, refreshed: hOnly == null ? "all" : hOnly, horizons: done};
+  } catch (e) { return null; }
+  finally { cs.padCallsBusy = false; renderPadCalls(sym); }
 }
 /* Hardware keyboard: drives the pad of the card the user most
    recently touched (pointer or button), exactly like the old
@@ -5164,6 +5257,19 @@ function initCardPad(sym){
   });
   if (cs.els.padSnap) cs.els.padSnap.addEventListener("click", () => padSnapToMarket(sym));
   if (cs.els.padEnter) cs.els.padEnter.addEventListener("click", () => cardPadEnter(sym));
+  /* WEB28: the outlook panel re-renders on price ticks, so its
+     Refresh prediction buttons are wired ONCE, by delegation on
+     the container — the buttons themselves are rebuilt by every
+     render and could not hold their own listeners. */
+  if (cs.els.padCalls && typeof cs.els.padCalls.addEventListener === "function")
+    cs.els.padCalls.addEventListener("click", ev => {
+      const t = ev && ev.target;
+      const b = t && typeof t.closest === "function" ? t.closest("[data-padcallrefresh]") : null;
+      if (!b || typeof b.getAttribute !== "function") return;
+      const v = b.getAttribute("data-padcallrefresh");
+      if (v == null) return;
+      padRefreshCalls(sym, v === "all" ? null : +v);
+    });
   if (cs.root) cs.root.addEventListener("pointerdown", () => { ACTIVE_PAD = sym; });
   syncPadSelect(sym);
   padRender(sym);
