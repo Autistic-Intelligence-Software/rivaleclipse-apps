@@ -305,6 +305,9 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
 .cpad-out th,.cpad-out td{border-bottom:1px solid var(--line);padding:5px 4px;text-align:left}
 .cpad-out th{color:var(--mut);font-size:11px;letter-spacing:.1em;text-transform:uppercase}
 .cpad-out .up{color:var(--up);font-weight:800} .cpad-out .down{color:var(--down);font-weight:800}
+.cpad-out .padrefresh{margin-top:5px;font-size:11px;padding:3px 9px;border-radius:8px;background:#141424;border:1px solid var(--line);color:var(--txt);cursor:pointer}
+.cpad-out .padrefresh[disabled]{opacity:.45;cursor:default}
+.cpad-out .padstamp{color:var(--gold2)}
 .padadvice{font-size:14.5px;line-height:1.6;margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:11px 13px;background:rgba(124,92,255,.06)}
 .cardpop{margin-top:8px}
 .cardpop[hidden]{display:none}
@@ -775,6 +778,8 @@ function coinState(sym){
     nextTarget: null,          // WEB12: the market target for the NEXT window, fetched while scoring this one
     strikePass: 0,             // WEB19: token of this coin's live applyMarketStrike convergence pass (only the newest pass may apply values)
     padLock: {},               // WEB21: per-horizon FROZEN outlook rows {h: {closeAt, p, call, winP, est, line, mkt, lockedAt}} — see padCallsRows
+    padNow: null,              // WEB27: the ENTER now-view readout ctx {tsym, line, usedLive, price, rows, stamps, posLine, advice} — display only, see padRefreshNow
+    padNowBusy: false,         // WEB27: one manual now-view refresh in flight per card
     waveTest: null,            // WEB23: FROZEN server row {closeAt, horizon, row} — replaced only on toggle-on / horizon change / cycle roll (see fetchWaveTest)
     waveTestOn: waveTestPref(sym).on,          // WEB23: default OFF (pref absent -> off)
     waveTestHorizon: waveTestPref(sym).horizon, // WEB23: 5|15|30|45|60, default = S.lenMin when valid else 15
@@ -1567,8 +1572,13 @@ const MKT_HZ = [5, 15, 60, 240];
    Polymarket openPrice is still a forming TWAP, so re-reading lets
    the target converge to the value Polymarket settles on instead
    of freezing the first partial sample. Kalshi publishes only the
-   15m strike, so only the 15 entry exists there. */
-async function refreshMktLines(sym){
+   15m strike, so only the 15 entry exists there.
+   WEB27: the optional forceH argument bypasses the 20s freshness
+   skip — true forces every horizon's entry, a horizon number
+   forces only that entry. Only the manual now-view refresh
+   (padRefreshNow) passes it; every cadence caller omits it and
+   keeps the behavior above. */
+async function refreshMktLines(sym, forceH){
   const cs = coinState(sym);
   if (!marketActive()){ cs.mktLines = null; return; }
   if (!cs.mktLines) cs.mktLines = {};
@@ -1576,7 +1586,8 @@ async function refreshMktLines(sym){
   for (const h of MKT_HZ){
     const start = winStartMs(now, h);
     const cur = cs.mktLines[h];
-    if (cur && cur.start === start && now - cur.at < 20000) continue;
+    const forced = forceH === true || forceH === h;
+    if (cur && cur.start === start && !forced && now - cur.at < 20000) continue;
     let got = null;
     if (S.preset === "polymarket"){
       const variant = PM_VARIANT[h];
@@ -4786,6 +4797,183 @@ function padSnapToMarket(sym){
   padRender(sym);
   refreshPadsFor(cp.target);
 }
+/* ---------- WEB27 (Shane 2026-10-30): "Refresh prediction" for
+   the ENTER now-view ---------------------------------------------
+   The readout cardPadEnter renders (the pad's Close in / System
+   call / Win probability table) is a NOW-view: a live estimate
+   computed from the price, the market targets, and the time left
+   in each window at the moment it is drawn. Until now it was
+   drawn ONLY at ENTER — after that just its countdowns ticked,
+   and the only way to fresh numbers was pressing ENTER again,
+   which also re-pins the coin's line from the pad text. Shane
+   asked for a dedicated refresh: one button per perpetual row
+   plus one per card that pulls all horizons. A refresh forces
+   genuinely fresh inputs — a one-shot price pull through
+   priceTick's own source chain and a forced market-line refetch
+   that bypasses the 20s freshness latch, scoped to the tapped
+   horizon — then recomputes probOverAt over the time REMAINING
+   right now and stamps the row ("↻ refreshed 1:52:03 PM · live
+   estimate") so a pulled-fresh row is visibly distinct.
+   IMMUTABILITY: a refresh never pins or moves a line (no
+   setLine), never writes padLock / the Perpetual Outlook, the
+   cycle snapshot, an fc snapshot, or a wave-test row, and its
+   numbers are never stored or scored — they are the same
+   display-only live estimates ENTER draws, pulled on demand.
+   Manual taps only: no timers, no auto-refresh. */
+/* The now-view row computation — extracted verbatim from
+   cardPadEnter so the ENTER render and a refresh can never
+   drift apart: per horizon, the market's own target for the
+   current window when one is published, else the given line,
+   over the time remaining in that window. */
+function padNowRows(tsym, price, line){
+  const band = effBand(tsym);
+  const nowE = Date.now();
+  return PAD_HZ.map(h => {
+    const remaining = Math.max(1, (winBoundaryMs(nowE, h) - nowE) / 1000);
+    const ml = mktLineFor(tsym, h);
+    const r = probOverAt(tsym, price, ml ? ml.price : line, remaining);
+    const call = Math.abs(r.p - 0.5) >= band ? (r.p > 0.5 ? "OVER" : "UNDER") : null;
+    return {h: h, p: r.p, call: call, winP: call ? (call === "OVER" ? r.p : 1 - r.p) : null,
+            remaining: remaining, line: ml ? ml.price : line, mkt: ml ? ml.src : null};
+  });
+}
+/* The readout's position line + advice, from the 30m head row —
+   the same construction cardPadEnter has always used. */
+function padNowAdvice(tsym, price, line, rows){
+  const head = rows.find(r => r.h === 30) || rows[0];
+  const side = cardSide(tsym);
+  const advice = positionAdvice(side, price, line, head.p, effBand(tsym),
+    "at the 30m close", side ? null : "No position picked above.");
+  const winNow = price > line ? "up" : price < line ? "down" : null;
+  const posLine = !side ? "No position selected — tap (+) Up or (-) Down on the " + tsym + " card if you hold a side."
+    : "Your side: " + (side === "up" ? "OVER (Up)" : "UNDER (Down)") + " — currently " +
+      (winNow === null ? "sitting exactly on the line" : winNow === side ? "WINNING at the live price" : "LOSING at the live price") + ".";
+  return {head: head, posLine: posLine, advice: advice};
+}
+function padStampStr(ms){
+  try { return new Date(ms).toLocaleTimeString("en-US", {hour: "numeric", minute: "2-digit", second: "2-digit"}); }
+  catch (e) { return new Date(ms).toLocaleTimeString(); }
+}
+/* One now-view row's cells, including its Refresh prediction
+   button and — once that row has been manually refreshed — its
+   refreshed stamp. The countdown span keeps the cdft contract,
+   so the 1s housekeeping tick keeps it live like every row. */
+function padNowRowInner(r, stampMs){
+  return "<td>" + (r.h === 60 ? "1 hour" : r.h + " min") +
+    ' · <span class="cdft" data-cdh="' + r.h + '">' + fmtClock(r.remaining * 1000) + " left</span>" +
+    (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + ")</span>" : "") +
+    '<br><button class="padrefresh" type="button" data-padrefresh="' + r.h + '" aria-label="Refresh prediction for the ' + (r.h === 60 ? "1 hour" : r.h + " min") + ' perpetual">↻ Refresh prediction</button>' +
+    (stampMs ? '<br><span class="note padstamp">↻ refreshed ' + padStampStr(stampMs) + " · live estimate</span>" : "") +
+    "</td><td>" +
+    (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + "</span>" : '<span class="note">NO EDGE</span>') +
+    "</td><td>" + (r.call ? Math.round(r.winP * 100) + "%" + failOddsSpan(r.winP) : "OVER " + Math.round(r.p * 100) + "% / UNDER " + Math.round((1 - r.p) * 100) + "%") + "</td>";
+}
+/* The full readout, rendered from the stored ctx (cs.padNow) —
+   the exact markup cardPadEnter has always produced, plus the
+   refresh controls and any refreshed stamps. */
+function padNowHTML(sym){
+  const pn = coinState(sym).padNow;
+  if (!pn) return "";
+  const rows = pn.rows;
+  return '<div class="note" style="margin-top:2px">' + pn.tsym + " · line " + fmtPrice(pn.line) + (pn.usedLive ? " (live price — no line was typed)" : "") +
+    " · live " + fmtPrice(pn.price) + " · line is " + fmtPct(pn.line / pn.price - 1, true) + " vs live</div>" +
+    '<div style="margin-top:6px"><button class="padrefresh" type="button" data-padrefresh="all">↻ Refresh prediction — all horizons</button></div>' +
+    '<table><thead><tr><th>Close in</th><th>System call</th><th>Win probability</th></tr></thead><tbody>' +
+    rows.map(r => '<tr data-padrow="' + r.h + '">' + padNowRowInner(r, pn.stamps[r.h]) + "</tr>").join("") +
+    "</tbody></table>" +
+    (rows.some(r => r.mkt)
+      ? '<div class="note" style="margin-top:4px">' + (S.preset === "kalshi"
+        ? "15m target from Kalshi; other horizons vs the line above."
+        : "Targets from Polymarket's own per-window prices; horizons Polymarket doesn't run (30m/45m) vs the line above.") + "</div>"
+      : "") +
+    '<div class="note" style="margin-top:8px">' + pn.posLine + "</div>" +
+    '<div class="padadvice">' + pn.advice + "</div>" +
+    '<div class="note" style="margin-top:6px">Same math as the watch cards, same global params. Probabilities from pattern statistics — not a promise about any single close. This pad advises; it does not place or execute trades.</div>';
+}
+function wirePadNow(sym){
+  const out = coinState(sym).els && coinState(sym).els.padOut;
+  if (!out || typeof out.querySelectorAll !== "function") return;
+  out.querySelectorAll("[data-padrefresh]").forEach(b => {
+    b.addEventListener("click", () => {
+      const v = b.getAttribute ? b.getAttribute("data-padrefresh") : null;
+      padRefreshNow(sym, v === "all" ? null : +v);
+    });
+  });
+}
+function padNowBusyUI(sym, busy){
+  const out = coinState(sym).els && coinState(sym).els.padOut;
+  if (!out || typeof out.querySelectorAll !== "function") return;
+  out.querySelectorAll("[data-padrefresh]").forEach(b => { b.disabled = !!busy; });
+}
+function renderPadNow(sym){
+  const cs = coinState(sym), out = cs.els && cs.els.padOut;
+  if (!out || !cs.padNow) return;
+  out.innerHTML = padNowHTML(sym);
+  wirePadNow(sym);
+}
+/* One-shot fresh price for a refresh tap, through the SAME
+   source chain priceTick uses: the RTDS Chainlink print while
+   it is ≤5s fresh (it is pushed live — nothing fresher exists
+   to pull), else the Polymarket hourly-variant poll, else the
+   Coinbase ticker. null when every source misses (the refresh
+   then recomputes from the last tick price instead). */
+async function freshPricePull(sym){
+  const cs = coinState(sym);
+  if (S.preset === "polymarket"){
+    if (cs.mktSrc === "rtds" && cs.mktPrice && Date.now() - cs.mktPriceAt <= 5000) return cs.mktPrice;
+    const j = await pmPrice(sym, Math.floor(Date.now() / 3600000) * 3600000, "hourly");
+    if (j && isFinite(+j.closePrice) && +j.closePrice > 0){
+      cs.mktPrice = +j.closePrice; cs.mktPriceAt = Date.now(); cs.mktSrc = "poll";
+      return cs.mktPrice;
+    }
+    if (cs.mktPrice && Date.now() - cs.mktPriceAt < 30000) return cs.mktPrice;
+  }
+  const t = await fetchJSON(CB + "/products/" + sym + "-USD/ticker");
+  if (t && isFinite(+t.price) && +t.price > 0) return +t.price;
+  return null;
+}
+/* The Refresh prediction action. hOnly = a PAD_HZ horizon for a
+   single-row pull, or null for the card-level all-horizons pull.
+   The line basis never changes: a typed/pinned line stays the
+   readout's line; a live-price ENTER re-bases to the fresh price
+   (exactly what pressing ENTER again with an empty pad would
+   show) — but the CARD's line is never moved (no setLine), and
+   nothing locked or scored is touched. */
+async function padRefreshNow(sym, hOnly){
+  const cs = coinState(sym), pn = cs.padNow, out = cs.els && cs.els.padOut;
+  if (!pn || !out || cs.padNowBusy) return null;
+  cs.padNowBusy = true; padNowBusyUI(sym, true);
+  try {
+    const tsym = pn.tsym, tcs = coinState(tsym);
+    const fp = await freshPricePull(tsym);
+    if (fp) tcs.price = fp;
+    const price = tcs.price;
+    if (!(price > 0)) return null;
+    if (marketActive()) await refreshMktLines(tsym, hOnly == null ? true : hOnly);
+    const line = pn.usedLive ? price : pn.line;
+    const fresh = padNowRows(tsym, price, line);
+    const stamp = Date.now();
+    if (hOnly == null){
+      pn.rows = fresh; pn.price = price; pn.line = line;
+      const adv = padNowAdvice(tsym, price, line, fresh);
+      pn.posLine = adv.posLine; pn.advice = adv.advice;
+      for (const r of fresh) pn.stamps[r.h] = stamp;
+    } else {
+      const i = pn.rows.findIndex(r => r.h === hOnly);
+      const fr = fresh.find(r => r.h === hOnly);
+      if (i < 0 || !fr) return null;
+      pn.rows[i] = fr;
+      pn.stamps[hOnly] = stamp;
+      /* The untouched rows keep their computed values; only
+         their countdown display field is brought current (the
+         1s cdft tick owns the text from here anyway). */
+      for (const r of pn.rows) r.remaining = Math.max(1, (winBoundaryMs(stamp, r.h) - stamp) / 1000);
+    }
+    renderPadNow(sym);
+    return {sym: tsym, price: price, line: line, rows: pn.rows, refreshed: hOnly == null ? "all" : hOnly};
+  } catch (e) { return null; }
+  finally { cs.padNowBusy = false; padNowBusyUI(sym, false); }
+}
 /* ENTER: pin the typed line on the target coin and run the
    per-horizon readout (probOverAt — the same core predict()
    uses, so nothing can drift between the pad and the cards). */
@@ -4810,7 +4998,6 @@ async function cardPadEnter(sym){
      (the old standalone pad only read against the typed line). */
   tcs.lineFromStart = false;
   if (tcs.line !== line || !tcs.lineSet) setLine(tsym, line);
-  const band = effBand(tsym);
   /* WEB17: in market-mimic mode each horizon's row runs against
      the market's own target for the CURRENT window of that
      horizon when it publishes one, over the time REMAINING in
@@ -4818,48 +5005,20 @@ async function cardPadEnter(sym){
      fresh full horizon. The typed line still pins the card and
      still drives the position advice below (the 30m row has no
      market variant anywhere, so the head stays on the typed
-     line). */
+     line). The row math itself lives in padNowRows (WEB27). */
   if (marketActive()) await refreshMktLines(tsym);
-  const nowE = Date.now();
-  const rows = PAD_HZ.map(h => {
-    const remaining = Math.max(1, (winBoundaryMs(nowE, h) - nowE) / 1000);
-    const ml = mktLineFor(tsym, h);
-    const r = probOverAt(tsym, price, ml ? ml.price : line, remaining);
-    const call = Math.abs(r.p - 0.5) >= band ? (r.p > 0.5 ? "OVER" : "UNDER") : null;
-    return {h: h, p: r.p, call: call, winP: call ? (call === "OVER" ? r.p : 1 - r.p) : null,
-            remaining: remaining, line: ml ? ml.price : line, mkt: ml ? ml.src : null};
-  });
-  const head = rows.find(r => r.h === 30) || rows[0];
-  const side = cardSide(tsym);
-  const advice = positionAdvice(side, price, line, head.p, band,
-    "at the 30m close", side ? null : "No position picked above.");
-  if (out){
-    const winNow = price > line ? "up" : price < line ? "down" : null;
-    const posLine = !side ? "No position selected — tap (+) Up or (-) Down on the " + tsym + " card if you hold a side."
-      : "Your side: " + (side === "up" ? "OVER (Up)" : "UNDER (Down)") + " — currently " +
-        (winNow === null ? "sitting exactly on the line" : winNow === side ? "WINNING at the live price" : "LOSING at the live price") + ".";
-    out.innerHTML =
-      '<div class="note" style="margin-top:2px">' + tsym + " · line " + fmtPrice(line) + (usedLive ? " (live price — no line was typed)" : "") +
-      " · live " + fmtPrice(price) + " · line is " + fmtPct(line / price - 1, true) + " vs live</div>" +
-      '<table><thead><tr><th>Close in</th><th>System call</th><th>Win probability</th></tr></thead><tbody>' +
-      rows.map(r => "<tr><td>" + (r.h === 60 ? "1 hour" : r.h + " min") +
-        ' · <span class="cdft" data-cdh="' + r.h + '">' + fmtClock(r.remaining * 1000) + " left</span>" +
-        (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + ")</span>" : "") +
-        '</td><td>' +
-        (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + "</span>" : '<span class="note">NO EDGE</span>') +
-        "</td><td>" + (r.call ? Math.round(r.winP * 100) + "%" + failOddsSpan(r.winP) : "OVER " + Math.round(r.p * 100) + "% / UNDER " + Math.round((1 - r.p) * 100) + "%") + "</td></tr>").join("") +
-      "</tbody></table>" +
-      (rows.some(r => r.mkt)
-        ? '<div class="note" style="margin-top:4px">' + (S.preset === "kalshi"
-          ? "15m target from Kalshi; other horizons vs the line above."
-          : "Targets from Polymarket's own per-window prices; horizons Polymarket doesn't run (30m/45m) vs the line above.") + "</div>"
-        : "") +
-      '<div class="note" style="margin-top:8px">' + posLine + "</div>" +
-      '<div class="padadvice">' + advice + "</div>" +
-      '<div class="note" style="margin-top:6px">Same math as the watch cards, same global params. Probabilities from pattern statistics — not a promise about any single close. This pad advises; it does not place or execute trades.</div>';
-  }
+  const rows = padNowRows(tsym, price, line);
+  const adv = padNowAdvice(tsym, price, line, rows);
+  /* WEB27: the readout's ctx is stored so the Refresh prediction
+     buttons can re-render and re-pull this exact readout later
+     (see padRefreshNow); rendering goes through renderPadNow,
+     which produces the markup this function has always produced,
+     plus the refresh controls. */
+  coinState(sym).padNow = {tsym: tsym, line: line, usedLive: usedLive, price: price,
+    rows: rows, stamps: {}, posLine: adv.posLine, advice: adv.advice};
+  if (out) renderPadNow(sym);
   refreshPadsFor(tsym);
-  return {sym: tsym, price: price, line: line, rows: rows, head: head, advice: advice};
+  return {sym: tsym, price: price, line: line, rows: rows, head: adv.head, advice: adv.advice};
 }
 /* ---------- WEB14: per-card perpetual outlook (Shane 2026-10-28) --
    The pad column under ENTER shows, for THIS card's coin, the
