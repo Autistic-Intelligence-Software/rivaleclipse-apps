@@ -3653,9 +3653,12 @@ function renderSources(sym){
    10 SETTLED windows for each (coin, perpetual), from the server's
    own canonical record (GET /api/perp/recent-calls): ▲ the window
    closed over its open, ▼ under; a ⭕ around the triangle means the
-   system's OPENING call for that window was right, a ❌ over it
-   means it missed; a plain triangle means the system made no call
-   that window (NO EDGE). Display only — the page never writes
+   system's opening LEAN for that window was right, a ❌ over it
+   means the lean was wrong; a plain triangle means the opening
+   probability sat exactly even — no lean. The markers grade the
+   lean, NOT the official banded call (a separate record), and per
+   Shane's 2026-10-30 15:12 ruling they are for user reference
+   only — the system ignores them. Display only — the page never writes
    predictions and never recomputes a settled outcome; a row with
    no settled windows renders no strip at all. One shared call
    covers every watched coin (same pattern as loadSources);
@@ -3685,7 +3688,7 @@ function formStripHTML(sym, h){
   const arr = cs.form && cs.form[h];
   if (!arr || !arr.length) return "";
   const wins = arr.slice(-10);
-  return '<div class="formstrip" title="Last ' + wins.length + ' settled windows — ▲ closed over · ▼ closed under · ⭕ opening call right · ❌ opening call missed · plain = no call">' +
+  return '<div class="formstrip" title="Last ' + wins.length + ' settled windows — ▲ closed over · ▼ closed under · ⭕ the system\'s lean was right · ❌ the lean was wrong · plain = no lean — reference only">' +
     wins.map(w => {
       const up = w.dir === "over";
       const ov = w.call == null ? "" : '<span class="ft-ov">' + (w.hit ? "⭕" : "❌") + "</span>";
@@ -4939,7 +4942,7 @@ function padNowHTML(sym){
     rows.map(r => '<tr data-padrow="' + r.h + '">' + padNowRowInner(r, pn.stamps[r.h], sym) + "</tr>").join("") +
     "</tbody></table>" +
     (rows.some(r => { const a = coinState(sym).form && coinState(sym).form[r.h]; return a && a.length; })
-      ? '<div class="note" style="margin-top:4px">Recent form under each row: the last settled windows — ▲ closed over, ▼ closed under; ⭕ the system\'s opening call was right, ❌ it missed, plain = no call.</div>'
+      ? '<div class="note" style="margin-top:4px">Recent form under each row: the last settled windows — ▲ closed over, ▼ closed under; ⭕ the system\'s opening lean was right, ❌ the lean was wrong, plain = no lean. Reference only — the system ignores these markers.</div>'
       : "") +
     (rows.some(r => r.mkt)
       ? '<div class="note" style="margin-top:4px">' + (S.preset === "kalshi"
@@ -5191,7 +5194,7 @@ function renderPadCalls(sym){
   /* WEB29: when any row carries a recent-form strip, the footnote
      gains its legend (settled windows only). */
   const anyForm = rows.some(r => { const a = cs.form && cs.form[r.h]; return a && a.length; });
-  const footShown = footFull + (anyForm ? " Recent-form triangles under each row: the last settled windows — ▲ closed over, ▼ closed under; ⭕ the opening call hit, ❌ it missed, plain = no call." : "");
+  const footShown = footFull + (anyForm ? " Recent-form triangles under each row: the last settled windows — ▲ closed over, ▼ closed under; ⭕ the opening lean was right, ❌ it was wrong, plain = no lean (reference only)." : "");
   const busyAttr = cs.padCallsBusy ? " disabled" : "";
   const html =
     '<div class="lbl" style="margin:12px 0 4px">Perpetual outlook — ' + lineRef + '</div>' +
