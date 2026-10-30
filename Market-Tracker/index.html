@@ -255,6 +255,20 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
 .posbtn.down.on{background:var(--down);border-color:var(--down);color:#17060b}
 .cardadvice{margin-top:8px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;
   background:rgba(124,92,255,.05);font-size:13.5px;line-height:1.55}
+/* ---------- WEB23: "Update test prediction" box (trial key) ----
+   Per-card, display-only: a frozen server row in a bordered box
+   under the forecast-section toggle, styled on .cardadvice. */
+.wavetest{margin-top:2px}
+.wtbtn.on{color:#2ee6a8;font-weight:800;text-decoration:underline}
+.wtbox{margin-top:8px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;
+  background:rgba(46,230,168,.05);font-size:13.5px;line-height:1.55}
+.wtbox[hidden]{display:none}
+.wt-hzrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+.wtlabel{color:var(--gold2);font-weight:700;font-size:12.5px}
+.wtpred{color:var(--mut);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;margin-top:8px}
+.wtrow{margin-top:2px}
+.wt-grain{margin-top:6px}
+.wt-countdown{margin-top:6px;font-variant-numeric:tabular-nums}
 /* ---------- WEB10: wide two-column cards, per-card pad, scoreboard
    collapse, advice pop-out (Shane 2026-10-28 annotated sketches) --- */
 .cardrow{display:flex;gap:14px;align-items:flex-start}
@@ -612,6 +626,39 @@ const LS_DET = "ph.det.v1", LS_FCZ = "ph.fczoom.v1";
    adjusted forecast lines on the forecast-check graph — a display
    preference only, persisted like the other ph.* display prefs. */
 const LS_FCADJ = "ph.fcAdj.v1";
+/* WEB23 (Shane 2026-10-29): per-coin "Update test prediction"
+   display preference — { SYM: { on, horizon } }. Display state
+   ONLY, like every other ph.* pref (WEB8): it feeds nothing, is
+   never posted anywhere, and the prediction itself is a frozen
+   server row (see fetchWaveTest / cs.waveTest below). */
+const LS_WAVETEST = "ph.wavetest.v1";
+const WAVE_TEST_HZ = [5, 15, 30, 45, 60];
+/* WEB23 graph color: mint #2ee6a8, dashed — distinct on the
+   Estimate (drawForecast) palette: actual #eceaf4 (white), main
+   #f3d27a, adjA #ff4747, adjB #3f8cff, comparison #7c5cff,
+   user line #c9a227. */
+const WAVE_TEST_COLOR = "#2ee6a8";
+function waveTestDefaultHorizon(){
+  // WEB23: a card carries no single "current horizon" of its own
+  // (cs.fcHorizonH is a clamped forecast span, cs.estL is the
+  // Estimate-graph lookback) — the closest thing is the page's
+  // current perpetual length S.lenMin, which the Setup preset
+  // sets (Polymarket default 15, Kalshi default 15, custom 15).
+  // Use it when it is one of the test horizons; else 15.
+  return WAVE_TEST_HZ.includes(S.lenMin) ? S.lenMin : 15;
+}
+function waveTestPref(sym){
+  const m = lsGet(LS_WAVETEST, {});
+  const p = (m && typeof m === "object" && !Array.isArray(m) && m[sym]) || {};
+  return { on: !!p.on,
+           horizon: WAVE_TEST_HZ.includes(+p.horizon) ? +p.horizon : waveTestDefaultHorizon() };
+}
+function saveWaveTestPref(sym, on, horizon){
+  const m = lsGet(LS_WAVETEST, {});
+  const mm = (m && typeof m === "object" && !Array.isArray(m)) ? m : {};
+  mm[sym] = { on: !!on, horizon: WAVE_TEST_HZ.includes(+horizon) ? +horizon : waveTestDefaultHorizon() };
+  lsSet(LS_WAVETEST, mm);
+}
 let FC_ADJ_SHOW = (() => { const v = lsGet(LS_FCADJ, {a: true, b: true});
   return { a: !v || v.a !== false, b: !v || v.b !== false }; })();
 function setFCAdjShow(which, on){
@@ -649,6 +696,11 @@ function coinState(sym){
     nextTarget: null,          // WEB12: the market target for the NEXT window, fetched while scoring this one
     strikePass: 0,             // WEB19: token of this coin's live applyMarketStrike convergence pass (only the newest pass may apply values)
     padLock: {},               // WEB21: per-horizon FROZEN outlook rows {h: {closeAt, p, call, winP, est, line, mkt, lockedAt}} — see padCallsRows
+    waveTest: null,            // WEB23: FROZEN server row {closeAt, horizon, row} — replaced only on toggle-on / horizon change / cycle roll (see fetchWaveTest)
+    waveTestOn: waveTestPref(sym).on,          // WEB23: default OFF (pref absent -> off)
+    waveTestHorizon: waveTestPref(sym).horizon, // WEB23: 5|15|30|45|60, default = S.lenMin when valid else 15
+    waveTestBusy: false,       // WEB23: one in-flight GET per card
+    waveTestUnavailable: false, // WEB23: last fetch failed with no current-cycle row to keep showing
     // WEB9 addendum (Shane 2026-10-28): the forecast section ALWAYS
     // starts collapsed — a stored ph.fc30 from an earlier session
     // must not re-expand it on load (that was burning data on
@@ -755,6 +807,141 @@ function applyFC30(sym){
     ? "snapshot " + new Date(cs.fcSnap.t0).toLocaleTimeString() + " — frozen until closed"
     : "";
   if (cs.fc30on) renderFC30Stat(sym);
+}
+
+/* ---------- WEB23: "Update test prediction" (Shane 2026-10-29) --
+   A per-card, opt-in TEST prediction from the server's trial key
+   (GET /api/perp/wave-test?coin=..&horizon=.. — GET only, WEB8).
+   Freeze discipline (WEB21/22 immutable-prediction law): the
+   fetched row is stored verbatim at cs.waveTest = {closeAt,
+   horizon, row} and EVERY render below reads only that stored
+   row — no value is ever recomputed, adjusted, or re-derived
+   client-side from the live price, the trend, or anything else.
+   cs.waveTest is replaced only when (a) the toggle is switched
+   on, (b) the horizon selector changes, or (c) the stored row's
+   close_at has passed (cycle roll, checked on the page's
+   existing 1s housekeeping tick — no new poller). The ONLY
+   element allowed to move between renders is the countdown,
+   which is derived from the stored closeAt, never from a
+   prediction value. On a failed fetch (incl. 503
+   market_unavailable) the last good row for the current cycle
+   keeps showing; with no such row, a muted unavailable note. */
+function waveTestGeom(row){
+  // WEB23: the graph line/band inputs, read ONLY from the stored
+  // frozen row — drawForecast draws exactly these numbers.
+  if (!row || !isFinite(+row.est_value)) return null;
+  return { est: +row.est_value, lo: +row.margin_lo, hi: +row.margin_hi, color: WAVE_TEST_COLOR };
+}
+function waveTestHTML(sym){
+  const cs = coinState(sym);
+  const wt = cs.waveTest;
+  const row = (wt && wt.horizon === cs.waveTestHorizon) ? wt.row : null;
+  if (!row){
+    return cs.waveTestUnavailable
+      ? '<div class="note wt-unavail">Test prediction unavailable right now.</div>'
+      : '<div class="note wt-loading">Loading test prediction…</div>';
+  }
+  let html = '<div class="wtlabel">' + escHtml(row.label || "test prediction") + "</div>" +
+    '<div class="wtpred">Prediction 1 — value</div>' +
+    '<div class="wtrow">Estimated close <b>' + fmtPrice(row.est_value) + "</b></div>" +
+    '<div class="wtrow">margin: ' + fmtPrice(row.margin_lo) + " – " + fmtPrice(row.margin_hi) + "</div>" +
+    '<div class="wtrow">Confidence: ' + row.value_conf + "%</div>" +
+    '<div class="wtpred">Prediction 2 — shift</div>' +
+    '<div class="wtrow">Large shift at close: ' + Math.round(100 * (+row.shift_prob || 0)) + "%</div>" +
+    '<div class="wtrow">Confidence: ' + row.shift_conf + "%</div>" +
+    '<div class="note">Large shift = the current wave ends by the close and the next wave\'s first 30 minutes reach the large-move threshold.</div>';
+  if (row.grain_note) html += '<div class="note wt-grain">' + escHtml(row.grain_note) + "</div>";
+  html += '<div class="note wttimes">Generated ' + new Date(+row.generated_at || 0).toLocaleString() +
+    " · Closes " + new Date(+row.close_at || 0).toLocaleString() + "</div>";
+  return html;
+}
+function updateWaveTestCountdown(sym){
+  // WEB23: the countdown is the ONLY per-tick update in the box —
+  // it counts to the STORED row's closeAt and touches nothing else.
+  const cs = coinState(sym);
+  const el = cs.els && cs.els.wtCountdown;
+  if (!el) return;
+  const txt = (cs.waveTestOn && cs.waveTest && cs.waveTest.closeAt)
+    ? "Closes in " + fmtClock(cs.waveTest.closeAt - Date.now()) : "";
+  if (el.textContent !== txt) el.textContent = txt;
+}
+function renderWaveTest(sym){
+  const cs = coinState(sym);
+  if (!cs.els || !cs.els.wtbox) return;
+  cs.els.wtbox.hidden = !cs.waveTestOn;
+  if (cs.els.wtbtn){
+    cs.els.wtbtn.classList.toggle("on", !!cs.waveTestOn);
+    if (cs.els.wtbtn.setAttribute) cs.els.wtbtn.setAttribute("aria-pressed", cs.waveTestOn ? "true" : "false");
+  }
+  if (cs.els.wtHzBtns) cs.els.wtHzBtns.forEach(b => b.classList.toggle("on", +b.dataset.wth === cs.waveTestHorizon));
+  if (!cs.waveTestOn) return;
+  if (cs.els.wtcontent){
+    const html = waveTestHTML(sym);
+    if (cs.els.wtcontent.innerHTML !== html) cs.els.wtcontent.innerHTML = html;
+  }
+  updateWaveTestCountdown(sym);
+}
+function applyWaveTest(sym){
+  // WEB23: sync the toggle/box/chips to state — renders only,
+  // never fetches (fetching is setWaveTest / setWaveTestHorizon /
+  // checkWaveTest's job, on their named triggers only).
+  renderWaveTest(sym);
+}
+async function fetchWaveTest(sym){
+  const cs = coinState(sym);
+  if (!cs.waveTestOn || cs.waveTestBusy) return null;
+  cs.waveTestBusy = true;
+  const horizon = cs.waveTestHorizon;
+  try {
+    const j = await fetchJSON(AUTH + "/api/perp/wave-test?coin=" + encodeURIComponent(sym) + "&horizon=" + horizon);
+    if (j && j.ok && isFinite(+j.est_value) && +j.close_at > 0){
+      // WEB23: store the row VERBATIM — frozen until the next
+      // named replacement trigger; nothing here adjusts it.
+      cs.waveTest = { closeAt: +j.close_at, horizon: +j.horizon_min || horizon, row: j };
+      cs.waveTestUnavailable = false;
+    } else if (!(cs.waveTest && cs.waveTest.horizon === horizon && cs.waveTest.closeAt > Date.now())){
+      // No current-cycle row to keep: muted unavailable note.
+      cs.waveTestUnavailable = true;
+    }
+  } finally { cs.waveTestBusy = false; }
+  renderWaveTest(sym);
+  drawSpark(sym);   // redraws drawForecast (which draws the frozen line) when the forecast section is open
+  return cs.waveTest;
+}
+function setWaveTest(sym, on){
+  const cs = coinState(sym);
+  cs.waveTestOn = !!on;
+  saveWaveTestPref(sym, cs.waveTestOn, cs.waveTestHorizon);
+  applyWaveTest(sym);
+  drawSpark(sym);   // OFF removes the graph line; ON (after fetch) adds it
+  if (cs.waveTestOn) return fetchWaveTest(sym);
+  return null;
+}
+function setWaveTestHorizon(sym, h){
+  const cs = coinState(sym);
+  if (!WAVE_TEST_HZ.includes(+h)) return null;
+  const changed = cs.waveTestHorizon !== +h;
+  cs.waveTestHorizon = +h;
+  saveWaveTestPref(sym, cs.waveTestOn, cs.waveTestHorizon);
+  applyWaveTest(sym);
+  // WEB23: a horizon change mid-cycle fetches THAT horizon's row
+  // (the server freezes one row per horizon) — the stored row for
+  // the old horizon is never re-labelled as the new one.
+  if (cs.waveTestOn && changed) return fetchWaveTest(sym);
+  return null;
+}
+function checkWaveTest(sym){
+  // WEB23: cycle-roll check, piggybacked on the existing 1s
+  // housekeeping tick (the same loop that polls /api/perp/global
+  // on its %900 cadence) — NOT a new poller, and it fetches ONLY
+  // when the stored row is missing, for another horizon, or past
+  // its close_at. Replacement happens for no other reason.
+  const cs = coinState(sym);
+  if (!cs.waveTestOn) return null;
+  updateWaveTestCountdown(sym);
+  if (!cs.waveTest || cs.waveTest.horizon !== cs.waveTestHorizon || cs.waveTest.closeAt <= Date.now())
+    return fetchWaveTest(sym);
+  return null;
 }
 
 /* ---------- WEB13: "Simplified" explainers (Shane 2026-10-28) ----
@@ -1508,6 +1695,10 @@ function addCard(sym){
     '<div class="fcadjrec"></div>' +
     '<div class="fc30stat"></div></div></div>' +
     '<div class="row" style="margin-top:6px"><button class="fc30btn snap" type="button">Forecast section: off</button></div>' +
+    '<div class="wavetest"><div class="row" style="margin-top:6px"><button class="wtbtn snap" type="button" aria-pressed="false">Update test prediction</button></div>' +
+    '<div class="wtbox" hidden><div class="wt-hzrow"><span class="note">Perpetual</span><div class="zoomseg wtseg">' +
+    '<button type="button" data-wth="5">5m</button><button type="button" data-wth="15">15m</button><button type="button" data-wth="30">30m</button><button type="button" data-wth="45">45m</button><button type="button" data-wth="60">60m</button>' +
+    '</div></div><div class="wtcontent"></div><div class="note wt-countdown"></div></div></div>' +
     '<div class="simplrow"><button type="button" class="simplbtn" data-simpl="trend">Simplified</button></div>' +
     '<div class="regime">Loading 6 months of pattern stats…</div>' +
     '<div class="trend"></div>' +
@@ -1593,6 +1784,9 @@ function addCard(sym){
     fc30wrap: el.querySelector(".fc30wrap"), fc30: el.querySelector(".fc30"),
     fc30stat: el.querySelector(".fc30stat"), fc30btn: el.querySelector(".fc30btn"),
     fc30age: el.querySelector(".fc30age"),
+    wtbtn: el.querySelector(".wtbtn"), wtbox: el.querySelector(".wtbox"),
+    wtcontent: el.querySelector(".wtcontent"), wtCountdown: el.querySelector(".wt-countdown"),
+    wtHzBtns: el.querySelectorAll(".wtseg button"),
     fcadjbtns: el.querySelectorAll(".fcadjtog"), fcadjrec: el.querySelector(".fcadjrec"),
     zoombtns: el.querySelectorAll(".zoomseg:not(.fczoomseg) button"),
     fc30zoombtns: el.querySelectorAll(".fczoomseg button"),
@@ -1615,11 +1809,16 @@ function addCard(sym){
     b.addEventListener("click", () => setFCAdjShow(b.dataset.adj, !FC_ADJ_SHOW[b.dataset.adj]));
   });
   cs.els.fc30btn.addEventListener("click", () => setFC30(sym, !cs.fc30on));
+  if (cs.els.wtbtn) cs.els.wtbtn.addEventListener("click", () => setWaveTest(sym, !cs.waveTestOn));
+  if (cs.els.wtHzBtns) cs.els.wtHzBtns.forEach(b =>
+    b.addEventListener("click", () => setWaveTestHorizon(sym, +b.dataset.wth)));
   cs.els.detBtn.addEventListener("click", () => setDetails(sym, !cs.detailsOpen));
   cs.els.posUp.addEventListener("click", () => setCardSide(sym, "up"));
   cs.els.posDn.addEventListener("click", () => setCardSide(sym, "down"));
   applyDetailsHome(sym);
   applyFC30(sym);
+  applyWaveTest(sym);
+  if (cs.waveTestOn) fetchWaveTest(sym);   // WEB23: a persisted ON toggle fetches its frozen row on card build
   cs.els.slider.addEventListener("input", () => {
     let off = parseFloat(cs.els.slider.value);
     if (!isFinite(off) || !cs.price) return;
@@ -2191,6 +2390,25 @@ function drawForecast(sym){
     const yy = y(cs.line);
     ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(W, yy);
     ctx.strokeStyle = "#c9a227"; ctx.setLineDash([6, 4]); ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]);
+  }
+  // WEB23: the test prediction's firm estimate + margin band —
+  // drawn ONLY from cs.waveTest.row stored values (waveTestGeom
+  // reads the frozen row; NO per-tick recomputation, no live
+  // price/diag input). Dashed mint line at est_value across the
+  // visible plot width, translucent band margin_lo..margin_hi,
+  // small "test" label. The frame (lo/hi) is NOT rescaled for
+  // it — an out-of-frame estimate simply clips.
+  const wtGeom = (cs.waveTestOn && cs.waveTest && cs.waveTest.horizon === cs.waveTestHorizon)
+    ? waveTestGeom(cs.waveTest.row) : null;
+  if (wtGeom){
+    const yHi = y(wtGeom.hi), yLo = y(wtGeom.lo), yEst = y(wtGeom.est);
+    ctx.beginPath();
+    ctx.moveTo(0, yHi); ctx.lineTo(W, yHi); ctx.lineTo(W, yLo); ctx.lineTo(0, yLo);
+    ctx.closePath(); ctx.fillStyle = "rgba(46,230,168,0.13)"; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(0, yEst); ctx.lineTo(W, yEst);
+    ctx.strokeStyle = wtGeom.color; ctx.setLineDash([7, 5]); ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
+    ctx.font = "bold 13px system-ui"; ctx.fillStyle = wtGeom.color;
+    ctx.fillText("test", 8, clamp(yEst - 6, 14, H - 20));
   }
   // RIGHT of center: the freshest snapshot's wavy path, feeding in,
   // with a light ±1σ band. dt is measured from the snapshot's own t.
@@ -3734,6 +3952,10 @@ setInterval(() => {
   } else {
     for (const sym of S.selected){ const pill = coinState(sym).els.pill; if (pill) pill.hidden = true; }
   }
+  // WEB23: on this SAME existing 1s tick — the live countdown for
+  // any ON test box, plus the cycle-roll check (fetches only when
+  // the stored row's close_at has passed; see checkWaveTest).
+  for (const sym of S.selected){ const wcs = S.coins[sym]; if (wcs && wcs.waveTestOn) checkWaveTest(sym); }
   if (S.loopN % 60 === 0) S.selected.forEach(loadCoin);
   if (S.loopN % 15 === 0 && S.selected.length) loadSources();
   if (S.loopN % 900 === 0){ loadGlobal(); loadAdvisory(); loadDayForecast(); loadSnipe(); }
