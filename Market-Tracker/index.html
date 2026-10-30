@@ -5233,8 +5233,22 @@ function padNowAdvice(tsym, price, line, rows){
      remaining time, so every figure in the paragraph belongs to
      the line and close it names. (In custom mode the 30m row runs
      against the typed line already — unchanged.) */
+  /* WEB34 (2026-10-30 ETH pass): the WEB32 recompute above never
+     actually landed — probOverAt returns an OBJECT ({p, pRaw, …}),
+     and the recompute branch assigned it whole to headP, so
+     positionAdvice did arithmetic on an object and the panel
+     degraded to "NO EDGE at this line: OVER — / UNDER —" in
+     market mode whenever the typed line differed from the head
+     row's market target (the normal case). The same expression
+     also divided head.remaining by 60, a 60x-too-short horizon
+     (probe, ETH state, remaining 252s, typed +0.05%: the /60
+     value is p=0.081 vs the row-consistent p=0.329). The WEB32
+     test passed vacuously — it compared the advice against
+     pctCap() of the same object, i.e. "—" against "—". Fix:
+     take .p, at the head window's actual remaining time — the
+     same seconds basis every other probOverAt caller uses. */
   const headP = (head && isFinite(head.line) && Math.abs(head.line - line) > 1e-9 && head.remaining > 0)
-    ? probOverAt(tsym, price, line, head.remaining / 60) : head.p;
+    ? probOverAt(tsym, price, line, head.remaining).p : head.p;
   const advice = positionAdvice(side, price, line, headP, effBand(tsym),
     "at the " + (head.h === 60 ? "1 hour" : head.h + " min") + " close", side ? null : "No position picked above.");
   const winNow = price > line ? "up" : price < line ? "down" : null;
