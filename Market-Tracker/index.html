@@ -632,6 +632,27 @@ async function fetchJSON(url){
 }
 function lsGet(k, dflt){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : dflt; } catch (e) { return dflt; } }
 function lsSet(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+/* ---------- WEB26 (Shane 2026-10-30): staged-load scheduler -------
+   The page loads in Shane's priority order: the decision layer
+   first (the hold / sell / switch-side suggestion and the outlook
+   rows for the side the user picked), then graphs, then longer
+   predictions, then fleet extras. whenIdle runs a deferred stage
+   when the browser is idle, with a hard timeout so the content
+   always arrives; sections also pull their own stage on demand if
+   the user opens them first. Guarded for browsers without
+   requestIdleCallback (and inert under the test harness, whose
+   timer stubs never fire either path — tests drive the loaders
+   directly, exactly as before). */
+function whenIdle(fn, timeoutMs){
+  const run = () => { try { fn(); } catch (e) {} };
+  try {
+    if (typeof requestIdleCallback === "function"){
+      requestIdleCallback(run, {timeout: timeoutMs || 2500});
+      return;
+    }
+  } catch (e) {}
+  setTimeout(run, timeoutMs || 2500);
+}
 
 const S = {
   lenMin: lsGet(LS_LEN, 15),
@@ -1228,7 +1249,7 @@ function toggleCoin(sym, on, box){
   document.getElementById("coin-" + sym).classList.toggle("on", on);
   $("#selCount").textContent = S.selected.length + " / 6 selected";
   lsSet(LS_SEL, S.selected);
-  if (on){ addCard(sym); loadCoin(sym); }
+  if (on){ addCard(sym); stageCoinLoad(sym); }
   else { removeCard(sym); }
   syncAllPadSelects();
 }
@@ -2023,13 +2044,16 @@ function applyOpenStrike(sym){
 }
 
 /* ---------- data + features ---------- */
-async function loadCoin(sym){
+/* WEB26: the per-coin load is split along Shane's ladder. The
+   HOURLY candles are decision data (features/sigma, the snipe
+   detector, the line strike) — they load in stage 1. The 15m and
+   1m series are graph data (spark zooms, swing refinement, the
+   forecast feed) — they load in stage 2, once the coin's decision
+   data has landed and the browser is idle. loadCoin keeps its old
+   all-at-once behavior for its remaining caller (the odds board's
+   history load, which only runs while that drawer is open). */
+function applyHourly(sym, h){
   const cs = coinState(sym);
-  const [h, m15, m1] = await Promise.all([
-    fetchJSON(CB + "/products/" + sym + "-USD/candles?granularity=3600"),
-    fetchJSON(CB + "/products/" + sym + "-USD/candles?granularity=900"),
-    fetchJSON(CB + "/products/" + sym + "-USD/candles?granularity=60")
-  ]);
   if (Array.isArray(h) && h.length > 30){
     const rows = h.slice().reverse(); // ascending
     cs.tH = rows[0][0] * 1000;
@@ -2045,15 +2069,24 @@ async function loadCoin(sym){
   } else if (cs.els.regime) {
     cs.els.regime.innerHTML = '<span class="err">Candle feed hiccup — retrying on the next refresh.</span>';
   }
+}
+function applyM15(sym, m15){
+  const cs = coinState(sym);
   if (Array.isArray(m15) && m15.length > 10){
     cs.closes15 = m15.slice().reverse().map(r => r[4]);
     drawSpark(sym);
   }
+}
+function applyM1(sym, m1){
+  const cs = coinState(sym);
   if (Array.isArray(m1) && m1.length > 30){
     const rows = m1.slice().reverse(); // ascending
     cs.t1 = rows[0][0] * 1000;
     cs.closes1 = rows.map(r => r[4]);
   }
+}
+function finishCoinLoad(sym){
+  const cs = coinState(sym);
   // WEB11 (A): line init. Mid-cycle fresh watch -> the strike is
   // the price at the current cycle's opening boundary; otherwise
   // the standing default (last hourly close) until Start re-bases.
@@ -2065,6 +2098,49 @@ async function loadCoin(sym){
   // for this window supersedes the Coinbase-open strike.
   applyMarketStrike(sym);
   computeAnalysis(sym);
+  // WEB26: if the live price already landed, paint the decision
+  // layer (readouts, outlook rows, position advice) now instead
+  // of waiting for the next price tick to get around to it.
+  if (cs.price){ renderReadouts(sym); renderPadCalls(sym); renderCardAdvice(sym); }
+}
+async function loadCoin(sym){
+  const [h, m15, m1] = await Promise.all([
+    fetchJSON(CB + "/products/" + sym + "-USD/candles?granularity=3600"),
+    fetchJSON(CB + "/products/" + sym + "-USD/candles?granularity=900"),
+    fetchJSON(CB + "/products/" + sym + "-USD/candles?granularity=60")
+  ]);
+  applyHourly(sym, h);
+  applyM15(sym, m15);
+  applyM1(sym, m1);
+  finishCoinLoad(sym);
+}
+/* WEB26 stage 1 for one coin: the hourly candles only. */
+async function loadCoinDecision(sym){
+  const h = await fetchJSON(CB + "/products/" + sym + "-USD/candles?granularity=3600");
+  applyHourly(sym, h);
+  finishCoinLoad(sym);
+}
+/* WEB26 stage 2 for one coin: the graph series (15m + 1m). The
+   finish pass re-runs the same line-strike/analysis tail a full
+   loadCoin runs — with the 1m series present, a fresh watch's
+   strike refines to the boundary candle exactly as the old
+   combined load (or its 60 s refresh) would have set it. */
+async function loadCoinCharts(sym){
+  const [m15, m1] = await Promise.all([
+    fetchJSON(CB + "/products/" + sym + "-USD/candles?granularity=900"),
+    fetchJSON(CB + "/products/" + sym + "-USD/candles?granularity=60")
+  ]);
+  applyM15(sym, m15);
+  applyM1(sym, m1);
+  finishCoinLoad(sym);
+}
+/* WEB26: a coin becoming watched loads its decision data now and
+   its graph data on idle — and only while it stays watched. A
+   coin that isn't watched costs the user no per-coin fetches. */
+function stageCoinLoad(sym){
+  loadCoinDecision(sym).then(() => {
+    whenIdle(() => { if (S.selected.indexOf(sym) >= 0) loadCoinCharts(sym); }, 900);
+  });
 }
 function computeFeatures(sym){
   const cs = coinState(sym), c = cs.closesH, n = c.length;
@@ -3444,6 +3520,7 @@ function setFCOpen(open){
   const d = $("#fcDetail"), btn = $("#fcBtn");
   if (btn) btn.textContent = FC_OPEN ? "Full forecast — every coin, every hour ▴" : "Full forecast — every coin, every hour ▸";
   if (FC_OPEN){
+    if (!DAYFC) loadDayForecast();   // WEB26: opened before the idle stage landed — pull it now
     if (d) openCtxPanel(btn, "Day forecast — every coin, every hour", d, $("#forecastCard"), syncFCClosed);
   } else if (d) closeCtxNode(d);
 }
@@ -3479,6 +3556,9 @@ function setSnipeMin(min){
   SNIPE_MIN = !!min;
   lsSet(LS_SNIPE_MIN, SNIPE_MIN);
   applySnipeMin();
+  // WEB26: un-minimizing before the idle stage landed pulls the
+  // spotter now instead of leaving the loading note up.
+  if (!SNIPE_MIN && !SNIPE) loadSnipe();
 }
 applySnipeMin();
 { const mb = $("#snipeMinBtn"); if (mb) mb.addEventListener("click", () => setSnipeMin(!SNIPE_MIN)); }
@@ -4069,9 +4149,23 @@ setInterval(() => {
   // any ON test box, plus the cycle-roll check (fetches only when
   // the stored row's close_at has passed; see checkWaveTest).
   for (const sym of S.selected){ const wcs = S.coins[sym]; if (wcs && wcs.waveTestOn) checkWaveTest(sym); }
-  if (S.loopN % 60 === 0) S.selected.forEach(loadCoin);
+  // WEB26 refresh ladder: decision data (hourly candles) keeps
+  // the 60 s cadence; the graph series refresh on a slower 180 s
+  // pass — except coins whose forecast section is open, which
+  // stay on the 60 s pass because the user is looking at those
+  // graphs. The four server payloads are staggered across the
+  // 15-minute cycle instead of bursting in together.
+  if (S.loopN % 60 === 0){
+    S.selected.forEach(loadCoinDecision);
+    S.selected.forEach(sym => { const cs = S.coins[sym]; if (cs && cs.fc30on) loadCoinCharts(sym); });
+  }
+  if (S.loopN % 180 === 0)
+    S.selected.forEach(sym => { const cs = S.coins[sym]; if (cs && !cs.fc30on) loadCoinCharts(sym); });
   if (S.loopN % 15 === 0 && S.selected.length) loadSources();
-  if (S.loopN % 900 === 0){ loadGlobal(); loadAdvisory(); loadDayForecast(); loadSnipe(); }
+  if (S.loopN % 900 === 0) loadGlobal();
+  if (S.loopN % 900 === 450) loadAdvisory();
+  if (S.loopN % 900 === 600) loadDayForecast();
+  if (S.loopN % 900 === 750) loadSnipe();
 }, 1000);
 /* WEB5: the actual-overlay sweep animation — redraws only the open
    forecast graphs (the frozen forecast itself never changes; just
@@ -4900,6 +4994,20 @@ function initCardPad(sym){
    box sets an exact value. Polls every 20s; the numbers are the
    system's own issued predictions, scored by the server. */
 const ODDS = {coin: "BTC", mode: "off", off: 0, line: null, price: null, closes: {}, lastHz: null, _hist: null};
+/* WEB26: the odds board lives in a drawer — it is not part of
+   the decision layer and nobody is looking at it on load, so it
+   fetches and polls ONLY while its drawer is open (oddsSetLive,
+   driven by openDrawer / closeDrawers below). Before this, the
+   board seeded a price and polled /api/perp/odds every 20 s from
+   page load forever, and could pull a full candle history for
+   its coin even when that coin wasn't watched. */
+let ODDS_LIVE = false;
+function oddsSetLive(on){
+  on = !!on;
+  if (on === ODDS_LIVE) return;
+  ODDS_LIVE = on;
+  if (on){ oddsSeedPrice().then(refreshOdds); }
+}
 function oddsLine(){
   if (ODDS.mode === "abs" && ODDS.line > 0) return ODDS.line;
   if (ODDS.price > 0) return ODDS.price * (1 + ODDS.off / 100);
@@ -4987,8 +5095,9 @@ async function refreshOdds(){
       if (el) el.textContent = "closes " + fmtClock(ODDS.closes[h] - Date.now());
     }
   }, 1000);
-  setInterval(refreshOdds, 20000);
-  oddsSeedPrice().then(refreshOdds);
+  // WEB26: no boot fetch and no background poll — the 20 s poll
+  // runs only while the odds drawer is open (see ODDS_LIVE).
+  setInterval(() => { if (ODDS_LIVE) refreshOdds(); }, 20000);
 })();
 
 /* ---------- WEB5: expanding side menus ----------
@@ -5003,8 +5112,10 @@ function openDrawer(id){
   if (d) d.classList.add("open");
   const b = $("#drawerBackdrop");
   if (b) b.hidden = false;
+  if (id === "oddsDrawer") oddsSetLive(true);   // WEB26: the odds board loads/polls only while open
 }
 function closeDrawers(){
+  oddsSetLive(false);   // WEB26
   document.querySelectorAll(".drawer").forEach(d => d.classList.remove("open"));
   const b = $("#drawerBackdrop");
   if (b) b.hidden = true;
@@ -5050,11 +5161,24 @@ buildCoinGrid();
     if (box){ box.checked = true; toggleCoin(sym, true, box); }
   });
   renderGlobalScore();
+  /* WEB26 (Shane 2026-10-30): staged boot in Shane's priority
+     order. Stage 1 — the decision layer: /api/perp/global (the
+     tuning every call runs on), each watched coin's hourly
+     candles (already fired by the selection restore above, via
+     stageCoinLoad) and an immediate first price tick, so the
+     hold / sell / switch-side suggestion and the Perpetual
+     Outlook rows for the user's picked side paint first instead
+     of racing the whole fleet. Stage 2 — the multi-source view
+     (the coins' graph series ride stageCoinLoad's idle step).
+     Stage 3 — longer predictions: advisory + day forecast.
+     Stage 4 — fleet extras: the snipe spotter (the scoreboard's
+     numbers already rode stage 1). Stages 3–4 also pull on
+     demand if the user opens their section before idle lands. */
   loadGlobal();
-  loadAdvisory();
-  loadDayForecast();
-  loadSnipe();
-  loadSources();
+  priceTick();
+  whenIdle(() => loadSources(), 1200);
+  whenIdle(() => { loadAdvisory(); loadDayForecast(); }, 2500);
+  whenIdle(() => loadSnipe(), 4000);
 })();
 </script>
 </body>
