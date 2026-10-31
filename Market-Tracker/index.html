@@ -4896,7 +4896,14 @@ function renderAdvisory(){
   if (strip){
     let best = null;
     if (ADVISORY && ADVISORY.coins){
-      for (const sym of ORDER){
+      /* WEB38 (Shane 2026-10-30): the best-pick strip chooses
+         among KEPT coins only (the WEB37 PACKED_COINS config).
+         The advisory payload carries the full per-coin map, so
+         the best kept green pick is chosen client-side; when no
+         kept coin is green the strip stays hidden (none state) —
+         a packed coin is never displayed and no pick is ever
+         fabricated. */
+      for (const sym of keptCoins()){
         const a = ADVISORY.coins[sym];
         if (a && a.class === "green" && (!best || (a.rank || 99) < (ADVISORY.coins[best].rank || 99))) best = sym;
       }
@@ -4972,7 +4979,10 @@ function toggleXpand(btn){
 function renderAlerts(){
   const list = $("#alertsList");
   if (list){
-    const alerts = (ADVISORY && ADVISORY.alerts) || [];
+    /* WEB38: packed coins' alerts are not rendered (WEB37
+       PACKED_COINS config); kept entries render in order, and an
+       all-packed feed falls back to the empty state below. */
+    const alerts = ((ADVISORY && ADVISORY.alerts) || []).filter(al => !isPacked(al.coin));
     list.innerHTML = alerts.length ? alerts.map(al => {
       const raw = al.ts;
       const d = new Date(typeof raw === "number" && raw < 1e12 ? raw * 1000 : raw);
@@ -5129,6 +5139,7 @@ function renderMultBoard(){
   const mb = (DAYFC && DAYFC.market_best) || [];
   for (const w of mb){
     if (!w || !isFinite(+w.from_h)) continue;
+    if (isPacked(w.coin)) continue;   // WEB38: forecast-derived entries skip packed coins too (same market_best array the day-forecast board filters)
     const start = nextUtcHourMs(+w.from_h, now);
     if (start - now > 12 * 3600000) continue;
     let mv = "";
@@ -5195,13 +5206,16 @@ function renderDayForecast(){
     wrap.innerHTML = "";
     return;
   }
-  const mb = DAYFC.market_best || [];
+  /* WEB38: the board renders KEPT coins only (WEB37 PACKED_COINS
+     config) — both the market-wide best windows and the per-coin
+     rows; the payload stays all-coin server-side. */
+  const mb = (DAYFC.market_best || []).filter(w => !isPacked(w.coin));
   best.innerHTML = mb.length
     ? '<div class="lbl" style="margin-top:2px">Best windows market-wide</div>' + mb.map(w =>
         '<div class="fcbest"><b>' + escHtml(w.coin || "") + "</b> · " + winLabel(w.from_h, w.to_h) +
         '<div class="note">' + escHtml(w.why || "") + "</div></div>").join("")
     : '<div class="note">No standout windows in the hourly history the server tracks.</div>';
-  wrap.innerHTML = ORDER.filter(s => DAYFC.coins[s]).map(sym => {
+  wrap.innerHTML = keptCoins().filter(s => DAYFC.coins[s]).map(sym => {
     const c = DAYFC.coins[sym];
     const cells = (c.hours || []).map(hr => {
       const sc = clamp(+hr.score || 0, 0, 1);
