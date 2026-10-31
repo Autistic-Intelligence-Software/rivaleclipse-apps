@@ -178,9 +178,11 @@ canvas.spark{width:100%;height:150px;display:block}
 .fcrec{color:var(--mut);font-size:12px;margin-top:3px;line-height:1.55}
 .flashmsg{font-size:13px;font-weight:700;margin-top:7px;min-height:16px}
 .flashmsg.right{color:var(--up)} .flashmsg.wrong{color:var(--down)}
-#scoreTable{width:100%;border-collapse:collapse;font-size:14px}
-#scoreTable th,#scoreTable td{border-bottom:1px solid var(--line);padding:7px 6px;text-align:left}
-#scoreTable th{color:var(--mut);font-weight:600;font-size:12px;letter-spacing:.1em;text-transform:uppercase}
+#scoreTable,#scorePackedTable{width:100%;border-collapse:collapse;font-size:14px}
+#scoreTable th,#scoreTable td,#scorePackedTable th,#scorePackedTable td{border-bottom:1px solid var(--line);padding:7px 6px;text-align:left}
+#scoreTable th,#scorePackedTable th{color:var(--mut);font-weight:600;font-size:12px;letter-spacing:.1em;text-transform:uppercase}
+#scorePackedWrap{margin-top:10px}
+#scorePackedWrap summary{cursor:pointer;color:var(--mut);font-weight:600;font-size:12px;letter-spacing:.1em;text-transform:uppercase;padding:4px 0}
 footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-size:13px;line-height:1.6}
 .err{color:var(--down);font-size:12px}
 /* ---------- WEB5 ---------- */
@@ -567,6 +569,13 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
         <thead><tr><th>Coin</th><th>Scored</th><th>Calls</th><th>Hit rate</th><th>Forecast <span class="fchit">HIT</span></th><th>Forecast <span class="fcmiss">MISS</span></th></tr></thead>
         <tbody id="scoreBody"><tr><td colspan="6" class="note">loading system record…</td></tr></tbody>
       </table>
+      <details id="scorePackedWrap" hidden>
+        <summary>Packed away (no live market)</summary>
+        <table id="scorePackedTable">
+          <thead><tr><th>Coin</th><th>Scored</th><th>Calls</th><th>Hit rate</th><th>Forecast <span class="fchit">HIT</span></th><th>Forecast <span class="fcmiss">MISS</span></th></tr></thead>
+          <tbody id="scorePackedBody"></tbody>
+        </table>
+      </details>
       </div>
   </section>
   <section class="card" id="forecastCard">
@@ -603,6 +612,21 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
 const MODELS = {"ADA":{"hod":[0.444,0.528,0.469,0.441,0.486,0.48,0.503,0.483,0.467,0.461,0.506,0.506,0.467,0.528,0.478,0.45,0.489,0.456,0.483,0.461,0.467,0.489,0.483,0.567],"vol":0.005383,"slope":0.000381,"pos":0.4306,"buckets":{"down_t0":0.4921,"down_t1":0.4769,"down_t2":0.5011,"up_t0":0.4176,"up_t1":0.4843,"up_t2":0.4824},"bt":0.5458,"btN":240,"sn4":{"hit":0.0909,"base":0.1441,"lift":0.631,"n":11}},"ATOM":{"hod":[0.472,0.483,0.453,0.492,0.469,0.475,0.486,0.45,0.444,0.422,0.556,0.467,0.478,0.489,0.494,0.456,0.478,0.467,0.428,0.528,0.422,0.433,0.55,0.467],"vol":0.004703,"slope":-0.000894,"pos":0.382,"buckets":{"down_t0":0.4612,"down_t1":0.4752,"down_t2":0.5057,"up_t0":0.4152,"up_t1":0.4924,"up_t2":0.4727},"bt":0.5083,"btN":240,"sn4":{"hit":0.0,"base":0.1602,"lift":0.0,"n":9}},"AVAX":{"hod":[0.478,0.467,0.419,0.492,0.52,0.447,0.458,0.422,0.494,0.472,0.489,0.467,0.428,0.478,0.517,0.444,0.467,0.467,0.461,0.494,0.439,0.406,0.533,0.461],"vol":0.00541,"slope":0.000914,"pos":0.5035,"buckets":{"down_t0":0.4921,"down_t1":0.5076,"down_t2":0.479,"up_t0":0.4286,"up_t1":0.4489,"up_t2":0.4455},"bt":0.4958,"btN":240,"sn4":{"hit":0.2727,"base":0.1266,"lift":2.154,"n":11}},"BCH":{"hod":[0.517,0.517,0.497,0.508,0.559,0.52,0.503,0.478,0.489,0.467,0.517,0.5,0.456,0.506,0.5,0.544,0.461,0.511,0.533,0.583,0.467,0.511,0.567,0.506],"vol":0.00525,"slope":-0.001109,"pos":0.3246,"buckets":{"down_t0":0.5098,"down_t1":0.5275,"down_t2":0.5377,"up_t0":0.4561,"up_t1":0.4854,"up_t2":0.5068},"bt":0.5,"btN":240,"sn4":{"hit":0.2727,"base":0.1266,"lift":2.154,"n":11}},"BTC":{"hod":[0.472,0.439,0.503,0.508,0.553,0.508,0.469,0.517,0.456,0.533,0.567,0.461,0.456,0.556,0.517,0.472,0.511,0.461,0.578,0.5,0.478,0.456,0.539,0.517],"vol":0.003131,"slope":0.000963,"pos":0.7558,"buckets":{"down_t0":0.514,"down_t1":0.4964,"down_t2":0.5212,"up_t0":0.5064,"up_t1":0.4715,"up_t2":0.4891},"bt":0.5042,"btN":240,"sn4":{"hit":0.2308,"base":0.1189,"lift":1.94,"n":13}},"DOGE":{"hod":[0.45,0.478,0.458,0.486,0.559,0.475,0.458,0.506,0.439,0.539,0.583,0.517,0.472,0.561,0.483,0.522,0.478,0.467,0.511,0.544,0.433,0.433,0.539,0.533],"vol":0.004305,"slope":-0.000973,"pos":0.1746,"buckets":{"down_t0":0.5442,"down_t1":0.4915,"down_t2":0.5088,"up_t0":0.4587,"up_t1":0.47,"up_t2":0.5065},"bt":0.4625,"btN":240,"sn4":{"hit":0.1667,"base":0.1453,"lift":1.147,"n":6}},"DOT":{"hod":[0.411,0.483,0.48,0.441,0.497,0.492,0.447,0.472,0.428,0.472,0.5,0.506,0.433,0.456,0.578,0.472,0.478,0.456,0.478,0.517,0.478,0.367,0.5,0.511],"vol":0.006082,"slope":-0.00033,"pos":0.3748,"buckets":{"down_t0":0.4773,"down_t1":0.5025,"down_t2":0.5,"up_t0":0.4439,"up_t1":0.4526,"up_t2":0.4559},"bt":0.5125,"btN":240,"sn4":{"hit":0.1111,"base":0.1299,"lift":0.856,"n":9}},"ETC":{"hod":[0.461,0.489,0.475,0.441,0.48,0.453,0.41,0.45,0.428,0.406,0.48,0.45,0.394,0.456,0.544,0.478,0.478,0.411,0.422,0.483,0.422,0.389,0.533,0.472],"vol":0.004447,"slope":-0.000138,"pos":0.3614,"buckets":{"down_t0":0.4461,"down_t1":0.4657,"down_t2":0.5288,"up_t0":0.3976,"up_t1":0.4094,"up_t2":0.4585},"bt":0.4875,"btN":240,"sn4":{"hit":0.35,"base":0.1227,"lift":2.852,"n":20}},"ETH":{"hod":[0.461,0.478,0.48,0.492,0.553,0.52,0.475,0.506,0.478,0.522,0.522,0.489,0.422,0.544,0.544,0.5,0.544,0.5,0.539,0.483,0.467,0.444,0.561,0.55],"vol":0.003925,"slope":0.001825,"pos":0.616,"buckets":{"down_t0":0.5281,"down_t1":0.4994,"down_t2":0.5307,"up_t0":0.4785,"up_t1":0.4772,"up_t2":0.5057},"bt":0.4833,"btN":240,"sn4":{"hit":0.125,"base":0.1466,"lift":0.853,"n":8}},"FIL":{"hod":[0.444,0.494,0.492,0.492,0.469,0.497,0.447,0.422,0.494,0.439,0.456,0.456,0.461,0.5,0.506,0.522,0.456,0.411,0.428,0.561,0.394,0.372,0.533,0.489],"vol":0.00677,"slope":0.000357,"pos":0.3976,"buckets":{"down_t0":0.4503,"down_t1":0.5061,"down_t2":0.5032,"up_t0":0.4363,"up_t1":0.4619,"up_t2":0.4412},"bt":0.4792,"btN":240,"sn4":{"hit":0.1,"base":0.1478,"lift":0.676,"n":10}},"HBAR":{"hod":[0.467,0.511,0.453,0.48,0.464,0.531,0.497,0.489,0.428,0.439,0.544,0.533,0.439,0.5,0.467,0.433,0.467,0.439,0.528,0.544,0.461,0.45,0.5,0.494],"vol":0.004261,"slope":-4e-05,"pos":0.1938,"buckets":{"down_t0":0.4885,"down_t1":0.4898,"down_t2":0.493,"up_t0":0.4463,"up_t1":0.4781,"up_t2":0.4791},"bt":0.4375,"btN":240,"sn4":{"hit":0.2857,"base":0.133,"lift":2.147,"n":7}},"LINK":{"hod":[0.472,0.483,0.441,0.497,0.581,0.458,0.497,0.5,0.522,0.433,0.533,0.522,0.456,0.517,0.511,0.494,0.511,0.45,0.556,0.5,0.439,0.433,0.556,0.511],"vol":0.005127,"slope":0.002677,"pos":0.5039,"buckets":{"down_t0":0.5207,"down_t1":0.5037,"down_t2":0.5,"up_t0":0.476,"up_t1":0.4734,"up_t2":0.4975},"bt":0.5083,"btN":240,"sn4":{"hit":0.3333,"base":0.1579,"lift":2.111,"n":12}},"LTC":{"hod":[0.472,0.517,0.486,0.447,0.547,0.553,0.464,0.528,0.428,0.406,0.517,0.567,0.483,0.489,0.539,0.522,0.494,0.489,0.561,0.55,0.517,0.478,0.544,0.533],"vol":0.00472,"slope":0.001285,"pos":0.485,"buckets":{"down_t0":0.5217,"down_t1":0.5033,"down_t2":0.512,"up_t0":0.5087,"up_t1":0.5031,"up_t2":0.4909},"bt":0.4875,"btN":240,"sn4":{"hit":0.1,"base":0.1652,"lift":0.605,"n":10}},"NEAR":{"hod":[0.456,0.528,0.497,0.503,0.525,0.503,0.425,0.472,0.461,0.489,0.494,0.5,0.489,0.45,0.511,0.494,0.517,0.483,0.456,0.561,0.45,0.489,0.489,0.572],"vol":0.009307,"slope":0.005776,"pos":0.6957,"buckets":{"down_t0":0.4957,"down_t1":0.4837,"down_t2":0.5395,"up_t0":0.4823,"up_t1":0.4602,"up_t2":0.4955},"bt":0.475,"btN":240,"sn4":{"hit":0.1429,"base":0.1588,"lift":0.9,"n":7}},"PEPE":{"hod":[0.361,0.4,0.447,0.397,0.402,0.33,0.38,0.385,0.372,0.367,0.378,0.433,0.383,0.4,0.422,0.467,0.433,0.383,0.328,0.356,0.339,0.339,0.417,0.45],"vol":0.005579,"slope":0.001355,"pos":0.7368,"buckets":{"down_t0":0.3683,"down_t1":0.4095,"down_t2":0.4098,"up_t0":0.3651,"up_t1":0.3485,"up_t2":0.4129},"bt":0.4833,"btN":240,"sn4":{"hit":0.6667,"base":0.141,"lift":4.727,"n":6}},"SOL":{"hod":[0.489,0.5,0.464,0.486,0.564,0.486,0.486,0.494,0.444,0.478,0.483,0.5,0.494,0.533,0.533,0.533,0.533,0.461,0.522,0.5,0.444,0.467,0.528,0.539],"vol":0.004303,"slope":0.0023,"pos":0.63,"buckets":{"down_t0":0.5238,"down_t1":0.4879,"down_t2":0.5038,"up_t0":0.4587,"up_t1":0.5145,"up_t2":0.4965},"bt":0.4792,"btN":240,"sn4":{"hit":0.1429,"base":0.1504,"lift":0.95,"n":14}},"SUI":{"hod":[0.439,0.489,0.486,0.48,0.52,0.503,0.486,0.472,0.456,0.494,0.522,0.55,0.439,0.5,0.506,0.528,0.489,0.5,0.5,0.539,0.428,0.461,0.55,0.561],"vol":0.005508,"slope":0.000323,"pos":0.3803,"buckets":{"down_t0":0.5561,"down_t1":0.473,"down_t2":0.5148,"up_t0":0.4444,"up_t1":0.4628,"up_t2":0.4988},"bt":0.5208,"btN":240,"sn4":{"hit":0.4,"base":0.1478,"lift":2.706,"n":10}},"UNI":{"hod":[0.461,0.522,0.447,0.525,0.553,0.492,0.419,0.528,0.494,0.467,0.5,0.528,0.467,0.472,0.561,0.478,0.483,0.428,0.533,0.55,0.444,0.422,0.556,0.567],"vol":0.00678,"slope":0.006519,"pos":0.5911,"buckets":{"down_t0":0.5191,"down_t1":0.4782,"down_t2":0.5315,"up_t0":0.4846,"up_t1":0.4576,"up_t2":0.4964},"bt":0.525,"btN":240,"sn4":{"hit":0.2667,"base":0.1467,"lift":1.818,"n":15}},"XLM":{"hod":[0.478,0.478,0.425,0.453,0.52,0.469,0.464,0.494,0.411,0.506,0.589,0.483,0.489,0.456,0.5,0.533,0.522,0.411,0.511,0.5,0.489,0.433,0.5,0.511],"vol":0.004153,"slope":0.000587,"pos":0.2097,"buckets":{"down_t0":0.4939,"down_t1":0.4771,"down_t2":0.4791,"up_t0":0.4697,"up_t1":0.495,"up_t2":0.4901},"bt":0.5458,"btN":240,"sn4":{"hit":0.2857,"base":0.1372,"lift":2.083,"n":14}},"XRP":{"hod":[0.489,0.494,0.497,0.508,0.536,0.536,0.475,0.506,0.456,0.506,0.456,0.517,0.5,0.556,0.511,0.45,0.533,0.422,0.528,0.489,0.433,0.439,0.494,0.506],"vol":0.005107,"slope":0.000593,"pos":0.5334,"buckets":{"down_t0":0.5087,"down_t1":0.4901,"down_t2":0.5118,"up_t0":0.4369,"up_t1":0.501,"up_t2":0.4895},"bt":0.5083,"btN":240,"sn4":{"hit":0.2308,"base":0.1674,"lift":1.379,"n":13}}};
 const SNIPE_PARAMS = {"squeeze_window_bars":6,"squeeze_pct_max":0.2,"pressure_min_z":1.0,"shock_mult":2.5,"vol_z_min":1.5,"move_multiple":1.5,"adverse_multiple":0.75};
 const ORDER = ["BTC","ETH","SOL","XRP","DOGE","ADA","LINK","AVAX","DOT","LTC","BCH","NEAR","UNI","ATOM","XLM","ETC","FIL","HBAR","SUI","PEPE"];
+/* WEB37 (Shane 2026-10-30): only coins with short-window up/down
+   contracts actually and consistently purchasable stay on the
+   tracker — BTC/ETH/SOL/XRP/DOGE (Polymarket 5m/15m/60m + Kalshi
+   15m) and NEAR (Kalshi 15m), verified against the live venue
+   boards. The other 14 are PACKED AWAY in the single list below:
+   they leave every selection surface (coin picker, odds board,
+   pad targets), a stored watchlist renders no card for them, the
+   snipe surfaces skip them, and their scoreboard rows move under
+   a collapsed "Packed away" group. Server-side generation, the
+   stored record, and the stored watchlist itself are untouched —
+   persistSel() keeps packed picks inside LS_SEL, so emptying
+   this list restores the packed cards exactly. */
+const PACKED_COINS = ["ADA","LINK","AVAX","DOT","LTC","BCH","UNI","ATOM","XLM","ETC","FIL","HBAR","SUI","PEPE"];
+function isPacked(sym){ return PACKED_COINS.indexOf(sym) >= 0; }
+function keptCoins(){ return ORDER.filter(s => !isPacked(s)); }
 const CB = "https://api.exchange.coinbase.com";
 /* PAYWALL (Shane 2026-10-28): the tracker is members-only. All perp
    API calls go through the same-origin paywall proxy at
@@ -1608,7 +1632,7 @@ const CTX_TEXT = {
 /* ---------- setup UI ---------- */
 function buildCoinGrid(){
   const grid = $("#coinGrid");
-  ORDER.forEach(sym => {
+  keptCoins().forEach(sym => {
     const lab = document.createElement("label");
     lab.className = "coin"; lab.id = "coin-" + sym;
     lab.innerHTML = '<input type="checkbox" value="' + sym + '"><span>' + sym + "</span>";
@@ -1616,7 +1640,21 @@ function buildCoinGrid(){
     grid.appendChild(lab);
   });
 }
+/* WEB37: the packed shelf of the stored watchlist. SEL_ORDER is
+   the watchlist exactly as stored at boot; SEL_SHELF is its
+   packed picks. persistSel() writes the selection back WITHOUT
+   dropping shelved picks — the stored list keeps the user's
+   packed coins in their original positions, so a config flip
+   (emptying PACKED_COINS) restores their cards exactly. */
+let SEL_ORDER = [], SEL_SHELF = [];
+function persistSel(){
+  const keep = new Set(S.selected.concat(SEL_SHELF));
+  const out = SEL_ORDER.filter(s => keep.has(s));
+  for (const s of S.selected) if (out.indexOf(s) < 0) out.push(s);
+  lsSet(LS_SEL, out);
+}
 function toggleCoin(sym, on, box){
+  if (isPacked(sym)) return;   // WEB37: packed coins are not selectable
   const idx = S.selected.indexOf(sym);
   if (on && idx < 0){
     if (S.selected.length >= 6){
@@ -1629,7 +1667,7 @@ function toggleCoin(sym, on, box){
   if (!on && idx >= 0) S.selected.splice(idx, 1);
   document.getElementById("coin-" + sym).classList.toggle("on", on);
   $("#selCount").textContent = S.selected.length + " / 6 selected";
-  lsSet(LS_SEL, S.selected);
+  persistSel();
   if (on){ addCard(sym); stageCoinLoad(sym); whenIdle(() => loadRecentForm(sym), 600); }
   else { removeCard(sym); }
   syncAllPadSelects();
@@ -4584,10 +4622,11 @@ function renderGlobalScore(){
     sum.textContent = "loading system record…";
     const pk0 = $("#scorePeek"); if (pk0) pk0.textContent = sum.textContent;
     tb.innerHTML = '<tr><td colspan="6" class="note">loading system record…</td></tr>';
+    const pw0 = $("#scorePackedWrap"); if (pw0) pw0.hidden = true;
     return;
   }
   let scored = 0, calls = 0, wHits = 0, fcC = 0, fcI = 0;
-  const rows = [];
+  const rows = [], packedRows = [];
   for (const sym of ORDER){
     const g = GLOBAL_POOL[sym];
     if (!g) continue;
@@ -4597,7 +4636,10 @@ function renderGlobalScore(){
     const fc = g.fc || {}, c = +fc.correct || 0, ic = +fc.incorrect || 0;
     fcC += c; fcI += ic;
     if (sc || ca || c || ic){
-      rows.push("<tr><td>" + sym + "</td><td>" + sc + "</td><td>" + ca + "</td><td>" +
+      // WEB37: the audited totals above still sum over EVERY coin;
+      // only the row's home changes — kept coins in the main list,
+      // packed coins shelved in the collapsed group.
+      (isPacked(sym) ? packedRows : rows).push("<tr><td>" + sym + "</td><td>" + sc + "</td><td>" + ca + "</td><td>" +
         (g.hitRate != null && ca ? (g.hitRate * 100).toFixed(1) + "%" : "—") +
         "</td><td>" + c + "</td><td>" + ic + "</td></tr>");
     }
@@ -4612,7 +4654,10 @@ function renderGlobalScore(){
     " — Forecast checks: " + fcC + " correct · " + fcI + " incorrect · accuracy " + fcAcc;
   const pk = $("#scorePeek"); if (pk) pk.textContent = sum.textContent;
   tb.innerHTML = rows.length ? rows.join("") :
-    '<tr><td colspan="6" class="note">No scored predictions yet.</td></tr>';
+    '<tr><td colspan="6" class="note">' + (packedRows.length ? "No scored predictions on the live-market coins yet." : "No scored predictions yet.") + '</td></tr>';
+  const pb = $("#scorePackedBody"), pw = $("#scorePackedWrap");
+  if (pb) pb.innerHTML = packedRows.join("");
+  if (pw) pw.hidden = packedRows.length === 0;
 }
 $("#startBtn").addEventListener("click", startCycle);
 $("#stopBtn").addEventListener("click", stopCycle);
@@ -5029,7 +5074,11 @@ function renderSnipe(){
   renderSnipeBadges();
   const body = $("#snipeBody");
   if (!body || !SNIPE) return;
-  const spots = SNIPE.spots || [], recent = SNIPE.recent || [];
+  // WEB37: packed coins render nothing on the snipe surfaces —
+  // their spots and closed rows are skipped; the aggregate
+  // spotter record line below is the audited record and stays.
+  const spots = (SNIPE.spots || []).filter(s => !isPacked(s && s.coin)),
+        recent = (SNIPE.recent || []).filter(r => !isPacked(r && r.coin));
   let html = spots.length
     ? spots.map(snipeSpotRow).join("")
     : '<div class="note">No snipe setups live right now — this spotter only fires when a side is priced at 28% or lower with a real path to close in profit, so quiet is normal.</div>';
@@ -5069,6 +5118,7 @@ function renderMultBoard(){
   const cands = [];
   const spots = (SNIPE && SNIPE.spots) || [];
   for (const sp of spots){
+    if (isPacked(sp.coin)) continue;   // WEB37: snipe-derived entries skip packed coins
     const p = +sp.prob_now;
     if (!(p > 0) || p >= 0.5 || !(sp.close_at > now)) continue;
     const mult = Math.round(1 / p);
@@ -6202,7 +6252,7 @@ async function refreshOdds(){
 }
 (function oddsInit(){
   const sel = $("#oddsCoin");
-  sel.innerHTML = ORDER.map(s => '<option value="' + s + '"' + (s === "BTC" ? " selected" : "") + ">" + s + "</option>").join("");
+  sel.innerHTML = keptCoins().map(s => '<option value="' + s + '"' + (s === "BTC" ? " selected" : "") + ">" + s + "</option>").join("");
   sel.addEventListener("change", async () => {
     ODDS.coin = sel.value; ODDS.price = null;
     await oddsSeedPrice(); refreshOdds();
@@ -6280,16 +6330,29 @@ $("#pipBtn").addEventListener("click", async () => {
 });
 
 /* ---------- init ---------- */
-buildCoinGrid();
-(function init(){
-  const len = S.lenMin;
-  document.querySelectorAll("#lenChips .chip").forEach(c => c.classList.toggle("on", +c.dataset.min === len));
+/* WEB37: the watchlist restore, factored out of init so the
+   shelf behavior is testable. Packed picks stay in the stored
+   list (SEL_SHELF) but render no card; kept picks restore in
+   stored order up to the 6-card cap — the packed filter runs
+   BEFORE the cap, so shelved coins never eat a kept coin's
+   slot. The stored list itself is never rewritten by loading:
+   persistSel() merges the live selection back around the
+   shelf on later toggles. */
+function restoreSelection(){
   const saved = lsGet(LS_SEL, []);
-  saved.slice(0, 6).forEach(sym => {
+  SEL_ORDER = Array.isArray(saved) ? saved.slice() : [];
+  SEL_SHELF = SEL_ORDER.filter(isPacked);
+  SEL_ORDER.filter(sym => !isPacked(sym)).slice(0, 6).forEach(sym => {
     if (!MODELS[sym]) return;
     const box = document.querySelector('#coinGrid input[value="' + sym + '"]');
     if (box){ box.checked = true; toggleCoin(sym, true, box); }
   });
+}
+buildCoinGrid();
+(function init(){
+  const len = S.lenMin;
+  document.querySelectorAll("#lenChips .chip").forEach(c => c.classList.toggle("on", +c.dataset.min === len));
+  restoreSelection();
   renderGlobalScore();
   /* WEB26 (Shane 2026-10-30): staged boot in Shane's priority
      order. Stage 1 — the decision layer: /api/perp/global (the
