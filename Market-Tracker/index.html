@@ -2271,7 +2271,16 @@ function addCard(sym){
     wtcontent: el.querySelector(".wtcontent"), wtCountdown: el.querySelector(".wt-countdown"),
     wtHzBtns: el.querySelectorAll(".wtseg button"),
     fcadjbtns: el.querySelectorAll(".fcadjtog"), fcadjrec: el.querySelector(".fcadjrec"),
-    zoombtns: el.querySelectorAll(".zoomseg:not(.fczoomseg) button"),
+    /* WEB36: the main chart's range buttons are collected by their
+       data-zoom attribute ONLY. The old class-based collection
+       (every .zoomseg group's buttons except the forecast-check
+       group's) also swept in the Estimate group's data-estl
+       buttons and the wave-test group's data-wth buttons — all
+       four groups share the .zoomseg style — so those buttons
+       carried the main chart's click handler with
+       dataset.zoom === undefined: one selection per panel, and
+       every click redrew both charts. */
+    zoombtns: el.querySelectorAll("button[data-zoom]"),
     fc30zoombtns: el.querySelectorAll(".fczoomseg button"),
     estlbtns: el.querySelectorAll(".estlseg button")
   };
