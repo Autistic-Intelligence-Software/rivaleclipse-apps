@@ -133,6 +133,25 @@ canvas.spark{width:100%;height:150px;display:block}
 .ocard .opct{font-size:13.5px;color:var(--txt);margin-top:2px;font-variant-numeric:tabular-nums}
 .ocard .ostat{font-size:11.5px;color:var(--mut);margin-top:6px;line-height:1.5}
 .weak{color:var(--edge);font-weight:700}
+/* WEB49: Odds Board additions — 4h best-accuracy line, target-line
+   strips + manual-target numpad, most-likely picks, account box. */
+.oddsbest4h{margin-top:10px;padding:8px 10px;border:1px solid rgba(201,162,39,.55);border-radius:10px;background:rgba(201,162,39,.10);color:var(--gold2);font-size:13px;line-height:1.5}
+.oddsbest4h.none{border-color:var(--line);background:#0c0c18;color:var(--mut)}
+.oddstgt{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.otgtdisp{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:6px;min-height:28px}
+.onumpad{display:grid;grid-template-columns:repeat(3,64px);gap:6px;margin-top:6px}
+.onumpad button{background:#14141f;border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:10px 0;font-size:16px;font-weight:700;cursor:pointer}
+.onumpad button:active{border-color:var(--gold)}
+.tchip{background:#0c0c18;border:1px solid var(--line);color:var(--mut);border-radius:999px;padding:3px 9px;font-size:12px;font-weight:700;cursor:pointer;margin-right:4px}
+.tchip.on{color:#0a0a12;background:var(--gold);border-color:var(--gold)}
+.ocard .otgt{font-size:11.5px;color:var(--mut);margin-top:8px;border-top:1px dashed var(--line);padding-top:7px;line-height:1.6}
+.ocard .opick{font-size:12px;color:var(--gold2);margin-top:7px;line-height:1.55}
+.otgtok{color:var(--up);font-weight:700}
+.otgtbad{color:var(--edge);font-weight:700}
+.tgtuse{background:none;border:1px solid var(--gold);color:var(--gold2);border-radius:7px;padding:1px 7px;font-size:11px;font-weight:700;cursor:pointer;margin-left:4px}
+.oddsacct{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
+.abtn{display:inline-block;border:1px solid var(--gold);color:var(--gold2);border-radius:9px;padding:7px 12px;font-size:13px;font-weight:700;text-decoration:none}
+.abtn:hover{background:rgba(201,162,39,.12)}
 @media (max-width:460px){.charts{grid-template-columns:1fr}}
 .regime{color:var(--mut);font-size:12px;line-height:1.5;margin-top:4px}
 .snipe{
@@ -591,6 +610,7 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
   <section class="card" id="oddsCard">
     <h2>Odds — the system's own calls</h2>
     <p class="note" style="margin-top:0">Pick any crypto and a value. The system — the same global brain the watch panel runs on — returns its OVER / UNDER odds for the close at each horizon, computed server-side. It scores only its own predictions: every card shows that horizon's real global record, and a horizon running at coin-flip gets flagged weak instead of hiding behind the average.</p>
+    <div id="oddsBest4h" class="oddsbest4h none">★ Best accuracy — past 4 hours: loading the graded record…</div>
     <div class="row" style="margin-top:10px">
       <label class="note" for="oddsCoin">Crypto</label>
       <select id="oddsCoin"></select>
@@ -603,9 +623,38 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
       <input type="range" id="oddsSlider" min="-10" max="10" step="0.1" value="0">
       <div class="stops"><span>-10%</span><span>-5%</span><span><b>0%</b></span><span>+5%</span><span>+10%</span></div>
     </div>
+    <div class="oddstgt">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:8px">
+        <span style="font-weight:700">Target lines</span>
+        <button type="button" class="ctxbtn" id="oddsRecheck">↻ Re-check target lines</button>
+      </div>
+      <div class="note" id="oddsTargetRes" style="margin-top:6px">Each horizon card below shows the mimicked market's target line for the picked crypto. Re-check runs the same finality rule as the coin pads: a target counts only once the market's posted value has stopped moving.</div>
+      <div style="margin-top:10px">
+        <div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">
+          <span class="note">Manual target — <b id="oddsTgtCoin">BTC</b></span>
+          <span id="oddsTgtHz"></span>
+        </div>
+        <div class="otgtdisp" id="oddsTgtDisp">—</div>
+        <div class="onumpad" id="oddsNumpad"></div>
+        <div class="row" style="margin-top:8px;gap:8px;align-items:center">
+          <button type="button" class="ctxbtn" id="oddsTgtApply">Use manual target as the line</button>
+          <button type="button" class="ctxbtn" id="oddsTgtClear">Clear</button>
+        </div>
+        <div class="note" id="oddsTgtNote" style="margin-top:4px"></div>
+      </div>
+    </div>
     <div id="oddsGrid"></div>
     <div class="note" id="oddsMeta" style="margin-top:10px"></div>
     <div class="note" id="oddsSnipe"></div>
+    <div class="oddsacct">
+      <h3 style="margin:0 0 6px;font-size:15px">Your account</h3>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <a class="abtn" href="https://auth.rivaleclipse.dev/acct/dashboard">Account dashboard</a>
+        <a class="abtn" href="/Market-Tracker/acct/">Account info</a>
+        <a class="abtn" href="/Market-Tracker/acct/sign-in">Log in</a>
+      </div>
+      <p class="note" style="margin:6px 0 0">Your Perpetual Helper account — access status, plans, promo &amp; referral codes, and sign-in.</p>
+    </div>
   </section>
 </aside>
 <main>
@@ -964,6 +1013,7 @@ function coinState(sym){
     padCallsBusy: false,       // WEB28: one manual outlook refresh in flight per card
     form: null,                // WEB29: recent-form strip data {h: [{close_at, dir, call, hit}]} from GET /api/perp/recent-calls — SETTLED canonical history only, display only; null until the first payload lands, and the strip renders nothing while null/empty
     records: null,             // WEB47: per-horizon graded records {h: {calls, hits, hitRate, pm}} from the same recent-calls payload (perp_horizon_stats counters) — the BEST OPTION highlight's record source; null until the first payload lands (or forever on an older server), and the highlight stays silent while null
+    winRec: null,              // WEB49: windowed graded records {h: {last50, h4}} from the same payload's additive `windows` sibling — the Odds Board's past-4-hours crown and per-horizon most-likely picks read it; null until the first payload lands (or forever on an older server)
     formPm: null,              // WEB31: in Polymarket mode, per-window {open, close} from Polymarket's own posted prices, keyed h:startMs — the strip re-grades its markers on the market's values (see loadFormPm); completed windows are immutable, so entries are cached for the session
     formPmBusy: false,         // WEB31: one Polymarket strip pass in flight per card
     waveTest: null,            // WEB23: FROZEN server row {closeAt, horizon, row} — replaced only on toggle-on / horizon change / cycle roll (see fetchWaveTest)
@@ -4580,6 +4630,12 @@ async function loadRecentForm(only){
        OPTION highlight's record source. Absent on an older server:
        cs.records stays null and the highlight stays silent. */
     cs.records = (j.records && j.records[sym]) || null;
+    /* WEB49: the same response also carries the windowed records
+       (additive `windows` sibling: last-50 + trailing-4h per
+       horizon) — the Odds Board crown and picks read them. */
+    cs.winRec = (j.windows && j.windows[sym]) || null;
+    if (typeof renderOddsBest4h === "function") renderOddsBest4h();
+    if (typeof renderOddsPicks === "function") renderOddsPicks();
     renderBestOpt(sym);
     if (cs.padNow) renderPadNow(sym);
     renderPadCalls(sym);
@@ -6840,7 +6896,8 @@ function initCardPad(sym){
    the % slider sets an offset that rides the live price; the number
    box sets an exact value. Polls every 20s; the numbers are the
    system's own issued predictions, scored by the server. */
-const ODDS = {coin: "BTC", mode: "off", off: 0, line: null, price: null, closes: {}, lastHz: null, _hist: null};
+const ODDS = {coin: "BTC", mode: "off", off: 0, line: null, price: null, closes: {}, lastHz: null, _hist: null,
+  tgtH: 15, tgtText: "", tgt: {}};   // WEB49: manual target entry — the horizon being typed for, the in-progress digits, and the applied manual targets per horizon (device-local working values; they never touch a locked call)
 /* WEB26: the odds board lives in a drawer — it is not part of
    the decision layer and nobody is looking at it on load, so it
    fetches and polls ONLY while its drawer is open (oddsSetLive,
@@ -6853,7 +6910,14 @@ function oddsSetLive(on){
   on = !!on;
   if (on === ODDS_LIVE) return;
   ODDS_LIVE = on;
-  if (on){ oddsSeedPrice().then(refreshOdds); }
+  if (on){
+    oddsSeedPrice().then(refreshOdds);
+    /* WEB49: warm the windowed records (4h crown + picks), the
+       odds coin's market target lines, and the crown render. */
+    loadWinRecAll();
+    refreshMktLines(ODDS.coin);
+    renderOddsBest4h();
+  }
 }
 function oddsLine(){
   if (ODDS.mode === "abs" && ODDS.line > 0) return ODDS.line;
@@ -6897,6 +6961,8 @@ async function refreshOdds(){
       '<div class="ocall ' + cls + '">' + hz.call + (hz.weak ? ' <span class="weak">· weak horizon</span>' : "") + '</div>' +
       '<div class="opct">OVER ' + pct(hz.p_over) + ' · UNDER ' + pct(hz.p_under) + '</div>' +
       '<div class="ostat">Global record: ' + rec + crec + '</div>' +
+      '<div class="otgt">' + targetStripHtml(ODDS.coin, h) + '</div>' +
+      '<div class="opick" data-pick="' + h + '">' + oddsPickHtml(h) + '</div>' +
       '<div class="otrend" data-trendread="' + h + '"></div></div>';
   }).join("");
   // Trend reads for the odds coin: its candle history loads in the
@@ -6922,6 +6988,8 @@ async function refreshOdds(){
   sel.innerHTML = keptCoins().map(s => '<option value="' + s + '"' + (s === "BTC" ? " selected" : "") + ">" + s + "</option>").join("");
   sel.addEventListener("change", async () => {
     ODDS.coin = sel.value; ODDS.price = null;
+    renderOddsTgt();
+    if (ODDS_LIVE) refreshMktLines(ODDS.coin);
     await oddsSeedPrice(); refreshOdds();
   });
   const sl = $("#oddsSlider");
@@ -6945,6 +7013,270 @@ async function refreshOdds(){
   // WEB26: no boot fetch and no background poll — the 20 s poll
   // runs only while the odds drawer is open (see ODDS_LIVE).
   setInterval(() => { if (ODDS_LIVE) refreshOdds(); }, 20000);
+})();
+
+/* ---------- WEB49 (Shane 2026-11-01): Odds Board — target lines,
+   past-4-hours crown, most-likely picks, manual targets ----------
+   Everything here reads state the rest of the page already keeps:
+   the market target lines (cs.mktLines, WEB46/48 finality rules —
+   a strip calls a target CONFIRMED only on a WEB48-confirmed entry
+   for the CURRENT window) and the windowed graded records the
+   server added to recent-calls (`windows`: last-50 + trailing-4h
+   banded-call records, canonical + Polymarket bases, counted
+   exactly as the scorers count). Nothing here writes a prediction,
+   a lock, or a record: manual targets and "Use" buttons only move
+   the board's own working line (ODDS.line), and the picks only
+   READ other coins' locked calls through outlookLockCheck. */
+/* Basis selection for a windowed record — the same preference
+   recordFor applies to the all-time records: Polymarket-graded
+   first while the Polymarket preset is active, else canonical,
+   else Polymarket when it is the only graded basis there is. */
+function winRecordFor(rec){
+  if (!rec) return null;
+  if (S.preset === "polymarket" && rec.pm && rec.pm.calls > 0)
+    return {hitRate: rec.pm.hitRate, n: rec.pm.calls, hits: rec.pm.hits, basis: "Polymarket-graded"};
+  if (rec.calls > 0)
+    return {hitRate: rec.hitRate, n: rec.calls, hits: rec.hits,
+            basis: S.preset === "polymarket" ? "Coinbase-graded" : null};
+  if (rec.pm && rec.pm.calls > 0)
+    return {hitRate: rec.pm.hitRate, n: rec.pm.calls, hits: rec.pm.hits, basis: "Polymarket-graded"};
+  return null;
+}
+/* The past-4-hours crown: best graded accuracy over every kept
+   coin × horizon, on the trailing-4h windowed record. A cell needs
+   BEST_MIN_N graded calls to stand behind the crown (the same
+   floor the BEST OPTION highlight uses) — 2/2 is not a champion. */
+function oddsBest4h(){
+  let best = null;
+  for (const sym of keptCoins()){
+    const cs = S.coins[sym];
+    if (!cs || !cs.winRec) continue;
+    for (const h of [5, 15, 30, 45, 60]){
+      const b = winRecordFor(cs.winRec[h] && cs.winRec[h].h4);
+      if (!b || b.n < BEST_MIN_N) continue;
+      if (!best || b.hitRate > best.b.hitRate + 1e-12 ||
+          (Math.abs(b.hitRate - best.b.hitRate) <= 1e-12 && b.n > best.b.n))
+        best = {sym, h, b};
+    }
+  }
+  return best;
+}
+function renderOddsBest4h(){
+  const el = $("#oddsBest4h");
+  if (!el) return;
+  const best = oddsBest4h();
+  if (!best){
+    el.className = "oddsbest4h none";
+    el.textContent = "★ Best accuracy — past 4 hours: not enough graded calls yet (" +
+      BEST_MIN_N + "+ per coin × horizon needed).";
+    return;
+  }
+  el.className = "oddsbest4h";
+  el.innerHTML = "★ Best accuracy — past 4 hours: <b>" + best.sym + " · " + bestHzLabel(best.h) +
+    "</b> — " + Math.round(best.b.hitRate * 100) + "% (" + best.b.hits + "/" + best.b.n +
+    " graded calls" + (best.b.basis ? " · " + best.b.basis : "") + ")";
+}
+/* The most-likely pick for one horizon: rank the SELECTED coins by
+   their trailing-50 graded-call accuracy at this horizon; the
+   leader's pick is shown with its own record (hits/n — n is the
+   real graded count, under 50 whenever fewer than 50 graded calls
+   exist; nothing is padded up to 50). The leader's CALL is its
+   locked outlook call for the current window when it has one —
+   read through the same outlookLockCheck gate the outlook renders
+   through; without a lock the pick names the leader and says so. */
+function oddsPickFor(h){
+  let best = null;
+  for (const sym of S.selected){
+    const cs = S.coins[sym];
+    if (!cs || !cs.winRec) continue;
+    const b = winRecordFor(cs.winRec[h] && cs.winRec[h].last50);
+    if (!b || b.n < BEST_MIN_N) continue;
+    if (!best || b.hitRate > best.b.hitRate + 1e-12 ||
+        (Math.abs(b.hitRate - best.b.hitRate) <= 1e-12 && b.n > best.b.n))
+      best = {sym, b};
+  }
+  if (!best) return null;
+  const cs = coinState(best.sym);
+  const lock = cs.padLock && cs.padLock[h];
+  const call = (lock && lock.call && outlookLockCheck(best.sym, h, lock, winBoundaryMs(Date.now(), h)))
+    ? lock.call : null;
+  return {sym: best.sym, b: best.b, call};
+}
+function oddsPickHtml(h){
+  if (!S.selected.length) return "";
+  const p = oddsPickFor(h);
+  if (!p) return "★ Most likely: not enough graded calls yet (" + BEST_MIN_N + "+ per selected coin at this horizon).";
+  return "★ Most likely: <b>" + p.sym + (p.call ? " " + p.call : "") + "</b> — " +
+    p.b.hits + "/" + p.b.n + " last " + p.b.n + " (" + Math.round(p.b.hitRate * 100) + "%" +
+    (p.b.basis ? " · " + p.b.basis : "") + ")" +
+    (p.call ? "" : " · no locked call yet this window");
+}
+function renderOddsPicks(){
+  document.querySelectorAll("[data-pick]").forEach(el => {
+    el.innerHTML = oddsPickHtml(+el.getAttribute("data-pick"));
+  });
+}
+/* A horizon card's target strip: the mimicked market's target for
+   the odds coin at this horizon under the WEB48 rules (CONFIRMED
+   only on a finality-confirmed entry for the current window;
+   UNCONFIRMED shows the last read as exactly that; a horizon the
+   market doesn't run says so), plus the user's manual target for
+   the horizon when one is set. "Use" moves the board's working
+   line — never a locked call. */
+function targetStripHtml(coin, h){
+  const parts = [];
+  if (marketActive()){
+    const M = S.preset === "kalshi" ? "Kalshi" : "Polymarket";
+    const runs = S.preset === "kalshi" ? h === 15 : (h === 5 || h === 15 || h === 60);
+    if (!runs) parts.push(M + " runs no " + bestHzLabel(h) + " market — no target line.");
+    else {
+      const e = mktLineFor(coin, h);
+      if (e && e.confirmed)
+        parts.push("Target <b>" + fmtPrice(e.price) + "</b> · " + M +
+          ' <span class="otgtok">CONFIRMED — posted target final</span>' +
+          '<button type="button" class="tgtuse" data-usetgt="' + e.price + '">Use</button>');
+      else if (e)
+        parts.push("Target <b>" + fmtPrice(e.price) + "</b> · " + M +
+          ' <span class="otgtbad">UNCONFIRMED — still settling</span>');
+      else parts.push(M + " target: no read yet — tap Re-check target lines.");
+    }
+  }
+  const manual = ODDS.tgt && ODDS.tgt[h];
+  if (manual > 0)
+    parts.push("Your target <b>" + fmtPrice(manual) + "</b>" +
+      '<button type="button" class="tgtuse" data-usetgt="' + manual + '">Use</button>');
+  return parts.join("<br>");
+}
+/* The Re-check button: the WEB47 pad check's rule, run for the
+   odds coin across every horizon the active market covers — force
+   fresh target reads until each covered horizon's entry is
+   finality-confirmed (WEB48) or the read budget ends, then report
+   each horizon plainly, including the Chainlink-stream cross-check
+   on confirmed Polymarket targets (WEB48: Polymarket settles on
+   the stream, so a confirmed posted target that disagrees with the
+   stream estimate is flagged, never hidden). Locked pad calls are
+   never touched by any of this. */
+async function oddsRecheckTargets(){
+  const res = $("#oddsTargetRes"), btn = $("#oddsRecheck");
+  const coin = ODDS.coin;
+  if (!marketActive()){
+    if (res) res.textContent = "No market is being mimicked — turn on a market in Setup first; target lines come from the mimicked market.";
+    return;
+  }
+  const covered = S.preset === "kalshi" ? [15] : [5, 15, 60];
+  if (btn) btn.disabled = true;
+  if (res) res.textContent = "Re-checking " + coin + " target lines against " + pmMarketName() + "…";
+  try {
+    for (let i = 0; i < PM_CHECK_MAX_READS; i++){
+      await refreshMktLines(coin, true);
+      const done = covered.every(h => {
+        const e = mktLineFor(coin, h);
+        return e && e.confirmed;
+      });
+      if (done) break;
+      if (i < PM_CHECK_MAX_READS - 1) await pmCheckWait();
+    }
+  } finally { if (btn) btn.disabled = false; }
+  if (res) res.innerHTML = covered.map(h => {
+    let html = "<div><b>" + bestHzLabel(h) + "</b> — " + targetStripHtml(coin, h) + "</div>";
+    const e = mktLineFor(coin, h);
+    if (S.preset === "polymarket" && e && e.confirmed){
+      const est = twap60Before(coin.toLowerCase(), e.start / 1000);
+      if (est != null && isFinite(est) && est > 0){
+        if (Math.abs(est - e.price) <= e.price * 0.0002)
+          html += '<div>Chainlink stream estimate ' + fmtPrice(est) + ' agrees ✓</div>';
+        else
+          html += '<div><span class="otgtbad">⚠ Chainlink stream estimate ' + fmtPrice(est) +
+            ' differs — Polymarket settles on the stream value, so treat this target with care.</span></div>';
+      }
+    }
+    return html;
+  }).join("");
+  if (ODDS_LIVE) refreshOdds();
+}
+/* One bulk recent-calls fetch for every kept coin, fired when the
+   Odds drawer opens: the crown spans all kept coins, including
+   ones not on the watch panel. Per-coin loads keep it fresh. */
+let WINREC_BUSY = false;
+async function loadWinRecAll(){
+  if (WINREC_BUSY) return;
+  WINREC_BUSY = true;
+  try {
+    const j = await fetchJSON(AUTH + "/api/perp/recent-calls?coins=" + encodeURIComponent(keptCoins().join(",")));
+    if (!j || !j.ok || !j.windows) return;
+    for (const sym of keptCoins()){
+      const cs = S.coins[sym];
+      if (!cs) continue;
+      if (j.windows[sym]) cs.winRec = j.windows[sym];
+      if (j.records && j.records[sym] && !cs.records) cs.records = j.records[sym];
+    }
+    renderOddsBest4h();
+    renderOddsPicks();
+  } finally { WINREC_BUSY = false; }
+}
+/* Manual target entry — the panel's own numpad, mirroring the coin
+   pads: digits build a value for the chosen horizon; applying it
+   records the manual target for that horizon AND moves the board's
+   working line to it, so the odds below re-run against it. */
+function oddsTgtPress(k){
+  let t = ODDS.tgtText || "";
+  if (k === "C") t = "";
+  else if (k === "B") t = t.slice(0, -1);
+  else if (k === "."){ if (!t.includes(".")) t = t ? t + "." : "0."; }
+  else if (/^[0-9]$/.test(k)){ if (t.replace(".", "").length < 12) t += k; }
+  ODDS.tgtText = t;
+  renderOddsTgt();
+}
+function oddsUseLine(v){
+  if (!(v > 0)) return;
+  ODDS.mode = "abs"; ODDS.line = v;
+  const inp = $("#oddsLine");
+  if (inp) inp.value = v;
+  oddsRenderOff();
+  refreshOdds();
+}
+function oddsTgtApply(){
+  const v = parseFloat(ODDS.tgtText);
+  const note = $("#oddsTgtNote");
+  if (!(v > 0)){ if (note) note.textContent = "Type a target value on the numpad first."; return; }
+  ODDS.tgt[ODDS.tgtH] = v;
+  if (note) note.textContent = "Manual target for " + ODDS.coin + " " + bestHzLabel(ODDS.tgtH) +
+    " set to " + fmtPrice(v) + " — the odds below now run against it.";
+  oddsUseLine(v);
+}
+function renderOddsTgt(){
+  const d = $("#oddsTgtDisp");
+  if (d) d.textContent = ODDS.tgtText ? "$" + ODDS.tgtText : "—";
+  const c = $("#oddsTgtCoin");
+  if (c) c.textContent = ODDS.coin;
+  document.querySelectorAll("[data-thz]").forEach(b =>
+    b.classList.toggle("on", +b.getAttribute("data-thz") === ODDS.tgtH));
+}
+(function odds49Init(){
+  const np = $("#oddsNumpad");
+  if (np) np.innerHTML = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "B"].map(k =>
+    '<button type="button" data-tkey="' + k + '">' + (k === "B" ? "⌫" : k) + "</button>").join("");
+  const hz = $("#oddsTgtHz");
+  if (hz) hz.innerHTML = [5, 15, 30, 45, 60].map(h =>
+    '<button type="button" class="tchip" data-thz="' + h + '">' + bestHzLabel(h) + "</button>").join("");
+  document.querySelectorAll("[data-tkey]").forEach(b =>
+    b.addEventListener("click", () => oddsTgtPress(b.getAttribute("data-tkey"))));
+  document.querySelectorAll("[data-thz]").forEach(b =>
+    b.addEventListener("click", () => { ODDS.tgtH = +b.getAttribute("data-thz"); renderOddsTgt(); }));
+  const rc = $("#oddsRecheck");
+  if (rc) rc.addEventListener("click", oddsRecheckTargets);
+  const ap = $("#oddsTgtApply");
+  if (ap) ap.addEventListener("click", oddsTgtApply);
+  const cl = $("#oddsTgtClear");
+  if (cl) cl.addEventListener("click", () => { oddsTgtPress("C"); });
+  for (const id of ["#oddsGrid", "#oddsTargetRes"]){
+    const host = $(id);
+    if (host) host.addEventListener("click", ev => {
+      const b = ev.target && ev.target.closest ? ev.target.closest("[data-usetgt]") : null;
+      if (b) oddsUseLine(parseFloat(b.getAttribute("data-usetgt")));
+    });
+  }
+  renderOddsTgt();
 })();
 
 /* ---------- WEB5: expanding side menus ----------
