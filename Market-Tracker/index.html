@@ -1902,8 +1902,12 @@ function applyPreset(name, skipLen){
   // to the newly chosen market's target for this window.
   if (!skipLen && S.cycle.active) S.selected.forEach(sym => applyMarketStrike(sym));
   // WEB49 (final ruling): the most-likely boxes follow the active
-  // market's real windows — regenerate them on every switch.
-  if (typeof renderOddsPicks === "function") renderOddsPicks();
+  // market's real windows — regenerate them on every user switch.
+  // NOT on the init call (skipLen): at init the market constants
+  // (PM_VARIANT/KX_SERIES, declared just below) are still in their
+  // TDZ, and a throw here would abort the whole script — the boxes
+  // render on first drawer open / record load instead.
+  if (!skipLen && typeof renderOddsPicks === "function") renderOddsPicks();
 }
 function setLen(min, fromCustom){
   S.lenMin = clamp(Math.round(min) || 15, 1, 1440);
