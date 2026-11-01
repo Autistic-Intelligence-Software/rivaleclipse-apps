@@ -276,7 +276,11 @@ async function acctApi(context, request, action, spec) {
     if (isTimeoutErr(e)) {
       // The auth service is stalled, not down: say so distinctly so
       // the page can show "answering slowly" instead of a dead end.
-      return jsonRes({ error: 'service_slow' }, 504);
+      // Status is 503, NOT 504: a 504 returned by this Function is
+      // replaced at the edge by Cloudflare's plain-text error page
+      // (verified live 2026-11-01 — body "error code: 504", no JSON
+      // ever reached the browser), which would defeat the message.
+      return jsonRes({ error: 'service_slow' }, 503);
     }
     return jsonRes({ error: 'upstream_unavailable' }, 502);
   }
@@ -284,6 +288,14 @@ async function acctApi(context, request, action, spec) {
   let j = null;
   try { j = text ? JSON.parse(text) : null; } catch (e) { j = null; }
   if (!j || typeof j !== 'object') j = { error: 'upstream_error' };
+  // A non-JSON 5xx from upstream is an edge error page (the auth
+  // service's own Cloudflare answering for a stalled origin), not
+  // an API answer: translate it to the same slow-service signal.
+  // (A real API 503 like payments_not_configured carries a JSON
+  // error field and passes through untouched.)
+  if (r.status >= 500 && j.error === 'upstream_error') {
+    return jsonRes({ error: 'service_slow' }, 503);
+  }
 
   const extra = {};
   if ((action === 'login' || action === 'register') && r.ok && j.token) {
