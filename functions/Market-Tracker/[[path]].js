@@ -361,7 +361,7 @@ function signUpPage() {
     '<button class="btn" id="go" type="submit">Create account &amp; start free hour</button></form>' +
     '<div class="msg" id="msg"></div>' +
     '<p class="mut small">After the free hour: keep full access with a $0.99 1-week trial, ' +
-    'then $9.99/month — or redeem a promo code. Cancel anytime.</p>' +
+    'then $14.99/month — or redeem a promo code. Cancel anytime.</p>' +
     '<div class="links">Already have an account? <a href="/Market-Tracker/acct/sign-in">Sign in</a></div></div>';
   const script = HELPER_JS +
     'document.getElementById("f").addEventListener("submit", async (ev) => {\n' +
@@ -440,18 +440,20 @@ function accountPage() {
     '<div class="card wide"><h2>Plans</h2>' +
     '<div id="payNote" class="msg" style="display:none"></div>' +
     '<div class="plans">' +
-    '<div class="plan"><div class="price">$0.99</div><div class="per">1-week trial, then $9.99/month</div>' +
-    '<p class="small mut">A full week of the complete tracker for under a dollar. Renews at $9.99/month unless you cancel.</p>' +
-    '<button class="btn" id="btnTrial" type="button">Start 1-week trial — $0.99</button></div>' +
-    '<div class="plan"><div class="price">$9.99<span class="per">/month</span></div><div class="per">Full access, billed monthly</div>' +
+    '<div class="plan"><div class="price">$0.99</div><div class="per">1-week trial, then $14.99/month</div>' +
+    '<p class="small mut">A full week of the complete tracker for under a dollar. Renews at $14.99/month unless you cancel.</p>' +
+    '<button class="btn" id="btnTrial" type="button">Start 1-week trial — $0.99</button>' +
+    '<p class="small mut" style="margin:6px 0 0">All <a href="https://auth.rivaleclipse.dev/acct/no-refunds-policy">sales are final</a>.</p></div>' +
+    '<div class="plan"><div class="price">$14.99<span class="per">/month</span></div><div class="per">Full access, billed monthly</div>' +
     '<p class="small mut">Every coin, every horizon, alerts and forecast schedules. Cancel anytime.</p>' +
-    '<button class="btn violet" id="btnSub" type="button">Subscribe — $9.99/mo</button></div>' +
+    '<button class="btn violet" id="btnSub" type="button">Subscribe — $14.99/mo</button>' +
+    '<p class="small mut" style="margin:6px 0 0">All <a href="https://auth.rivaleclipse.dev/acct/no-refunds-policy">sales are final</a>.</p></div>' +
     '</div>' +
     '<button class="btn ghost" id="btnPortal" type="button" style="display:none">Manage subscription / payment method</button>' +
     '</div>' +
-    '<div class="card wide"><h2>Have a promo code?</h2>' +
-    '<p class="mut small">Promo codes unlock a free week, a free month, or lifetime access — no card needed to redeem.</p>' +
-    '<form id="promoForm"><label for="code">Promo code</label>' +
+    '<div class="card wide"><h2>Have a promo or referral code?</h2>' +
+    '<p class="mut small">Promo codes unlock a free week, a free month, or lifetime access — no card needed to redeem. A referral code gives you a free month.</p>' +
+    '<form id="promoForm"><label for="code">Promo or referral code</label>' +
     '<input id="code" type="text" autocomplete="off" autocapitalize="characters" required>' +
     '<button class="btn" id="btnRedeem" type="submit">Redeem code</button></form>' +
     '<div class="msg" id="promoMsg"></div></div>' +
