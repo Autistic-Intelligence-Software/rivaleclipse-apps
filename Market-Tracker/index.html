@@ -1953,6 +1953,36 @@ async function pmPrice(sym, openAtMs, variant){
     "&start=" + Math.floor(openAtMs / 1000) + "&variant=" + variant);
   return j && !j.error ? j : null;
 }
+/* WEB51: Polymarket's own published price to beat for a window,
+   from the gamma event record (eventMetadata.priceToBeat, full
+   precision — the value the event page displays and the market
+   settles on; Polymarket derives it from the Chainlink TWAP-60
+   stream named in each market's resolution rules). Verified
+   2026-11-01 against the event pages' displayed values: exact
+   at displayed precision in 13/13 comparable captured windows,
+   while the crypto-price endpoint's final sat 0.08–8.3 bp away
+   in the same windows. A 15m window's value equals the 5m
+   window's at the same start (the same opening TWAP), so each
+   variant falls back to the other's event when its own record
+   carries no value yet (gamma populates the field per event,
+   and individual events are occasionally missing it). Returns
+   a number, or null when no published value is on hand. */
+const PM_GAMMA = "https://gamma-api.polymarket.com/events?slug=";
+async function pmGammaTarget(sym, startMs, variant){
+  const own = variant === "fifteen" ? "15m" : "5m";
+  const tries = [own];
+  if (own === "15m") tries.push("5m");
+  else if ((startMs / 1000) % 900 === 0) tries.push("15m");
+  for (const z of tries){
+    try {
+      const j = await fetchJSON(PM_GAMMA + encodeURIComponent(
+        sym.toLowerCase() + "-updown-" + z + "-" + Math.floor(startMs / 1000)));
+      const v = (j && j[0] && j[0].eventMetadata) ? +j[0].eventMetadata.priceToBeat : null;
+      if (v != null && isFinite(v) && v > 0) return v;
+    } catch (e) { /* gamma unreachable: no published value this pass */ }
+  }
+  return null;
+}
 async function kalshiMarkets(sym){
   const series = KX_SERIES[sym];
   if (!series) return null;
@@ -2189,11 +2219,55 @@ const MKT_HZ = [5, 15, 60, 240];
    printed fact, not a forming TWAP) and Kalshi (final on
    publication) keep the rules above; neither is indicted by the
    diagnosis. The endpoint's final can still sit a few bp from
-   the Chainlink TWAP-60 stream value Polymarket settles on —
-   that value is not publicly readable in real time — so the
-   check button reports the stream estimate alongside the posted
-   target (see pmTargetCheck) instead of implying the posted
-   target IS the settlement value. */
+   the Chainlink TWAP-60 stream value Polymarket settles on.
+   (WEB51 note: the settled value IS publicly readable after
+   all — Polymarket publishes it as the gamma event record's
+   priceToBeat; see pmGammaTarget. The endpoint above is only
+   an approximation of it, which is the whole M2 defect.)
+   WEB51 (Shane 2026-11-01 — "Approve the stream-gated target
+   fix"): WEB48's truth-in-labeling becomes a GATE, and the
+   lock value itself moves to the settlement source. A
+   Polymarket TWAP entry now confirms by one of two paths,
+   both gated on the page's own Chainlink stream estimate for
+   the window's opening minute (twap60Before over the buffered
+   RTDS prints, the TWAP window ending 2s before the boundary
+   — the shift measured against Polymarket's published values,
+   see refreshMktLines):
+   A) Polymarket's published price to beat (gamma), stable
+      across successive reads >=15s apart, with the stream
+      estimate agreeing within PM_STREAM_TOL — the entry
+      locks the PUBLISHED value at full precision (lockPrice,
+      lockSrc "posted"): the exact number the market settles
+      on, not a reconstruction of it.
+   B) No published value on hand: WEB48 finality holds and
+      the endpoint's final value agrees with the stream
+      estimate within PM_STREAM_TOL — the entry locks the
+      STREAM TWAP itself (lockSrc "stream"), the settlement
+      source measured directly.
+   On disagreement the entry stays UNCONFIRMED with
+   streamBlock "disagree" — rows stay pending, nothing locks
+   on a value Polymarket won't settle on. When the stream
+   cannot be evaluated at all (the page was not open across
+   the window's open, so its opening minute is not in the
+   buffer) the entry stays UNCONFIRMED with streamBlock
+   "nostream": finality alone no longer confirms a PM TWAP
+   target, and neither does the published value alone. The
+   estimate is frozen onto the entry the first time the
+   buffer covers the opening minute (the buffer prunes, so
+   an older window's estimate would otherwise be lost) and
+   recomputed whenever a fresh full-coverage read is
+   available. The 1h Binance-open variant and Kalshi keep
+   their rules — neither settles on this stream. */
+/* WEB51: the stream gate's agreement tolerance (relative).
+   Measured basis (2026-11-01 capture, pm-align-audit): with
+   complete per-symbol RTDS coverage, the page's stream TWAP
+   reproduced Polymarket's published priceToBeat within
+   0.05 bp in every captured window (worst: DOGE 0.047 bp;
+   typical <=0.015 bp), while the endpoint's final value sat
+   0.08–8.3 bp from the published value in the same windows.
+   1 bp leaves ~20x headroom over the stream's real error and
+   still catches any genuine source disagreement. */
+const PM_STREAM_TOL = 0.0001;
 async function refreshMktLines(sym, forceH){
   const cs = coinState(sym);
   if (!marketActive()){ cs.mktLines = null; return; }
@@ -2211,12 +2285,23 @@ async function refreshMktLines(sym, forceH){
     const latchMs = (variant && variant !== "hourly") ? 45000 : 20000;
     if (cur && cur.start === start && cur.confirmed !== false && !forced && now - cur.at < latchMs) continue;
     let got = null;
+    /* WEB51: Polymarket's published price to beat for this
+       window, read on the same pass as the endpoint read. */
+    let gammaV = null;
+    if (S.preset === "polymarket" && (variant === "fiveminute" || variant === "fifteen") && PM_TWAP_COINS.includes(sym))
+      gammaV = await pmGammaTarget(sym, start, variant);
     if (S.preset === "polymarket"){
       if (variant && (variant === "hourly" || PM_TWAP_COINS.includes(sym))){
         const j = await pmPrice(sym, start, variant);
         if (j && isFinite(+j.openPrice) && +j.openPrice > 0)
           got = {price: +j.openPrice, src: "Polymarket", start: start, at: Date.now()};
       }
+      /* The published value alone seeds the entry when the
+         endpoint read misses (it flickers at boundaries) —
+         the entry then tracks the published value's own
+         stability until an endpoint read lands. */
+      if (!got && gammaV != null)
+        got = {price: gammaV, src: "Polymarket", start: start, at: Date.now()};
     } else if (S.preset === "kalshi" && h === 15){
       const ms = await kalshiMarkets(sym);
       if (ms){
@@ -2241,12 +2326,84 @@ async function refreshMktLines(sym, forceH){
       got.firstPrice = agree ? (prev.firstPrice != null ? prev.firstPrice : prev.price)
                              : (prev && prev.firstPrice != null ? prev.firstPrice : got.price);
       if (got.final === true) got.confirmed = true;   // Kalshi: final on publication
-      else if (variant && variant !== "hourly")
+      else if (variant && variant !== "hourly"){
         /* WEB48 finality (PM TWAP variants): the window is >=65s
            old AND the standing value has been unchanged for >=15s
            across >=2 reads. Two quick agreeing reads inside the
            revision window no longer confirm anything. */
-        got.confirmed = (now - start >= 65000) && (got.at - got.lastChgAt >= 15000) && got.reads >= 2;
+        const finOk = (now - start >= 65000) && (got.at - got.lastChgAt >= 15000) && got.reads >= 2;
+        /* WEB51 STREAM ESTIMATE: the Chainlink TWAP-60 over the
+           window's opening minute, from the page's buffered
+           RTDS prints. The TWAP ends 2s BEFORE the boundary:
+           measured 2026-11-01 against Polymarket's published
+           priceToBeat over 16 live windows, the [start-62s,
+           start-2s] window reproduced the published value to
+           the displayed cent in 15 (the 16th was 0.003 bp out)
+           where the unshifted window managed 8 — the stream's
+           prints trail the official TWAP by ~2s. The estimate
+           is recomputed whenever the tick buffer still covers
+           that minute and frozen on the entry otherwise (the
+           buffer prunes to ~200s; the frozen value is a fact
+           about a completed minute and never changes). It
+           counts only with a real print in the opening minute's
+           last 15s — a stale entering price held across a tick
+           gap (socket drop mid-minute) is not evidence about
+           the stream's TWAP. */
+        let sEst = (prev && prev.streamEst != null) ? prev.streamEst : null;
+        try {
+          const f = (typeof twap60Before === "function") ? twap60Before(sym, start - 2000) : null;
+          if (f != null && isFinite(f) &&
+              (RTDS_TICKS[sym] || []).some(([t]) => t >= start - 15000 && t <= start)) sEst = f;
+        } catch (e) { /* no buffer: the frozen estimate (or none) stands */ }
+        got.streamEst = sEst;
+        /* WEB51 PUBLISHED VALUE: tracked with the same stability
+           discipline as the endpoint series — a published value
+           that changes between reads restarts its clock. A pass
+           where gamma does not answer keeps the last published
+           value on the entry rather than dropping it. */
+        if (gammaV != null){
+          const gSame = !!prev && prev.gammaVal != null && pmTickEq(prev.gammaVal, gammaV);
+          got.gammaVal = gammaV;
+          got.gammaFirst = gSame ? (prev.gammaFirst != null ? prev.gammaFirst : prev.gammaVal) : gammaV;
+          got.gammaFirstAt = gSame ? (prev.gammaFirstAt || prev.gammaAt || got.at) : got.at;
+          got.gammaAt = got.at;
+          got.gammaReads = gSame ? (prev.gammaReads || 1) + 1 : 1;
+        } else if (prev && prev.gammaVal != null){
+          got.gammaVal = prev.gammaVal;
+          got.gammaFirst = prev.gammaFirst != null ? prev.gammaFirst : prev.gammaVal;
+          got.gammaFirstAt = prev.gammaFirstAt || prev.gammaAt || got.at;
+          got.gammaAt = prev.gammaAt || got.at;
+          got.gammaReads = prev.gammaReads || 1;
+        }
+        const gammaStable = got.gammaVal != null && (got.gammaReads || 0) >= 2 &&
+          (got.gammaAt - (got.gammaFirstAt || got.gammaAt)) >= 15000;
+        /* The stream estimate is judged against the published
+           value when there is one (that is the number the
+           market settles on), otherwise against the endpoint's
+           standing value. Judged fresh every pass, so a value
+           that revises TOWARD the stream can still confirm
+           once it re-earns its stability. */
+        const basis = got.gammaVal != null ? got.gammaVal : got.price;
+        got.streamState = sEst == null ? "nostream"
+          : (Math.abs(basis - sEst) <= Math.max(basis * PM_STREAM_TOL, 1e-9) ? "agree" : "disagree");
+        /* WEB51 CONFIRMATION — two paths, both stream-gated
+           (see the design note above): A) the published price
+           to beat locks at full precision; B) with no published
+           value, the stream TWAP locks when the endpoint's
+           final value agrees with it. A final-but-refused
+           target is HELD with the reason carried on the entry. */
+        if (gammaStable && got.streamState === "agree"){
+          got.confirmed = true; got.lockPrice = got.gammaVal; got.lockSrc = "posted";
+          got.streamBlock = null;
+        } else if (got.gammaVal == null && finOk && got.streamState === "agree"){
+          got.confirmed = true; got.lockPrice = sEst; got.lockSrc = "stream";
+          got.streamBlock = null;
+        } else {
+          got.confirmed = false; delete got.lockPrice; delete got.lockSrc;
+          got.streamBlock = ((gammaStable || (finOk && got.gammaVal == null)) &&
+            got.streamState !== "agree") ? got.streamState : null;
+        }
+      }
       else
         got.confirmed = agree || (now - start >= 120000);
       delete got.final;
@@ -2353,34 +2510,48 @@ async function pmTargetCheck(sym){
   if (ml && ml.confirmed){
     const closeAt = winBoundaryMs(Date.now(), h);
     const lock = tcs.padLock && tcs.padLock[h];
+    /* WEB51: the confirmed target IS the entry's lock value —
+       Polymarket's published price to beat, or the stream TWAP
+       when no published value was on hand. Match and revision
+       are judged against that value, not the endpoint read. */
+    const lockVal = ml.lockPrice != null ? ml.lockPrice : ml.price;
     let match = "nolock", lockedLine = null;
     if (lock && lock.closeAt === closeAt){
       lockedLine = lock.line;
-      match = pmTickEq(lock.line, ml.price) ? "match" : "mismatch";
+      match = pmTickEq(lock.line, lockVal) ? "match" : "mismatch";
     }
-    /* WEB48: cross-check the posted target against the Chainlink
-       stream estimate from the page's own RTDS prints (the stream
-       is what Polymarket settles on; its exact value is not
-       publicly readable, so this is an estimate, labelled as
-       such). Null when the stream buffer doesn't cover the
-       window's opening minute — then nothing is claimed. */
+    /* The stream cross-check, recomputed on the same -2s
+       shifted TWAP the gate uses. Null when the stream buffer
+       doesn't cover the window's opening minute — then nothing
+       is claimed. */
     let streamEst = null;
     if (S.preset === "polymarket"){
-      try { if (typeof twap60Before === "function") streamEst = twap60Before(tsym, start0); }
+      try { if (typeof twap60Before === "function") streamEst = twap60Before(tsym, start0 - 2000); }
       catch (e) { streamEst = null; }
       if (streamEst != null && !isFinite(streamEst)) streamEst = null;
+      /* WEB51: the entry's frozen stream estimate (captured
+         while the buffer covered the opening minute) stands
+         when a fresh computation is no longer possible. */
+      if (streamEst == null && ml.streamEst != null) streamEst = ml.streamEst;
     }
     /* WEB48: a revision is reported against the first price the
        window ever printed (the entry remembers it), not only
-       against reads this check happened to see. */
-    const fpC = ml.firstPrice != null ? ml.firstPrice : firstPrice;
+       against reads this check happened to see. WEB51: for a
+       published-value lock, the revision that matters is the
+       published series' own (gammaFirst -> gammaVal). */
+    const fpC = ml.lockSrc === "posted"
+      ? (ml.gammaFirst != null ? ml.gammaFirst : null)
+      : (ml.firstPrice != null ? ml.firstPrice : firstPrice);
+    const revTo = ml.lockSrc === "posted" ? ml.gammaVal : ml.price;
     cp.pmCheck = Object.assign({}, base, {
-      kind: "confirmed", price: ml.price, src: ml.src || base.src,
-      revised: (fpC != null && !pmTickEq(fpC, ml.price))
-        ? {from: fpC, to: ml.price} : null,
+      kind: "confirmed", price: lockVal, src: ml.src || base.src,
+      lockSrc: ml.lockSrc || null,
+      revised: (fpC != null && revTo != null && !pmTickEq(fpC, revTo))
+        ? {from: fpC, to: revTo} : null,
       match: match, lockedLine: lockedLine,
       streamEst: streamEst,
-      streamDelta: streamEst != null ? (ml.price - streamEst) : null});
+      streamDelta: streamEst != null ? (lockVal - streamEst) : null,
+      streamState: ml.streamState || null});
     renderPmCheck(sym);
     /* The confirmed value is on hand: the target coin's outlook
        may lock from it through the normal flow (WEB46 rules —
@@ -2389,11 +2560,31 @@ async function pmTargetCheck(sym){
     return;
   }
   const fpU = ml && ml.firstPrice != null ? ml.firstPrice : firstPrice;
+  /* WEB51: an unconfirmed verdict carries the stream gate's
+     state too — a target HELD by the gate (posted value final,
+     stream disagrees or unavailable) must say so, with the
+     estimate shown, not read as a still-settling value. */
+  let sEstU = ml && ml.streamEst != null ? ml.streamEst : null;
+  if (sEstU == null && S.preset === "polymarket"){
+    try { if (typeof twap60Before === "function") sEstU = twap60Before(tsym, start0 - 2000); }
+    catch (e) { sEstU = null; }
+    if (sEstU != null && !isFinite(sEstU)) sEstU = null;
+  }
   cp.pmCheck = Object.assign({}, base, {
     kind: "unconfirmed", last: ml ? ml.price : null,
+    /* WEB51: Polymarket's published value rides along when one
+       is on hand — an unconfirmed verdict says what it is and
+       why it has not locked (unstable across reads, or held by
+       the stream gate). The stream delta is judged against the
+       published value first, as in the gate. */
+    gammaVal: ml && ml.gammaVal != null ? ml.gammaVal : null,
     revised: (fpU != null && ml && !pmTickEq(fpU, ml.price))
       ? {from: fpU, to: ml.price} : null,
-    src: ml ? (ml.src || base.src) : base.src});
+    src: ml ? (ml.src || base.src) : base.src,
+    streamEst: sEstU,
+    streamDelta: (sEstU != null && ml) ? ((ml.gammaVal != null ? ml.gammaVal : ml.price) - sEstU) : null,
+    streamState: ml ? (ml.streamState || (sEstU != null ? "evaluated" : "nostream")) : null,
+    streamBlock: ml ? (ml.streamBlock || null) : null});
   renderPmCheck(sym);
 }
 function renderPmCheck(sym){
@@ -2440,9 +2631,35 @@ function renderPmCheck(sym){
     if (st.revised)
       html += "<br>already revised once during this check: " + fmtPrice(st.revised.from) +
         " → " + fmtPrice(st.revised.to) + " — the first read was preliminary";
+    /* WEB51: Polymarket's published price to beat, when one is
+       on hand — named as its own value with its own state, not
+       merged into the endpoint's settling story. */
+    if (st.gammaVal != null)
+      html += "<br>Polymarket's posted price to beat: <b>" + fmtPrice(st.gammaVal) + "</b> — " +
+        (st.streamBlock ? "held by the stream check below."
+                        : "not yet stable across successive reads.");
+    /* WEB51: the stream gate's holds, stated plainly — a final
+       posted value the gate refuses is not "still settling". */
+    if (st.streamBlock === "disagree" && st.streamEst != null){
+      bad = true;
+      html += '<br><span class="pm-bad">⚠ Chainlink stream estimate ' + fmtPrice(st.streamEst) +
+        " disagrees with the posted target" +
+        (st.streamDelta != null ? " by " + fmtPrice(Math.abs(st.streamDelta)) : "") +
+        ". Polymarket settles on the stream value, not the feed, so this target is HELD — nothing locks on it.</span>";
+    }
+    else if (st.streamBlock === "nostream")
+      html += "<br>The posted target is on hand, but the Chainlink stream check is not available for this window " +
+        "(the page must be open across the window's open to hold its opening-minute ticks) — held unconfirmed rather than locking on the feed alone.";
   }
   else if (st.kind === "confirmed"){
     html = head + "<b>" + fmtPrice(st.price) + '</b> · <span class="pm-ok">CONFIRMED</span>';
+    /* WEB51: say WHERE the locked value came from — the whole
+       point of the fix is that this number is the settlement
+       source's own, not the approximating endpoint's. */
+    if (st.lockSrc === "posted")
+      html += "<br>Polymarket's own posted price to beat at full precision — the value the market settles on — with the Chainlink stream estimate agreeing.";
+    else if (st.lockSrc === "stream")
+      html += "<br>Locked on the Chainlink stream TWAP — Polymarket's posted value was unavailable for this window, and the endpoint's final read agreed with the stream.";
     if (st.revised)
       html += "<br>first read " + fmtPrice(st.revised.from) + " → revised to " + fmtPrice(st.revised.to) +
         " — locks wait for the settled value, never the first read";
@@ -2456,15 +2673,14 @@ function renderPmCheck(sym){
         " vs " + escHtml(st.src) + " " + fmtPrice(st.price) + "</span>" +
         "<br>Reported, never hidden: the locked call keeps its own line (locked calls are never re-based) — a mismatch means the market revised its target after the lock, or the lock took a read the market later replaced.";
     }
-    /* WEB48: the settlement cross-check. Polymarket settles on
-       the Chainlink TWAP-60 stream value, which is not the same
-       number as the posted target in general (diagnosis: the
-       posted final sat 0.16–3.3 bp from the app/stream value in
-       Shane's 2026-11-01 windows). When the page's stream
-       estimate is on hand, say how the posted target compares —
-       agreement is claimed only within a tight tolerance. */
+    /* The settlement cross-check. Polymarket settles on the
+       Chainlink TWAP-60 stream value; the confirmed target
+       above is that value (published by Polymarket, or the
+       stream TWAP itself). When the page's stream estimate is
+       on hand, say how it compares — agreement is claimed
+       only within the gate's tolerance. */
     if (st.streamEst != null && st.streamDelta != null){
-      if (Math.abs(st.streamDelta) <= Math.max(st.price * 0.0002, 1e-9))
+      if (Math.abs(st.streamDelta) <= Math.max(st.price * PM_STREAM_TOL, 1e-9))
         html += "<br>Chainlink stream estimate " + fmtPrice(st.streamEst) +
           " agrees ✓ (Polymarket settles on the stream value)";
       else {
@@ -2497,7 +2713,17 @@ function renderPmCheck(sym){
    it errors/closes/goes stale the page falls back to the hourly-
    variant poll (priceTick), so nothing depends on it surviving. */
 const RTDS_URL = "wss://ws-live-data.polymarket.com";
-const RTDS_ST = {ws: null, ping: null, timer: null, backoff: 1000, syms: ""};
+/* WEB51: one socket PER SYMBOL (RTDS_ST.socks: sym -> {ws, ping}).
+   Measured live 2026-11-01 (pm-align-audit/rtds-raw.mjs): a single
+   connection live-streams only ONE of its subscribed symbols —
+   the rest receive their subscribe snapshot and then silence
+   (two multi-symbol connections each streamed exactly one symbol
+   for minutes; five single-symbol connections all streamed at
+   ~1 print/s). The pre-WEB51 single socket therefore held live
+   ticks for at most one selected coin; every other coin's
+   stream estimate — now the confirmation gate — could never be
+   evaluated. */
+const RTDS_ST = {socks: {}, timer: null, backoff: 1000};
 /* Pure parser (unit-tested): one RTDS text frame → {sym, price,
    tsMs} or null. Accepts the documented update shape and the
    subscribe snapshot's payload.data array (last point wins). */
@@ -2527,6 +2753,36 @@ function rtdsPriceFromMsg(text){
   const ts = Number(tsRaw);
   const envTs = Number(m.timestamp);
   return {sym: sym, price: price, tsMs: isFinite(ts) && ts > 0 ? ts : (isFinite(envTs) && envTs > 0 ? envTs : 0)};
+}
+/* WEB51: every point a frame carries, not just the last. The
+   subscribe SNAPSHOT arrives with payload.data holding ~59
+   one-second prints — the stream's recent history. Ingesting
+   only the last point (the pre-WEB51 behaviour) threw that
+   history away, so a page that (re)connected just after a
+   window opened held none of the opening minute's ticks and
+   the stream estimate — now the confirmation gate — could
+   never be evaluated for that window. All points are the
+   stream's own prints; rtdsIngest orders and dedupes them. */
+function rtdsPointsFromMsg(text){
+  let m;
+  try { m = JSON.parse(text); } catch (e) { return []; }
+  if (!m || typeof m !== "object") return [];
+  if (m.topic !== "crypto_prices_chainlink" && m.topic !== "crypto_prices") return [];
+  const p = m.payload;
+  if (!p || typeof p !== "object") return [];
+  if (Array.isArray(p.data) && p.data.length){
+    const u0 = rtdsPriceFromMsg(text);   // symbol + validity, via the pinned parser
+    if (!u0) return [];
+    const out = [];
+    for (const d of p.data){
+      const price = Number(d && d.value), ts = Number(d && d.timestamp);
+      if (price > 0 && isFinite(price))
+        out.push({sym: u0.sym, price: price, tsMs: isFinite(ts) && ts > 0 ? ts : 0});
+    }
+    return out;
+  }
+  const u = rtdsPriceFromMsg(text);
+  return u ? [u] : [];
 }
 /* ---------- WEB20: the target-line algorithms, implemented ----
    Shane 2026-10-28: "figure out exactly how the next target line
@@ -2604,13 +2860,17 @@ function twap60Before(sym, endMs){
   if (covered < 55000) return null;
   return acc / covered;
 }
+function rtdsCloseSock(sym){
+  const s = RTDS_ST.socks[sym];
+  if (!s) return;
+  delete RTDS_ST.socks[sym];
+  if (s.ping != null) clearInterval(s.ping);
+  if (s.ws){ const w = s.ws; try { w.onclose = null; w.close(); } catch (e) {} }
+}
 function rtdsStop(){
   for (const k in RTDS_TICKS) delete RTDS_TICKS[k];
-  if (RTDS_ST.ping != null){ clearInterval(RTDS_ST.ping); RTDS_ST.ping = null; }
   if (RTDS_ST.timer != null){ clearTimeout(RTDS_ST.timer); RTDS_ST.timer = null; }
-  if (RTDS_ST.ws){ const w = RTDS_ST.ws; RTDS_ST.ws = null;
-    try { w.onclose = null; w.close(); } catch (e) {} }
-  RTDS_ST.syms = "";
+  for (const sym of Object.keys(RTDS_ST.socks)) rtdsCloseSock(sym);
 }
 function rtdsSchedule(){
   if (RTDS_ST.timer != null) return;
@@ -2618,43 +2878,58 @@ function rtdsSchedule(){
   RTDS_ST.backoff = Math.min(30000, RTDS_ST.backoff * 2);
   RTDS_ST.timer = setTimeout(() => { RTDS_ST.timer = null; rtdsEnsure(); }, wait);
 }
-/* Keep the RTDS socket matched to the Polymarket preset + watched
-   coins. Guarded by typeof WebSocket: test/non-browser contexts
-   simply never open a socket and stay on the polling path. */
-function rtdsEnsure(){
-  if (S.preset !== "polymarket"){ if (RTDS_ST.ws || RTDS_ST.timer != null) rtdsStop(); return; }
-  if (typeof WebSocket === "undefined") return;
-  const want = S.selected.slice().sort().join(",");
-  if (!want) return;
-  if (RTDS_ST.ws && RTDS_ST.syms === want &&
-      (RTDS_ST.ws.readyState === 0 || RTDS_ST.ws.readyState === 1)) return;
-  rtdsStop();
-  RTDS_ST.syms = want;
+function rtdsOpenSock(sym){
   let ws;
   try { ws = new WebSocket(RTDS_URL); } catch (e) { rtdsSchedule(); return; }
-  RTDS_ST.ws = ws;
+  const rec = {ws: ws, ping: null};
+  RTDS_ST.socks[sym] = rec;
   ws.onopen = () => {
     RTDS_ST.backoff = 1000;
-    const subs = S.selected.map(sym => ({topic: "crypto_prices_chainlink", type: "update",
-      filters: JSON.stringify({symbol: sym.toLowerCase() + "/usd"})}));
-    try { ws.send(JSON.stringify({action: "subscribe", subscriptions: subs})); } catch (e) {}
-    if (RTDS_ST.ping != null) clearInterval(RTDS_ST.ping);
-    RTDS_ST.ping = setInterval(() => { try { ws.send("PING"); } catch (e) {} }, 5000);
+    try { ws.send(JSON.stringify({action: "subscribe", subscriptions: [{topic: "crypto_prices_chainlink", type: "update",
+      filters: JSON.stringify({symbol: sym.toLowerCase() + "/usd"})}]})); } catch (e) {}
+    if (rec.ping != null) clearInterval(rec.ping);
+    rec.ping = setInterval(() => { try { ws.send("PING"); } catch (e) {} }, 5000);
   };
   ws.onmessage = (ev) => {
-    const u = rtdsPriceFromMsg(ev && ev.data);
+    const pts = rtdsPointsFromMsg(ev && ev.data);
+    if (!pts.length) return;
+    const u = pts[pts.length - 1];
     if (!u || !S.selected.includes(u.sym)) return;
     const cs = S.coins[u.sym];
     if (!cs) return;
     cs.mktPrice = u.price; cs.mktPriceAt = Date.now(); cs.mktSrc = "rtds";
-    rtdsIngest(u);   // WEB20: buffer the tick — target lines are calculated from these
+    /* WEB20: buffer the ticks — target lines are calculated
+       from these. WEB51: a snapshot frame contributes its full
+       point history, not only its last point. */
+    for (const p of pts) rtdsIngest(p);
   };
   ws.onerror = () => { try { ws.close(); } catch (e) {} };
   ws.onclose = () => {
-    if (RTDS_ST.ping != null){ clearInterval(RTDS_ST.ping); RTDS_ST.ping = null; }
-    if (RTDS_ST.ws === ws) RTDS_ST.ws = null;
+    if (rec.ping != null){ clearInterval(rec.ping); rec.ping = null; }
+    if (RTDS_ST.socks[sym] === rec) delete RTDS_ST.socks[sym];
     if (S.preset === "polymarket") rtdsSchedule();
   };
+}
+/* Keep the RTDS sockets matched to the Polymarket preset +
+   watched coins — one socket per coin (WEB51 note at RTDS_ST).
+   Diff-based: adding a coin opens its socket without disturbing
+   the others' tick buffers; removing one closes only its own.
+   Guarded by typeof WebSocket: test/non-browser contexts simply
+   never open a socket and stay on the polling path. */
+function rtdsEnsure(){
+  if (S.preset !== "polymarket"){
+    if (Object.keys(RTDS_ST.socks).length || RTDS_ST.timer != null) rtdsStop();
+    return;
+  }
+  if (typeof WebSocket === "undefined") return;
+  for (const sym of Object.keys(RTDS_ST.socks))
+    if (!S.selected.includes(sym)) rtdsCloseSock(sym);
+  for (const sym of S.selected){
+    const s = RTDS_ST.socks[sym];
+    if (s && s.ws && (s.ws.readyState === 0 || s.ws.readyState === 1)) continue;
+    if (s) rtdsCloseSock(sym);
+    rtdsOpenSock(sym);
+  }
 }
 
 /* ---------- cards ---------- */
@@ -6552,8 +6827,21 @@ function outlookLockCheck(sym, h, lock, closeAt){
   }
   if (lock.mkt && marketActive()){
     const ml = mktLineFor(sym, h);
-    if (ml && typeof ml.at === "number" && ml.at <= lock.lockedAt &&
-        Math.abs(ml.price - lock.line) > Math.max(1e-9, lock.line * 1e-9)) return false;
+    /* WEB51: the lock's basis is the entry's lock value (the
+       published price to beat / stream TWAP) when one is set —
+       comparing against the raw endpoint read would fail every
+       settlement-sourced lock against its own check. And only
+       a CONFIRMED (or legacy unflagged) entry can fail a lock
+       at all: an explicitly unconfirmed read is never a lock's
+       basis (padCallsRows treats it as no entry), so it proves
+       nothing about one. Without that guard, a forced refetch
+       landing unconfirmed at a moved price inside the lock's
+       own millisecond (ml.at == lock.lockedAt) knocked valid
+       locked rows into pending — the intermittent WEB28 suite
+       failure, and a real flicker risk on live panels. */
+    const mlBasis = ml ? (ml.lockPrice != null ? ml.lockPrice : ml.price) : null;
+    if (ml && ml.confirmed !== false && typeof ml.at === "number" && ml.at <= lock.lockedAt &&
+        Math.abs(mlBasis - lock.line) > Math.max(1e-9, lock.line * 1e-9)) return false;
   }
   return true;
 }
@@ -6575,7 +6863,10 @@ function padCallsRows(sym){
        unconfirmed first read never bases a locked call; the row
        waits in the deferral branch below instead. */
     const ml = (mlRaw && mlRaw.confirmed === false) ? null : mlRaw;
-    const line = ml ? ml.price : baseLine;
+    /* WEB51: a confirmed entry locks its lock value — the
+       published price to beat (or the stream TWAP) — not the
+       endpoint's approximating read. */
+    const line = ml ? (ml.lockPrice != null ? ml.lockPrice : ml.price) : baseLine;
     const lock = cs.padLock[h];
     if (lock && lock.closeAt === closeAt){
       /* Frozen for this window — only the countdown is recomputed.
@@ -6639,8 +6930,15 @@ function padCallsRows(sym){
          stand-in, and never presented as settled. */
       const age = now - winStartMs(now, h);
       return {h: h, pending: true, remaining: remaining,
-              line: mlRaw ? mlRaw.price : line,
+              /* WEB51: the unconfirmed read shown is Polymarket's
+                 published value when one is on hand (labelled
+                 UNCONFIRMED in the render), else the endpoint read. */
+              line: mlRaw ? (mlRaw.gammaVal != null ? mlRaw.gammaVal : mlRaw.price) : line,
               mkt: mlRaw ? mlRaw.src : null,
+              /* WEB51: a stream-gate hold is a different wait
+                 from a still-settling value — the row says which. */
+              streamBlock: mlRaw ? (mlRaw.streamBlock || null) : null,
+              streamEst: mlRaw && mlRaw.streamEst != null ? mlRaw.streamEst : null,
               unconf: age >= 90000, unconfRead: !!mlRaw, lockedAt: null};
     }
     /* Lock-time computation: the FULL horizon (h*60 seconds),
@@ -6735,7 +7033,12 @@ function renderPadCalls(sym){
            exists); before that, an on-hand read is marked
            "confirming…". No substitute value is ever implied to
            be the market's target. */
-        const tgt = r.unconf
+        const tgt = r.streamBlock === "disagree"
+          ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + " — HELD: Chainlink stream estimate " +
+            (r.streamEst != null ? fmtPrice(r.streamEst) : "") + " disagrees — Polymarket settles on the stream)</span>"
+          : r.streamBlock === "nostream"
+          ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + " — UNCONFIRMED: stream check unavailable for this window)</span>"
+          : r.unconf
           ? '<br><span class="note">' + (r.mkt ? "target " + fmtPrice(r.line) + " (" + r.mkt + " — UNCONFIRMED)" : "target unconfirmed") + "</span>"
           : (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + (r.unconfRead ? " — confirming…" : "") + ")</span>" : "");
         return "<tr" + (r.h === bestH ? ' class="bestrow"' : "") + "><td>" + (r.h === 60 ? "1 hour" : r.h + " min") +
@@ -7195,10 +7498,27 @@ function targetStripHtml(coin, h){
     if (!runs) parts.push(M + " runs no " + bestHzLabel(h) + " market — no target line.");
     else {
       const e = mktLineFor(coin, h);
+      /* WEB51: a confirmed strip shows (and its Use button
+         carries) the lock value — Polymarket's posted price to
+         beat or the stream TWAP — never the endpoint read. A
+         held strip shows the published value when one is on
+         hand: that is the target being refused, named exactly. */
+      const eVal = e ? (e.lockPrice != null ? e.lockPrice
+        : (e.gammaVal != null && e.streamBlock ? e.gammaVal : e.price)) : null;
       if (e && e.confirmed)
-        parts.push("Target <b>" + fmtPrice(e.price) + "</b> · " + M +
-          ' <span class="otgtok">CONFIRMED — posted target final</span>' +
-          '<button type="button" class="tgtuse" data-usetgt="' + e.price + '">Use</button>');
+        parts.push("Target <b>" + fmtPrice(eVal) + "</b> · " + M +
+          ' <span class="otgtok">' +
+          (e.lockSrc === "posted" ? "CONFIRMED — Polymarket's posted price to beat · Chainlink stream agrees"
+            : e.lockSrc === "stream" ? "CONFIRMED — Chainlink stream TWAP · endpoint final agrees"
+            : "CONFIRMED — posted target final" +
+              (S.preset === "polymarket" && h !== 60 && e.streamEst != null ? " · Chainlink stream agrees" : "")) + '</span>' +
+          '<button type="button" class="tgtuse" data-usetgt="' + eVal + '">Use</button>');
+      else if (e && e.streamBlock === "disagree")
+        parts.push("Target <b>" + fmtPrice(eVal) + "</b> · " + M +
+          ' <span class="otgtbad">HELD — Chainlink stream disagrees with the posted target</span>');
+      else if (e && e.streamBlock === "nostream")
+        parts.push("Target <b>" + fmtPrice(eVal) + "</b> · " + M +
+          ' <span class="otgtbad">UNCONFIRMED — stream check unavailable for this window</span>');
       else if (e)
         parts.push("Target <b>" + fmtPrice(e.price) + "</b> · " + M +
           ' <span class="otgtbad">UNCONFIRMED — still settling</span>');
@@ -7214,12 +7534,10 @@ function targetStripHtml(coin, h){
 /* The Re-check button: the WEB47 pad check's rule, run for the
    odds coin across every horizon the active market covers — force
    fresh target reads until each covered horizon's entry is
-   finality-confirmed (WEB48) or the read budget ends, then report
-   each horizon plainly, including the Chainlink-stream cross-check
-   on confirmed Polymarket targets (WEB48: Polymarket settles on
-   the stream, so a confirmed posted target that disagrees with the
-   stream estimate is flagged, never hidden). Locked pad calls are
-   never touched by any of this. */
+   confirmed (WEB48 finality + the WEB51 stream gate) or the read
+   budget ends, then report each horizon plainly — a target the
+   stream gate holds is reported as held, never dressed as
+   confirmed. Locked pad calls are never touched by any of this. */
 async function oddsRecheckTargets(){
   const res = $("#oddsTargetRes"), btn = $("#oddsRecheck");
   const coin = ODDS.coin;
@@ -7244,16 +7562,14 @@ async function oddsRecheckTargets(){
   if (res) res.innerHTML = covered.map(h => {
     let html = "<div><b>" + bestHzLabel(h) + "</b> — " + targetStripHtml(coin, h) + "</div>";
     const e = mktLineFor(coin, h);
-    if (S.preset === "polymarket" && e && e.confirmed){
-      const est = twap60Before(coin.toLowerCase(), e.start / 1000);
-      if (est != null && isFinite(est) && est > 0){
-        if (Math.abs(est - e.price) <= e.price * 0.0002)
-          html += '<div>Chainlink stream estimate ' + fmtPrice(est) + ' agrees ✓</div>';
-        else
-          html += '<div><span class="otgtbad">⚠ Chainlink stream estimate ' + fmtPrice(est) +
-            ' differs — Polymarket settles on the stream value, so treat this target with care.</span></div>';
-      }
-    }
+    /* WEB51: the stream estimate that gated this confirmation
+       rides on the entry itself (frozen at evaluation time) —
+       the pre-WEB51 fresh twap60Before call here could never
+       answer (wrong symbol case, seconds for milliseconds), so
+       this line silently never rendered. A confirmed TWAP
+       entry agreed with its estimate by construction. */
+    if (S.preset === "polymarket" && e && e.confirmed && e.streamEst != null)
+      html += '<div>Chainlink stream estimate ' + fmtPrice(e.streamEst) + ' agrees ✓</div>';
     return html;
   }).join("");
   if (ODDS_LIVE) refreshOdds();
