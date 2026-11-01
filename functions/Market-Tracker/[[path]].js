@@ -34,6 +34,34 @@ const COOKIE_MAX_AGE_S = 30 * 24 * 3600; // 30 days; the JWT itself is validated
 const meCache = new Map(); // tokenKey -> { at, result }
 export function _resetCaches() { meCache.clear(); }
 
+/* Bounded upstream waits (2026-11-01): the auth service stalls
+   periodically under engine load (blackouts up to ~80s measured).
+   An unbounded fetch here used to hang the whole request — on the
+   sign-in route that stranded the page's button disabled forever.
+   Every upstream fetch below carries a deadline; a timeout on the
+   account API answers 504 service_slow so the page can say what
+   happened and re-enable its button. Env overrides exist for the
+   test harness; production uses the defaults. */
+const UPSTREAM_TIMEOUT_MS = 20_000; // account API calls
+const ME_TIMEOUT_MS = 10_000;       // session validation at the gate
+const PROXY_TIMEOUT_MS = 25_000;    // tracker data plane
+
+function envTimeoutMs(context, name, dflt) {
+  const v = Number(context && context.env && context.env[name]);
+  return Number.isFinite(v) && v > 0 ? Math.floor(v) : dflt;
+}
+function timeoutSignal(ms) {
+  try {
+    if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+      return AbortSignal.timeout(ms);
+    }
+  } catch (e) { /* fall through: no signal */ }
+  return undefined;
+}
+function isTimeoutErr(e) {
+  return !!e && (e.name === 'TimeoutError' || e.name === 'AbortError');
+}
+
 function authOrigin(context) {
   const o = (context.env && context.env.PERP_AUTH_ORIGIN) || DEFAULT_AUTH_ORIGIN;
   return o.replace(/\/$/, '');
@@ -91,6 +119,7 @@ async function validateSession(context, token) {
   try {
     const r = await fetch(authOrigin(context) + '/api/perp-acct/me', {
       headers: { Authorization: 'Bearer ' + token },
+      signal: timeoutSignal(envTimeoutMs(context, 'PERP_ME_TIMEOUT_MS', ME_TIMEOUT_MS)),
     });
     if (r.status === 401) {
       result = { kind: 'invalid' };
@@ -131,11 +160,12 @@ async function proxyApi(context, request, url, rest) {
     init.body = request.body;
     init.duplex = 'half';
   }
+  init.signal = timeoutSignal(envTimeoutMs(context, 'PERP_PROXY_TIMEOUT_MS', PROXY_TIMEOUT_MS));
   let r;
   try {
     r = await fetch(authOrigin(context) + rest + url.search, init);
   } catch (e) {
-    return jsonRes({ error: 'upstream_unavailable' }, 502);
+    return jsonRes({ error: isTimeoutErr(e) ? 'upstream_slow' : 'upstream_unavailable' }, 502);
   }
   const out = new Headers(r.headers);
   out.delete('set-cookie');
@@ -183,9 +213,12 @@ async function pmPriceRoute(context, request, url) {
     encodeURIComponent(symbol) + '&eventStartTime=' + start + '&variant=' + encodeURIComponent(variant);
   let r;
   try {
-    r = await fetch(up, { headers: { Accept: 'application/json' } });
+    r = await fetch(up, {
+      headers: { Accept: 'application/json' },
+      signal: timeoutSignal(envTimeoutMs(context, 'PERP_PROXY_TIMEOUT_MS', PROXY_TIMEOUT_MS)),
+    });
   } catch (e) {
-    return jsonRes({ error: 'upstream_unavailable' }, 502);
+    return jsonRes({ error: isTimeoutErr(e) ? 'upstream_slow' : 'upstream_unavailable' }, 502);
   }
   const text = await r.text();
   return new Response(text, {
@@ -225,6 +258,7 @@ async function acctApi(context, request, action, spec) {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: bodyText || '{}',
+        signal: timeoutSignal(envTimeoutMs(context, 'PERP_UPSTREAM_TIMEOUT_MS', UPSTREAM_TIMEOUT_MS)),
       });
     } catch (e) { /* ignore — clearing the cookie is the point */ }
     return jsonRes({ ok: true }, 200, { 'Set-Cookie': clearedCookie() });
@@ -236,8 +270,14 @@ async function acctApi(context, request, action, spec) {
   try {
     r = await fetch(authOrigin(context) + spec.upstream, {
       method: spec.method, headers, body: bodyText == null ? undefined : bodyText,
+      signal: timeoutSignal(envTimeoutMs(context, 'PERP_UPSTREAM_TIMEOUT_MS', UPSTREAM_TIMEOUT_MS)),
     });
   } catch (e) {
+    if (isTimeoutErr(e)) {
+      // The auth service is stalled, not down: say so distinctly so
+      // the page can show "answering slowly" instead of a dead end.
+      return jsonRes({ error: 'service_slow' }, 504);
+    }
     return jsonRes({ error: 'upstream_unavailable' }, 502);
   }
   const text = await r.text().catch(() => '');
@@ -299,18 +339,42 @@ function shell(title, bodyHtml, scriptText) {
 }
 
 // Shared browser-side helper: POST JSON to an /acct/* route.
+// Bounded (2026-11-01): the call used to wait forever when the
+// sign-in service stalled, which stranded submit buttons in their
+// disabled state with no message. Now every call carries a hard
+// deadline (default 30s — the Function gives up on the upstream at
+// 20s and answers service_slow first) and a stall comes back as a
+// normal {ok:false, j:{error:"service_slow"}} result instead of a
+// hang or a throw, so every caller's error path runs and every
+// button recovers.
 const HELPER_JS =
-  'async function postJSON(path, body){\n' +
-  '  const r = await fetch(path, {method:"POST", headers:{"Content-Type":"application/json"},\n' +
-  '    body: JSON.stringify(body || {})});\n' +
-  '  const j = await r.json().catch(() => null);\n' +
-  '  return {status: r.status, ok: r.ok, j: j || {}};\n' +
+  'async function postJSON(path, body, timeoutMs){\n' +
+  '  const ms = timeoutMs || 30000;\n' +
+  '  let ctl = null, timer = null;\n' +
+  '  try {\n' +
+  '    const opts = {method:"POST", headers:{"Content-Type":"application/json"},\n' +
+  '      body: JSON.stringify(body || {})};\n' +
+  '    if (typeof AbortController === "function") {\n' +
+  '      ctl = new AbortController(); opts.signal = ctl.signal;\n' +
+  '      timer = setTimeout(() => { try { ctl.abort(); } catch (e) {} }, ms);\n' +
+  '    }\n' +
+  '    const r = await fetch(path, opts);\n' +
+  '    const j = await r.json().catch(() => null);\n' +
+  '    return {status: r.status, ok: r.ok, j: j || {}};\n' +
+  '  } catch (e) {\n' +
+  '    const timedOut = !!(ctl && ctl.signal && ctl.signal.aborted);\n' +
+  '    return {status: 0, ok: false, j: {error: timedOut ? "service_slow" : "network_error"}};\n' +
+  '  } finally { if (timer != null) clearTimeout(timer); }\n' +
   '}\n' +
   'function setMsg(id, text, ok){\n' +
   '  const m = document.getElementById(id); if (!m) return;\n' +
   '  m.textContent = text || ""; m.className = "msg " + (ok ? "ok" : "err");\n' +
   '}\n' +
+  'const SLOW_TEXT = "The sign-in service is answering slowly right now — wait a moment and try again.";\n' +
   'function errText(j, fallback){\n' +
+  '  const e = j && j.error;\n' +
+  '  if (e === "service_slow" || e === "upstream_slow" || e === "upstream_unavailable") return SLOW_TEXT;\n' +
+  '  if (e === "network_error") return "Could not reach the sign-in service — check your connection and try again.";\n' +
   '  return (j && (j.error || j.message)) || fallback;\n' +
   '}\n' +
   'function afterAuth(){\n' +
@@ -335,16 +399,29 @@ function signInPage() {
   const script = HELPER_JS +
     'document.getElementById("f").addEventListener("submit", async (ev) => {\n' +
     '  ev.preventDefault();\n' +
-    '  const btn = document.getElementById("go"); btn.disabled = true;\n' +
+    '  const btn = document.getElementById("go");\n' +
+    '  if (btn.disabled) return;\n' +
+    '  btn.disabled = true;\n' +
+    '  const oldLabel = btn.textContent; btn.textContent = "Signing in…";\n' +
     '  setMsg("msg", "");\n' +
+    // If the service stalls, say so while still waiting — never
+    // leave a silently dimmed button (the 2026-11-01 bug).
+    '  const slowTimer = setTimeout(() => {\n' +
+    '    setMsg("msg", "Still trying — the sign-in service is answering slowly right now…", true);\n' +
+    '  }, 7000);\n' +
+    '  let navigated = false;\n' +
     '  try {\n' +
     '    const r = await postJSON("/Market-Tracker/acct/login", {\n' +
     '      email: document.getElementById("email").value.trim(),\n' +
     '      password: document.getElementById("pw").value });\n' +
-    '    if (r.ok) { afterAuth(); return; }\n' +
+    '    if (r.ok) { navigated = true; afterAuth(); return; }\n' +
     '    setMsg("msg", errText(r.j, "Sign-in failed — check your email and password."), false);\n' +
     '  } catch (e) { setMsg("msg", "Could not reach the sign-in service — try again in a moment.", false); }\n' +
-    '  btn.disabled = false;\n' +
+    '  finally {\n' +
+    '    clearTimeout(slowTimer);\n' +
+    // The button ALWAYS recovers unless we are navigating away.
+    '    if (!navigated) { btn.disabled = false; btn.textContent = oldLabel; }\n' +
+    '  }\n' +
     '});\n';
   return shell('Sign in', body, script);
 }
@@ -368,15 +445,18 @@ function signUpPage() {
     '  ev.preventDefault();\n' +
     '  const pw = document.getElementById("pw").value;\n' +
     '  if (pw.length < 10) { setMsg("msg", "Password must be at least 10 characters.", false); return; }\n' +
-    '  const btn = document.getElementById("go"); btn.disabled = true;\n' +
+    '  const btn = document.getElementById("go");\n' +
+    '  if (btn.disabled) return;\n' +
+    '  btn.disabled = true;\n' +
     '  setMsg("msg", "");\n' +
+    '  let navigated = false;\n' +
     '  try {\n' +
     '    const r = await postJSON("/Market-Tracker/acct/register", {\n' +
     '      email: document.getElementById("email").value.trim(), password: pw });\n' +
-    '    if (r.ok) { afterAuth(); return; }\n' +
+    '    if (r.ok) { navigated = true; afterAuth(); return; }\n' +
     '    setMsg("msg", errText(r.j, "Could not create the account — that email may already be registered."), false);\n' +
     '  } catch (e) { setMsg("msg", "Could not reach the account service — try again in a moment.", false); }\n' +
-    '  btn.disabled = false;\n' +
+    '  finally { if (!navigated) btn.disabled = false; }\n' +
     '});\n';
   return shell('Create account', body, script);
 }
@@ -420,14 +500,17 @@ function resetPage() {
     '  const pw = document.getElementById("pw").value;\n' +
     '  if (!TOKEN) { setMsg("msg", "This reset link is missing its token.", false); return; }\n' +
     '  if (pw.length < 10) { setMsg("msg", "Password must be at least 10 characters.", false); return; }\n' +
-    '  const btn = document.getElementById("go"); btn.disabled = true;\n' +
+    '  const btn = document.getElementById("go");\n' +
+    '  if (btn.disabled) return;\n' +
+    '  btn.disabled = true;\n' +
+    '  let navigated = false;\n' +
     '  try {\n' +
     '    const r = await postJSON("/Market-Tracker/acct/reset", { token: TOKEN, password: pw });\n' +
-    '    if (r.ok) { setMsg("msg", "Password updated — taking you to sign in…", true);\n' +
+    '    if (r.ok) { navigated = true; setMsg("msg", "Password updated — taking you to sign in…", true);\n' +
     '      setTimeout(() => { location.href = "/Market-Tracker/acct/sign-in"; }, 900); return; }\n' +
     '    setMsg("msg", errText(r.j, "That reset link did not work — it may have expired. Request a fresh one."), false);\n' +
     '  } catch (e) { setMsg("msg", "Could not reach the account service — try again in a moment.", false); }\n' +
-    '  btn.disabled = false;\n' +
+    '  finally { if (!navigated) btn.disabled = false; }\n' +
     '});\n';
   return shell('Reset password', body, script);
 }
