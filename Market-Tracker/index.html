@@ -145,7 +145,15 @@ canvas.spark{width:100%;height:150px;display:block}
 .tchip{background:#0c0c18;border:1px solid var(--line);color:var(--mut);border-radius:999px;padding:3px 9px;font-size:12px;font-weight:700;cursor:pointer;margin-right:4px}
 .tchip.on{color:#0a0a12;background:var(--gold);border-color:var(--gold)}
 .ocard .otgt{font-size:11.5px;color:var(--mut);margin-top:8px;border-top:1px dashed var(--line);padding-top:7px;line-height:1.6}
-.ocard .opick{font-size:12px;color:var(--gold2);margin-top:7px;line-height:1.55}
+#oddsPicks{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-top:12px}
+.opickbox{border:1px solid rgba(201,162,39,.55);border-radius:12px;background:#0c0c18;padding:10px 12px}
+.opickbox h4{margin:0 0 7px;font-size:12px;letter-spacing:.09em;color:var(--gold2)}
+.opickrows{font-size:12.5px;line-height:1.65;color:var(--txt)}
+.opickrow{display:flex;justify-content:space-between;gap:8px;border-top:1px dashed rgba(255,255,255,.07);padding:3px 0}
+.opickrow:first-child{border-top:none}
+.opickrow .pl{color:var(--mut);white-space:nowrap}
+.opickrow.lead{color:var(--gold2);font-weight:700}
+.opickrow.lead .pl{color:var(--gold2)}
 .otgtok{color:var(--up);font-weight:700}
 .otgtbad{color:var(--edge);font-weight:700}
 .tgtuse{background:none;border:1px solid var(--gold);color:var(--gold2);border-radius:7px;padding:1px 7px;font-size:11px;font-weight:700;cursor:pointer;margin-left:4px}
@@ -611,6 +619,13 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
     <h2>Odds — the system's own calls</h2>
     <p class="note" style="margin-top:0">Pick any crypto and a value. The system — the same global brain the watch panel runs on — returns its OVER / UNDER odds for the close at each horizon, computed server-side. It scores only its own predictions: every card shows that horizon's real global record, and a horizon running at coin-flip gets flagged weak instead of hiding behind the average.</p>
     <div id="oddsBest4h" class="oddsbest4h none">★ Best accuracy — past 4 hours: loading the graded record…</div>
+    <div id="oddsPicks">
+      <div class="opickbox" data-pickbox="5"><h4>5 MIN — MOST LIKELY</h4><div class="opickrows">Loading the graded records…</div></div>
+      <div class="opickbox" data-pickbox="15"><h4>15 MIN — MOST LIKELY</h4><div class="opickrows">Loading the graded records…</div></div>
+      <div class="opickbox" data-pickbox="30"><h4>30 MIN — MOST LIKELY</h4><div class="opickrows">Loading the graded records…</div></div>
+      <div class="opickbox" data-pickbox="60"><h4>60 MIN — MOST LIKELY</h4><div class="opickrows">Loading the graded records…</div></div>
+      <div class="opickbox" data-pickbox="1440"><h4>24 HR — MOST LIKELY</h4><div class="opickrows">No graded 24-hour record exists yet — this box is waiting on its data basis.</div></div>
+    </div>
     <div class="row" style="margin-top:10px">
       <label class="note" for="oddsCoin">Crypto</label>
       <select id="oddsCoin"></select>
@@ -6962,7 +6977,6 @@ async function refreshOdds(){
       '<div class="opct">OVER ' + pct(hz.p_over) + ' · UNDER ' + pct(hz.p_under) + '</div>' +
       '<div class="ostat">Global record: ' + rec + crec + '</div>' +
       '<div class="otgt">' + targetStripHtml(ODDS.coin, h) + '</div>' +
-      '<div class="opick" data-pick="' + h + '">' + oddsPickHtml(h) + '</div>' +
       '<div class="otrend" data-trendread="' + h + '"></div></div>';
   }).join("");
   // Trend reads for the odds coin: its candle history loads in the
@@ -7012,7 +7026,16 @@ async function refreshOdds(){
   }, 1000);
   // WEB26: no boot fetch and no background poll — the 20 s poll
   // runs only while the odds drawer is open (see ODDS_LIVE).
-  setInterval(() => { if (ODDS_LIVE) refreshOdds(); }, 20000);
+  setInterval(() => {
+    if (ODDS_LIVE){
+      refreshOdds();
+      /* WEB49: the crown + MOST LIKELY boxes refresh on their own
+         sources (recent-calls records + locks) — an odds-endpoint
+         stall must not freeze them. */
+      renderOddsBest4h();
+      renderOddsPicks();
+    }
+  }, 20000);
 })();
 
 /* ---------- WEB49 (Shane 2026-11-01): Odds Board — target lines,
@@ -7043,9 +7066,13 @@ function winRecordFor(rec){
   return null;
 }
 /* The past-4-hours crown: best graded accuracy over every kept
-   coin × horizon, on the trailing-4h windowed record. A cell needs
-   BEST_MIN_N graded calls to stand behind the crown (the same
-   floor the BEST OPTION highlight uses) — 2/2 is not a champion. */
+   coin × horizon, on the trailing-4h windowed record. Shane's
+   ruling on the first build (2026-11-01): rank what EXISTS in the
+   window and show the leader with its actual count — no minimum-
+   calls floor (a floor turned the box into a permanent "not
+   enough calls" state while the system holds tens of thousands of
+   graded calls). The count is always printed, so a thin leader
+   reads as thin. */
 function oddsBest4h(){
   let best = null;
   for (const sym of keptCoins()){
@@ -7053,7 +7080,7 @@ function oddsBest4h(){
     if (!cs || !cs.winRec) continue;
     for (const h of [5, 15, 30, 45, 60]){
       const b = winRecordFor(cs.winRec[h] && cs.winRec[h].h4);
-      if (!b || b.n < BEST_MIN_N) continue;
+      if (!b || !(b.n > 0)) continue;
       if (!best || b.hitRate > best.b.hitRate + 1e-12 ||
           (Math.abs(b.hitRate - best.b.hitRate) <= 1e-12 && b.n > best.b.n))
         best = {sym, h, b};
@@ -7064,56 +7091,70 @@ function oddsBest4h(){
 function renderOddsBest4h(){
   const el = $("#oddsBest4h");
   if (!el) return;
+  const loaded = keptCoins().some(sym => S.coins[sym] && S.coins[sym].winRec);
   const best = oddsBest4h();
   if (!best){
     el.className = "oddsbest4h none";
-    el.textContent = "★ Best accuracy — past 4 hours: not enough graded calls yet (" +
-      BEST_MIN_N + "+ per coin × horizon needed).";
+    el.textContent = loaded
+      ? "★ Best accuracy — past 4 hours: no graded calls in the past 4 hours yet."
+      : "★ Best accuracy — past 4 hours: loading the graded record…";
     return;
   }
   el.className = "oddsbest4h";
   el.innerHTML = "★ Best accuracy — past 4 hours: <b>" + best.sym + " · " + bestHzLabel(best.h) +
-    "</b> — " + Math.round(best.b.hitRate * 100) + "% (" + best.b.hits + "/" + best.b.n +
+    "</b> — " + Math.round(best.b.hitRate * 100) + "% over last 4h (" + best.b.hits + "/" + best.b.n +
     " graded calls" + (best.b.basis ? " · " + best.b.basis : "") + ")";
 }
-/* The most-likely pick for one horizon: rank the SELECTED coins by
-   their trailing-50 graded-call accuracy at this horizon; the
-   leader's pick is shown with its own record (hits/n — n is the
-   real graded count, under 50 whenever fewer than 50 graded calls
-   exist; nothing is padded up to 50). The leader's CALL is its
-   locked outlook call for the current window when it has one —
-   read through the same outlookLockCheck gate the outlook renders
-   through; without a lock the pick names the leader and says so. */
-function oddsPickFor(h){
-  let best = null;
-  for (const sym of S.selected){
-    const cs = S.coins[sym];
-    if (!cs || !cs.winRec) continue;
-    const b = winRecordFor(cs.winRec[h] && cs.winRec[h].last50);
-    if (!b || b.n < BEST_MIN_N) continue;
-    if (!best || b.hitRate > best.b.hitRate + 1e-12 ||
-        (Math.abs(b.hitRate - best.b.hitRate) <= 1e-12 && b.n > best.b.n))
-      best = {sym, b};
-  }
-  if (!best) return null;
-  const cs = coinState(best.sym);
+/* The MOST LIKELY boxes (Shane's five red boxes, labels literal:
+   5 MIN / 15 MIN / 30 MIN / 60 MIN / 24 HR — the 60 MIN box runs
+   on the 1-hour horizon's calls and record; the 24 HR box is a
+   layout slot whose data basis Shane is still picking, so it
+   carries its waiting state in the markup and is never wired to
+   a substitute record). Each box lists EVERY selected coin: its
+   locked call for the current window at that horizon (read
+   through the same outlookLockCheck gate the outlook renders
+   through; no lock → the row says so) and its trailing-50 graded
+   record (hits/n — n is the real graded count, under 50 whenever
+   fewer exist; nothing is padded up to 50). The coin with the
+   best trailing-50 accuracy leads the box, starred. The boxes
+   render from winRec + padLock ONLY — they do not depend on the
+   odds endpoint, so an odds stall cannot blank them. */
+function oddsCoinPick(sym, h){
+  const cs = coinState(sym);
+  const b = cs.winRec ? winRecordFor(cs.winRec[h] && cs.winRec[h].last50) : null;
   const lock = cs.padLock && cs.padLock[h];
-  const call = (lock && lock.call && outlookLockCheck(best.sym, h, lock, winBoundaryMs(Date.now(), h)))
+  const call = (lock && lock.call && outlookLockCheck(sym, h, lock, winBoundaryMs(Date.now(), h)))
     ? lock.call : null;
-  return {sym: best.sym, b: best.b, call};
+  return {sym, b, call};
 }
-function oddsPickHtml(h){
-  if (!S.selected.length) return "";
-  const p = oddsPickFor(h);
-  if (!p) return "★ Most likely: not enough graded calls yet (" + BEST_MIN_N + "+ per selected coin at this horizon).";
-  return "★ Most likely: <b>" + p.sym + (p.call ? " " + p.call : "") + "</b> — " +
-    p.b.hits + "/" + p.b.n + " last " + p.b.n + " (" + Math.round(p.b.hitRate * 100) + "%" +
-    (p.b.basis ? " · " + p.b.basis : "") + ")" +
-    (p.call ? "" : " · no locked call yet this window");
+function oddsPickRowsHtml(h){
+  if (!S.selected.length)
+    return '<div class="opickrow"><span>No coins picked on the watch panel.</span></div>';
+  if (!S.selected.some(sym => S.coins[sym] && S.coins[sym].winRec))
+    return '<div class="opickrow"><span>Loading the graded records…</span></div>';
+  const rows = S.selected.map(sym => oddsCoinPick(sym, h));
+  let lead = null;
+  for (const r of rows){
+    if (!r.b || !(r.b.n > 0)) continue;
+    if (!lead || r.b.hitRate > lead.b.hitRate + 1e-12 ||
+        (Math.abs(r.b.hitRate - lead.b.hitRate) <= 1e-12 && r.b.n > lead.b.n)) lead = r;
+  }
+  return rows.map(r => {
+    const rec = r.b
+      ? r.b.hits + "/" + r.b.n + " last " + r.b.n + " (" + Math.round(r.b.hitRate * 100) + "%)"
+      : "no graded record yet";
+    const isLead = lead && r.sym === lead.sym;
+    return '<div class="opickrow' + (isLead ? " lead" : "") + '"><span>' +
+      (isLead ? "★ " : "") + r.sym + (r.call ? " " + r.call : " —") + '</span>' +
+      '<span class="pl">' + (r.call ? rec : (r.b ? rec + " · no locked call yet" : rec)) + "</span></div>";
+  }).join("");
 }
 function renderOddsPicks(){
-  document.querySelectorAll("[data-pick]").forEach(el => {
-    el.innerHTML = oddsPickHtml(+el.getAttribute("data-pick"));
+  document.querySelectorAll("[data-pickbox]").forEach(el => {
+    const h = +el.getAttribute("data-pickbox");
+    if (h === 1440) return;   // 24 HR: layout slot only — data basis is Shane's pending pick
+    const host = el.querySelector(".opickrows");
+    if (host) host.innerHTML = oddsPickRowsHtml(h);
   });
 }
 /* A horizon card's target strip: the mimicked market's target for
