@@ -2064,7 +2064,24 @@ const MKT_HZ = [5, 15, 60, 240];
    skip — true forces every horizon's entry, a horizon number
    forces only that entry. Only the manual now-view refresh
    (padRefreshNow) passes it; every cadence caller omits it and
-   keeps the behavior above. */
+   keeps the behavior above.
+   WEB46 (Shane 2026-11-01 — "check the perpetual target of the
+   current one on Polymarket at the start of every perpetual to
+   make sure its predictions are based on the correct values"):
+   every entry now carries a CONFIRMATION state. A value is
+   confirmed when two successive reads of the market's own
+   endpoint agree to the tick, or when the window is already
+   ≥120s old at first read (the value is settled history by then),
+   or — Kalshi — on first read (a published strike is final the
+   moment it exists, WEB19). An UNCONFIRMED entry is refetched on
+   every pass (the 20s latch applies only once confirmed), so the
+   convergence re-read runs until the value is confirmed; a later
+   read that DISAGREES drops the entry back to unconfirmed.
+   Locked predictions (padCallsRows) take only confirmed entries;
+   live estimates may show an unconfirmed read, labelled as such.
+   Entries written before WEB46 carry no flag and count as
+   confirmed (undefined !== false) — only the tracker below ever
+   writes explicit false. */
 async function refreshMktLines(sym, forceH){
   const cs = coinState(sym);
   if (!marketActive()){ cs.mktLines = null; return; }
@@ -2074,7 +2091,7 @@ async function refreshMktLines(sym, forceH){
     const start = winStartMs(now, h);
     const cur = cs.mktLines[h];
     const forced = forceH === true || forceH === h;
-    if (cur && cur.start === start && !forced && now - cur.at < 20000) continue;
+    if (cur && cur.start === start && cur.confirmed !== false && !forced && now - cur.at < 20000) continue;
     let got = null;
     if (S.preset === "polymarket"){
       const variant = PM_VARIANT[h];
@@ -2089,10 +2106,17 @@ async function refreshMktLines(sym, forceH){
         const want = new Date(start).toISOString();
         const m = ms.find(x => x.open_time === want);
         if (m && isFinite(+m.floor_strike) && +m.floor_strike > 0)
-          got = {price: +m.floor_strike, src: "Kalshi", start: start, at: Date.now()};
+          got = {price: +m.floor_strike, src: "Kalshi", start: start, at: Date.now(), final: true};
       }
     }
-    if (got) cs.mktLines[h] = got;
+    if (got){
+      const prev = (cur && cur.start === start) ? cur : null;
+      const agree = !!prev && Math.abs(prev.price - got.price) <= Math.max(1e-9, got.price * 1e-9);
+      got.reads = agree ? (prev.reads || 1) + 1 : 1;
+      got.confirmed = agree || got.final === true || (now - start >= 120000);
+      delete got.final;
+      cs.mktLines[h] = got;
+    }
     else if (cur && cur.start !== start) delete cs.mktLines[h];
   }
 }
@@ -4948,6 +4972,20 @@ setInterval(() => {
     const txt = fmtClock(winBoundaryMs(Date.now(), h) - Date.now()) + " left";
     if (cdEls[i].textContent !== txt) cdEls[i].textContent = txt;
   }
+  // WEB46: the ENTER readout's footer live figure tracks the same
+  // cs.price the card header shows — one live price per panel
+  // (see padNowHTML). Text nodes only, like the countdowns above.
+  const plHosts = document.querySelectorAll("[data-plive]");
+  for (let i = 0; i < plHosts.length; i++){
+    const host = plHosts[i], tsym = host.dataset ? host.dataset.plive : null;
+    const pcs = tsym ? S.coins[tsym] : null;
+    if (!pcs || !(pcs.price > 0)) continue;
+    const pEl = host.querySelector(".plive-p");
+    if (pEl){ const t = fmtPrice(pcs.price); if (pEl.textContent !== t) pEl.textContent = t; }
+    const ln = parseFloat(host.dataset.pline);
+    const pctEl = host.querySelector(".plive-pct");
+    if (pctEl && isFinite(ln) && ln > 0){ const t = fmtPct(ln / pcs.price - 1, true); if (pctEl.textContent !== t) pctEl.textContent = t; }
+  }
   if (S.cycle.active){
     $("#countdown").textContent = "Perpetual closes in " + fmtClock(S.cycle.closeAt - Date.now());
     for (const sym of S.selected){
@@ -5701,7 +5739,14 @@ function padNowRows(tsym, price, line){
     const r = probOverAt(tsym, price, ml ? ml.price : line, remaining);
     const call = Math.abs(r.p - 0.5) >= band ? (r.p > 0.5 ? "OVER" : "UNDER") : null;
     return {h: h, p: r.p, call: call, winP: call ? (call === "OVER" ? r.p : 1 - r.p) : null,
-            remaining: remaining, line: ml ? ml.price : line, mkt: ml ? ml.src : null};
+            remaining: remaining, line: ml ? ml.price : line, mkt: ml ? ml.src : null,
+            /* WEB46: the now-view is a live estimate, so it may run
+               against an unconfirmed read — but it must SAY so, and
+               a covered horizon with no read at all must say the
+               target is unconfirmed rather than quietly running
+               against the typed line as if it were the market's. */
+            unconf: (ml && ml.confirmed === false) ? "read"
+                  : (!ml && mktCovers(tsym, h) ? "missing" : null)};
   });
 }
 /* The readout's position line + advice, from the 30m head row —
@@ -5757,7 +5802,8 @@ function padStampStr(ms){
 function padNowRowInner(r, stampMs, sym){
   return "<td>" + (r.h === 60 ? "1 hour" : r.h + " min") +
     ' · <span class="cdft" data-cdh="' + r.h + '">' + fmtClock(r.remaining * 1000) + " left</span>" +
-    (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + ")</span>" : "") +
+    (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + (r.unconf === "read" ? " — unconfirmed" : "") + ")</span>"
+           : (r.unconf === "missing" ? '<br><span class="note">' + (S.preset === "kalshi" ? "Kalshi" : "Polymarket") + ' target unconfirmed — row uses your line</span>' : "")) +
     '<br><button class="padrefresh" type="button" data-padrefresh="' + r.h + '" aria-label="Refresh prediction for the ' + (r.h === 60 ? "1 hour" : r.h + " min") + ' perpetual">↻ Refresh prediction</button>' +
     (stampMs ? '<br><span class="note padstamp">↻ refreshed ' + padStampStr(stampMs) + " · live estimate</span>" : "") +
     "</td><td>" +
@@ -5774,8 +5820,20 @@ function padNowHTML(sym){
   const pn = coinState(sym).padNow;
   if (!pn) return "";
   const rows = pn.rows;
-  return '<div class="note" style="margin-top:2px">' + pn.tsym + " · line " + fmtPrice(pn.line) + (pn.usedLive ? " (live price — no line was typed)" : "") +
-    " · live " + fmtPrice(pn.price) + " · line is " + fmtPct(pn.line / pn.price - 1, true) + " vs live</div>" +
+  /* WEB46 (Shane 2026-11-01): the footer's "live" figure is the
+     target coin's CURRENT live price — the same cs.price the card
+     header renders — never the ENTER-time snapshot in pn.price
+     (Shane's screenshot: header live $95.517 while this footer
+     still showed $95.458 from when ENTER was pressed, two
+     different "live" prices on one screen). The .plive-p /
+     .plive-pct spans are kept on the current price by the 1s
+     housekeeping loop between renders, so the panel shows ONE
+     live price at all times. pn.price itself is unchanged: it
+     remains the price the stored rows were computed from. */
+  const tcs46 = coinState(pn.tsym);
+  const liveP = (tcs46 && tcs46.price > 0) ? tcs46.price : pn.price;
+  return '<div class="note" data-plive="' + pn.tsym + '" data-pline="' + pn.line + '" style="margin-top:2px">' + pn.tsym + " · line " + fmtPrice(pn.line) + (pn.usedLive ? " (live price — no line was typed)" : "") +
+    " · live " + '<span class="plive-p">' + fmtPrice(liveP) + "</span>" + " · line is " + '<span class="plive-pct">' + fmtPct(pn.line / liveP - 1, true) + "</span> vs live</div>" +
     '<div style="margin-top:6px"><button class="padrefresh" type="button" data-padrefresh="all">↻ Refresh prediction — all horizons</button></div>' +
     '<table><thead><tr><th>Close in</th><th>System call</th><th>Win probability</th></tr></thead><tbody>' +
     /* WEB32: the strip belongs to the rows' coin — the pad's
@@ -5889,8 +5947,15 @@ async function cardPadEnter(sym){
   const cp = cardPad(sym), tsym = cp.target, tcs = coinState(tsym);
   const out = coinState(sym).els.padOut;
   if (!tcs.price){
-    const t = await fetchJSON(CB + "/products/" + tsym + "-USD/ticker");
-    if (t && isFinite(+t.price)) tcs.price = +t.price;
+    /* WEB46: the seed price comes through the SAME source chain
+       the header ticks on (freshPricePull mirrors priceTick) —
+       in Polymarket mode that chain never touches Coinbase
+       (WEB31's complete data-plane switch), so this readout can
+       never be based on a different exchange's print than the
+       live price the panel displays. The old code pulled the
+       Coinbase ticker directly here, in every mode. */
+    const fp = await freshPricePull(tsym);
+    if (fp) tcs.price = fp;
   }
   const price = tcs.price;
   if (!(price > 0)){
@@ -5995,9 +6060,12 @@ function mktCovers(sym, h){
        lock is authoritative once taken (WEB28), and checking a
        stored row against a fresh fetch is exactly the WEB34
        divergent-basis class this gate exists to kill. The
-       lock-time guarantee itself is WEB30's: a covered row
-       cannot lock before its target lands (90 s bounded fallback
-       records mkt=null, honestly basis-less);
+       lock-time guarantee itself is WEB30's, tightened by
+       WEB46: a covered row cannot lock before its target lands
+       AND is confirmed — and the old 90 s bounded fallback
+       (mkt=null against the card line) no longer exists; a
+       target that never confirms leaves the row pending and
+       visibly "target unconfirmed" instead;
    (c) sanity — probability finite and in [0,1], estimate and
        line finite and positive, the call consistent with the
        stored probability and the band recorded AT LOCK TIME
@@ -6038,7 +6106,13 @@ function padCallsRows(sym){
   return padHzFor(sym).map(h => {
     const closeAt = winBoundaryMs(now, h);
     const remaining = Math.max(1, (closeAt - now) / 1000);
-    const ml = mktLineFor(sym, h);
+    const mlRaw = mktLineFor(sym, h);
+    /* WEB46 (Shane 2026-11-01): a covered row locks ONLY against
+       a CONFIRMED market target (see refreshMktLines — two
+       agreeing reads of the market's own endpoint). An
+       unconfirmed first read never bases a locked call; the row
+       waits in the deferral branch below instead. */
+    const ml = (mlRaw && mlRaw.confirmed === false) ? null : mlRaw;
     const line = ml ? ml.price : baseLine;
     const lock = cs.padLock[h];
     if (lock && lock.closeAt === closeAt){
@@ -6074,23 +6148,38 @@ function padCallsRows(sym){
        render. Once the target lands the row locks against it; if
        90s pass with no target (endpoint down), it locks against
        the resolved line as before rather than staying unlocked
-       forever. The immutable law is untouched: a locked row
+       forever. [WEB46 (2026-11-01): Shane superseded that 90s
+       fallback — a covered row now NEVER locks against a
+       substitute value; see the branch itself.] The immutable
+       law is untouched: a locked row
        never changes — this only stops a row from locking against
        the wrong line in the first place. (WEB35: the interim
        UNLOCKED-live rendering this paragraph describes is
        superseded — pending rows now show the checking state;
        see the branch itself.) */
-    if (!ml && mktCovers(sym, h) && now - winStartMs(now, h) < 90000){
+    if (!ml && mktCovers(sym, h)){
       /* WEB35 (Shane 2026-10-30): while the covered target is in
          flight the row renders the plain CHECKING state — WEB30's
          interim live-recompute display is superseded by Shane's
          check-before-render rule: an unlocked, unchecked number
          is never shown, and no client-side recompute may stand in
-         for the stored prediction. The lock discipline is
-         unchanged: nothing locks until the target lands (or the
-         90s bounded fallback below), and a locked row never moves. */
-      return {h: h, pending: true, remaining: remaining, line: line,
-              mkt: null, lockedAt: null};
+         for the stored prediction.
+         WEB46 (Shane 2026-11-01) supersedes WEB30's 90s bounded
+         fallback: a covered row NEVER locks against the card line
+         or any other substitute when the market's own target
+         cannot be confirmed — not at 90s, not ever. The row stays
+         pending for the whole window if it must: "checking…"
+         while the window is under 90s old, "target unconfirmed"
+         from 90s on, and it locks the moment a confirmed target
+         lands, even late (the lock math below is unchanged). An
+         unconfirmed read on hand is carried on the row and shown
+         labelled UNCONFIRMED — Polymarket's own number, never a
+         stand-in, and never presented as settled. */
+      const age = now - winStartMs(now, h);
+      return {h: h, pending: true, remaining: remaining,
+              line: mlRaw ? mlRaw.price : line,
+              mkt: mlRaw ? mlRaw.src : null,
+              unconf: age >= 90000, unconfRead: !!mlRaw, lockedAt: null};
     }
     /* Lock-time computation: the FULL horizon (h*60 seconds),
        never the time left in the window. */
@@ -6174,10 +6263,19 @@ function renderPadCalls(sym){
          No call, no probability, no estimate, no refresh/why
          buttons: an unchecked number never reaches the screen. */
       if (r.pending){
+        /* WEB46: a covered row still waiting on a CONFIRMED market
+           target says so — past 90s it reads "target unconfirmed"
+           (with the unconfirmed read shown, labelled, when one
+           exists); before that, an on-hand read is marked
+           "confirming…". No substitute value is ever implied to
+           be the market's target. */
+        const tgt = r.unconf
+          ? '<br><span class="note">' + (r.mkt ? "target " + fmtPrice(r.line) + " (" + r.mkt + " — UNCONFIRMED)" : "target unconfirmed") + "</span>"
+          : (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + (r.unconfRead ? " — confirming…" : "") + ")</span>" : "");
         return "<tr><td>" + (r.h === 60 ? "1 hour" : r.h + " min") +
         ' · <span class="cdft" data-cdh="' + r.h + '">' + fmtClock(r.remaining * 1000) + " left</span>" +
-        (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + ")</span>" : "") +
-        '</td><td><span class="note predcheck">checking…</span>' +
+        tgt +
+        '</td><td><span class="note predcheck">' + (r.unconf ? "target unconfirmed" : "checking…") + '</span>' +
         formStripHTML(sym, r.h) +
         "</td><td>—</td></tr>";
       }
