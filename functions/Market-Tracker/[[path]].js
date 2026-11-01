@@ -7,18 +7,31 @@
 // on the auth service (https://auth.rivaleclipse.dev/api/perp-acct/*)
 // — completely separate from the Rival Eclipse hub/bot accounts.
 //
+// Host split (Phase A host separation):
+//  - Core (authOrigin, env PERP_AUTH_ORIGIN, default
+//    https://auth.rivaleclipse.dev): the account API
+//    (/api/perp-acct/*) AND gate validation (GET /api/perp-acct/me).
+//  - Engine (engineOrigin, env PERP_ENGINE_ORIGIN, default
+//    https://rival-eclipse-perp-engine.fly.dev): ONLY the tracker
+//    data proxy (/api/perp/*). Account calls and gate validation
+//    never go to the engine host. The default is the Fly hostname
+//    (works the moment the Fly app exists, no DNS dependency); it
+//    moves to https://perp.rivaleclipse.dev once that subdomain's
+//    DNS/cert verify — set PERP_ENGINE_ORIGIN to make the switch
+//    without a code change.
+//
 // How it works:
 //  - The browser never sees the account JWT. The /acct/* API routes
-//    below proxy to the auth service; on login/register the returned
-//    token is stored in an HttpOnly cookie ('perp_acct') scoped to
-//    /Market-Tracker on this origin.
+//    below proxy to the auth (Core) service; on login/register the
+//    returned token is stored in an HttpOnly cookie ('perp_acct')
+//    scoped to /Market-Tracker on this origin.
 //  - Page gate: /Market-Tracker/ and /Market-Tracker/learn/ validate
-//    the cookie server-to-server via GET /api/perp-acct/me (30s
-//    in-function cache). Entitled -> the real page is served via
+//    the cookie server-to-server via GET /api/perp-acct/me on Core
+//    (30s in-function cache). Entitled -> the real page is served via
 //    context.next(). Expired -> the paywall page. Anonymous/invalid
 //    -> the sign-in page. The tracker HTML is never served to a
 //    non-entitled visitor.
-//  - API proxy: /Market-Tracker/api/perp/* forwards to the auth
+//  - API proxy: /Market-Tracker/api/perp/* forwards to the engine
 //    service with the cookie's token injected as a Bearer header.
 //    No cookie -> 401 JSON, upstream is never called.
 //  - Everything else in the subtree (the Perp Alerts APK, assets)
@@ -26,6 +39,12 @@
 //    Android app enforces its own login.
 
 const DEFAULT_AUTH_ORIGIN = 'https://auth.rivaleclipse.dev';
+// Default is the Fly hostname on purpose: no Cloudflare DNS for
+// perp.rivaleclipse.dev exists until a dashboard step at cutover, and
+// the fly.dev name works as soon as the app does. Once the
+// perp.rivaleclipse.dev DNS/cert verify, this default moves to
+// https://perp.rivaleclipse.dev (or PERP_ENGINE_ORIGIN is set to it).
+const DEFAULT_ENGINE_ORIGIN = 'https://rival-eclipse-perp-engine.fly.dev';
 const COOKIE_NAME = 'perp_acct';
 const COOKIE_PATH = '/Market-Tracker';
 const ME_TTL_MS = 30_000;
@@ -64,6 +83,11 @@ function isTimeoutErr(e) {
 
 function authOrigin(context) {
   const o = (context.env && context.env.PERP_AUTH_ORIGIN) || DEFAULT_AUTH_ORIGIN;
+  return o.replace(/\/$/, '');
+}
+
+function engineOrigin(context) {
+  const o = (context.env && context.env.PERP_ENGINE_ORIGIN) || DEFAULT_ENGINE_ORIGIN;
   return o.replace(/\/$/, '');
 }
 
@@ -110,11 +134,22 @@ function htmlRes(html, status, extraHeaders) {
 
 /* ---------------- session validation (the gate) ------------------ */
 
+/* Validation outcomes. 'entitled' / 'expired' / 'invalid' are
+   DEFINITIVE answers from Core's /api/perp-acct/me. 'trouble' means
+   validation could not complete (timeout, network error, non-401
+   upstream status) — it is NOT a session verdict, and callers must
+   not treat it as one (WEB51, 2026-11-01: during auth-service
+   stalls this used to collapse into 'anon', so the market-data
+   proxy answered 401 for entitled users and the page bounced them
+   to sign-in). Trouble results are cached only briefly so one
+   hiccup cannot poison a full ME_TTL window of reads. */
+const TROUBLE_TTL_MS = 2_000;
+
 async function validateSession(context, token) {
   if (!token) return { kind: 'anon' };
   const key = tokenKey(token);
   const hit = meCache.get(key);
-  if (hit && Date.now() - hit.at < ME_TTL_MS) return hit.result;
+  if (hit && Date.now() - hit.at < hit.ttl) return hit.result;
   let result;
   try {
     const r = await fetch(authOrigin(context) + '/api/perp-acct/me', {
@@ -130,12 +165,16 @@ async function validateSession(context, token) {
         ? { kind: 'entitled', me: j }
         : { kind: 'expired', me: j };
     } else {
-      result = { kind: 'anon' }; // upstream trouble: fail closed
+      result = { kind: 'trouble' }; // upstream trouble: not a verdict
     }
   } catch (e) {
-    result = { kind: 'anon' }; // unreachable auth service: fail closed
+    result = { kind: 'trouble' }; // unreachable auth service: not a verdict
   }
-  meCache.set(key, { at: Date.now(), result });
+  meCache.set(key, {
+    at: Date.now(),
+    ttl: result.kind === 'trouble' ? TROUBLE_TTL_MS : ME_TTL_MS,
+    result,
+  });
   return result;
 }
 
@@ -163,7 +202,7 @@ async function proxyApi(context, request, url, rest) {
   init.signal = timeoutSignal(envTimeoutMs(context, 'PERP_PROXY_TIMEOUT_MS', PROXY_TIMEOUT_MS));
   let r;
   try {
-    r = await fetch(authOrigin(context) + rest + url.search, init);
+    r = await fetch(engineOrigin(context) + rest + url.search, init);
   } catch (e) {
     return jsonRes({ error: isTimeoutErr(e) ? 'upstream_slow' : 'upstream_unavailable' }, 502);
   }
@@ -182,9 +221,9 @@ async function proxyApi(context, request, url, rest) {
      TWAP-60 for the 5m/15m/4h variants, the Binance candle open for
      the hourly variant); closePrice is its live/final price.
    Kalshi used to be proxied here too, but the Pages edge cannot
-   reach Kalshi's hosts reliably (intermittent edge 502s) — the auth
-   service serves its strikes at GET /api/perp/kalshi instead,
-   carried by the standard /api/perp/* API proxy.
+   reach Kalshi's hosts reliably (intermittent edge 502s) — the
+   engine service serves its strikes at GET /api/perp/kalshi
+   instead, carried by the standard /api/perp/* API proxy.
    The PM route requires an entitled perp-acct session, same as
    the tracker. */
 
@@ -192,14 +231,21 @@ const PM_VARIANTS = new Set(['fiveminute', 'fifteen', 'hourly', 'fourhour', 'dai
 
 async function requireEntitled(context, request) {
   const token = parseCookies(request)[COOKIE_NAME];
-  if (!token) return null;
-  const v = await validateSession(context, token);
-  return v.kind === 'entitled' ? v : null;
+  if (!token) return { kind: 'anon' };
+  return validateSession(context, token);
 }
 
 async function pmPriceRoute(context, request, url) {
   if (request.method !== 'GET') return jsonRes({ error: 'method_not_allowed' }, 405);
-  if (!(await requireEntitled(context, request))) return jsonRes({ error: 'unauthorized' }, 401);
+  const v = await requireEntitled(context, request);
+  if (v.kind === 'trouble') {
+    // WEB51 fix: validation could not complete — that is not a
+    // session verdict. A 401 here reads to the page as session
+    // death; answer the transient-service signal instead (the page
+    // treats it as a failed read and retries on the next pass).
+    return jsonRes({ error: 'service_slow' }, 503);
+  }
+  if (v.kind !== 'entitled') return jsonRes({ error: 'unauthorized' }, 401);
   const symbol = (url.searchParams.get('symbol') || '').toUpperCase();
   const start = Number(url.searchParams.get('start'));
   const variant = url.searchParams.get('variant') || '';
@@ -681,7 +727,7 @@ export async function onRequest(context) {
   }
   // Kalshi is NOT proxied here: the Pages edge cannot reach Kalshi's
   // hosts reliably (intermittent edge-generated 502s, verified
-  // 2026-10-28). The auth service serves GET /api/perp/kalshi
+  // 2026-10-28). The engine service serves GET /api/perp/kalshi
   // instead, which rides the standard /api/perp/* proxy above.
   if (rest === '/api' || rest.startsWith('/api/')) {
     return jsonRes({ error: 'not_found' }, 404);
