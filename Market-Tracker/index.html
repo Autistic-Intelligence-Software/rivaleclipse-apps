@@ -178,6 +178,35 @@ canvas.spark{width:100%;height:150px;display:block}
 .fcrec{color:var(--mut);font-size:12px;margin-top:3px;line-height:1.55}
 .engline{color:var(--mut);font-size:12px;margin-top:3px;line-height:1.55}
 .engline b{color:var(--gold2);font-weight:600}
+/* ---------- WEB40: NORMAL mode ---------- */
+.modeswitch{display:flex;gap:0;margin-top:10px;border:1px solid var(--line);border-radius:10px;overflow:hidden;max-width:420px}
+.modeswitch button{flex:1;background:rgba(255,255,255,.03);color:var(--mut);border:none;padding:8px 10px;font-size:13px;font-weight:700;letter-spacing:.08em;cursor:pointer}
+.modeswitch button.on{background:linear-gradient(120deg,#f3d27a,#c9a227);color:#14100a}
+.ncard{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:12px;background:rgba(255,255,255,.02)}
+.ncard h3{margin:0;font-size:17px}
+.nstate{display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.05em;border-radius:999px;padding:3px 9px;margin-left:8px;vertical-align:2px}
+.nstate.likely{background:rgba(154,150,173,.18);color:var(--txt)}
+.nstate.possible{background:rgba(201,162,39,.22);color:var(--gold2)}
+.nstate.shifting{background:rgba(63,140,255,.25);color:#9cc2ff}
+.nadvice{font-size:19px;font-weight:800;letter-spacing:.02em;margin-top:8px}
+.nadvice small{display:block;font-size:12px;font-weight:400;color:var(--mut);margin-top:3px;line-height:1.5}
+.nadvice.buy{color:var(--up)} .nadvice.sell{color:var(--down)} .nadvice.prep{color:var(--gold2)} .nadvice.keep{color:#9cc2ff} .nadvice.wait{color:#e0a458} .nadvice.none{color:var(--mut)}
+.nctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:9px}
+.nctl .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.nctl .seg button{background:none;border:none;color:var(--mut);padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer}
+.nctl .seg button.on{background:rgba(201,162,39,.25);color:var(--gold2)}
+.nctl label{font-size:12px;color:var(--mut)}
+.nctl input{width:86px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:7px;color:var(--txt);padding:5px 7px;font-size:13px}
+.nctl input.fee{width:58px}
+.ncharts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.ncharts canvas{width:100%;height:auto;background:rgba(0,0,0,.18);border:1px solid var(--line);border-radius:10px}
+.nhybrow{display:grid;grid-template-columns:3fr 2fr;gap:10px;margin-top:10px}
+.nhybrow canvas{width:100%;height:auto;background:rgba(0,0,0,.18);border:1px solid var(--line);border-radius:10px}
+.nchartlbl{font-size:11px;color:var(--mut);letter-spacing:.07em;text-transform:uppercase;margin-bottom:4px}
+.nreasons{border:1px dashed var(--line);border-radius:10px;padding:9px 11px;margin-top:9px;font-size:12.5px;line-height:1.65;color:var(--txt)}
+.nmeta{color:var(--mut);font-size:12px;margin-top:7px;line-height:1.55}
+.nbtn{background:none;border:1px solid var(--line);color:var(--gold2);border-radius:8px;padding:4px 9px;font-size:12px;cursor:pointer}
+@media (max-width:760px){.ncharts,.nhybrow{grid-template-columns:1fr}}
 .flashmsg{font-size:13px;font-weight:700;margin-top:7px;min-height:16px}
 .flashmsg.right{color:var(--up)} .flashmsg.wrong{color:var(--down)}
 #scoreTable,#scorePackedTable{width:100%;border-collapse:collapse;font-size:14px}
@@ -478,6 +507,13 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
        into the "How it works" context text (CTX_TEXT.how) — the
        header keeps only the wordmark, title, nav and the Learn link. -->
   <p class="sub" style="margin-top:6px"><a href="learn/" style="font-weight:700">📚 Learn — the perpetuals tutorial &amp; lessons →</a></p>
+  <!-- WEB40: NORMAL | PERPETUALS mode switch (NORMAL mode build,
+       Shane 2026-10-31). PERPETUALS is the page as it has always
+       behaved; NORMAL is the additive rolling-shift view. -->
+  <div class="modeswitch" role="tablist" aria-label="Tracker mode">
+    <button type="button" id="modeNormalBtn" role="tab">NORMAL</button>
+    <button type="button" id="modePerpBtn" role="tab">PERPETUALS</button>
+  </div>
 </header>
 <div id="drawerBackdrop" hidden></div>
 <button class="edgetab left" id="oddsTab" type="button" title="Open the odds board">Odds</button>
@@ -535,6 +571,34 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
   </section>
 </aside>
 <main>
+  <!-- WEB40: NORMAL mode panel (hidden unless NORMAL is active) -->
+  <section class="card" id="normalPanel" hidden>
+    <div class="secthead"><h2 style="margin:0">📈 Normal mode — next-shift forecasts</h2><button type="button" class="ctxbtn" id="nmRefreshAllBtn" title="Reload every coin's Normal data">↻ Refresh all</button></div>
+    <p class="note" style="margin-top:6px">Rolling wave forecasts for day-traders: what the system expects each coin to do next, when, and what it advises for <i>your</i> position. Forecasts freeze when issued — a re-forecast is a new line, never an edit; the old line stays on the chart and in the record.</p>
+    <div class="row" style="margin-top:8px;gap:8px;align-items:center">
+      <span class="note">Zoom</span>
+      <div class="zoomseg" id="nmZoomSeg">
+        <button type="button" data-nzoom="live">Live</button><button type="button" data-nzoom="5">5 min</button><button type="button" data-nzoom="15">15 min</button><button type="button" data-nzoom="30">30 min</button><button type="button" data-nzoom="60">1 hr</button><button type="button" data-nzoom="720">12 hr</button><button type="button" data-nzoom="1440">24 hr</button>
+      </div>
+    </div>
+    <details id="nmAdvPanel" style="margin-top:10px">
+      <summary style="cursor:pointer;color:var(--mut);font-weight:600;font-size:12px;letter-spacing:.08em">ADVANCED — FORECAST CONTROLS (THIS DEVICE ONLY)</summary>
+      <div class="nctl" style="margin-top:8px">
+        <label>Sensitivity
+          <select id="nmPresetSel">
+            <option value="conservative">Conservative</option>
+            <option value="balanced">Balanced</option>
+            <option value="sensitive">Sensitive</option>
+          </select>
+        </label>
+        <label>PREPARE gate % <input type="number" id="nmGateIn" min="50" max="99" step="1"></label>
+        <label>Profit buffer % <input type="number" id="nmBufferIn" min="0" max="10" step="0.1"></label>
+        <label>Band × <input type="number" id="nmBandIn" min="0.5" max="2.5" step="0.05"></label>
+        <span class="note">These tune the advice labels and the drawn band on this device. The server's shared forecast — the auditable one — is the same for everyone.</span>
+      </div>
+    </details>
+    <div id="ncards"></div>
+  </section>
   <div id="panelSlot">
     <section class="card" id="watchPanel">
       <div id="watchHead">
@@ -6419,6 +6483,478 @@ function restoreSelection(){
     if (box){ box.checked = true; toggleCoin(sym, true, box); }
   });
 }
+/* ================= WEB40: NORMAL mode (Shane 2026-10-31) ========
+   A second, market-free view over the SAME system: rolling
+   next-shift forecasts from /api/perp/normal (+ /normal-week),
+   frozen server-side; the advice labels are computed HERE from the
+   served ingredients and the user's own device-local settings
+   (HOLDING/WATCHING, holdings $, fee %) — the shared forecast is
+   identical for every visitor and is never recomputed per user.
+   Load-once per mode entry + per-dataset manual refresh buttons,
+   like the rest of the page. PERPETUALS mode is untouched. */
+const NM_COINS = ["BTC", "ETH", "SOL", "XRP", "DOGE", "NEAR"];
+const NM_LS_MODE = "ph.mode.v1", NM_LS_SET = "ph.normal.set.v1", NM_LS_ZOOM = "ph.normal.zoom.v1";
+const NM_PRESETS = { conservative: { gate: 85, band: 1.25 }, balanced: { gate: 75, band: 1.0 }, sensitive: { gate: 60, band: 0.8 } };
+const NM = {
+  mode: lsGet(NM_LS_MODE, "perp") === "normal" ? "normal" : "perp",
+  zoom: String(lsGet(NM_LS_ZOOM, "15")),
+  settings: lsGet(NM_LS_SET, {}),
+  coins: {}, loaded: false, hover: {},
+};
+if (!NM.settings || typeof NM.settings !== "object" || Array.isArray(NM.settings)) NM.settings = {};
+if (!NM.settings._adv) NM.settings._adv = { preset: "balanced", gate: 75, buffer: 0, band: 1 };
+function nmCoinSet(sym){
+  if (!NM.settings[sym]) NM.settings[sym] = { stance: "watching", holdings: "", fee: "1.0" };
+  return NM.settings[sym];
+}
+function nmSaveSet(){ lsSet(NM_LS_SET, NM.settings); }
+function nmMoney(x){ return (x < 0 ? "-$" : "$") + Math.abs(x).toFixed(2); }
+function nmTime(iso){ try { return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); } catch (e) { return ""; } }
+
+/* The advisory label — pure, unit-tested in web5 (WEB40 section).
+   ing = the S4 advisory ingredients; st = this coin's device-local
+   settings; adv = the advanced panel values. Every label carries
+   its math in `why` (DESIGN.md: no naked advice). Fee default is
+   1.0%/side (chosen default, flagged in the build report);
+   GOOD TIME TO SELL requires the expected drop >= 1.5x the
+   round-trip fees (chosen reading of "significantly more"). */
+function nmAdvice(ing, st, adv){
+  const H = (st.holdings === "" || st.holdings == null) ? 1000 : (Number(st.holdings) || 1000);
+  const feeSide = Number(st.fee);
+  const feePct = (isFinite(feeSide) && feeSide >= 0) ? feeSide : 1.0;
+  if (!ing) return { label: "NO FORECAST YET", cls: "none", why: ["The system has not issued a shift forecast for this coin yet — it issues one as soon as its per-coin engine has enough live history."] };
+  const move = ing.expected_move_pct || 0;
+  const like = ing.shift_likelihood;
+  const gate = ((adv && adv.gate) || 75) / 100;
+  const likely = like != null && like >= gate;
+  const gross = H * move, fees = H * 2 * feePct / 100, net = gross - fees;
+  const buffer$ = H * ((adv && adv.buffer) || 0) / 100;
+  const started = ing.state === "possible" || ing.state === "shifting";
+  const why = [
+    "Expected shift: " + ing.direction + " " + (move * 100).toFixed(2) + "% — on " + nmMoney(H) + " of this coin, a full-size shift is " + nmMoney(gross) + " of movement.",
+    "Your round-trip fees at " + feePct + "% per side come to " + nmMoney(fees) + "; net if the shift lands in full: " + nmMoney(net) + ".",
+    "Shift likelihood " + (like != null ? Math.round(like * 100) + "%" : "—") + " vs the PREPARE gate of " + Math.round(gate * 100) + "% — " + (likely ? "a shift counts as imminent." : "no shift counts as imminent yet."),
+    "Forecast state: " + String(ing.state || "likely").toUpperCase() + (ing.range_position_pct != null ? "; the live price sits at the " + Math.round(ing.range_position_pct * 100) + "th percentile of its trailing 24h range." : "."),
+  ];
+  if (st.stance !== "holding"){
+    if (ing.direction === "DOWN"){
+      if (likely) return { label: "WAIT — DROP EXPECTED", cls: "wait", why: why.concat(["You hold none: a drop is the likely next shift, so the better entry is after it lands, not before."]) };
+      return { label: "NO STRONG SHIFT EXPECTED", cls: "none", why };
+    }
+    if (!likely) return { label: "NO STRONG SHIFT EXPECTED", cls: "none", why };
+    if (started && net > buffer$ && (ing.range_position_pct == null || ing.range_position_pct <= 0.5)){
+      return { label: "GOOD TIME TO BUY", cls: "buy", why: why.concat(["The shift has begun, the price is still in the lower half of its range, and the expected move clears your fees" + (buffer$ > 0 ? " plus your profit buffer." : ".")]) };
+    }
+    const extra = [];
+    if (started && net <= buffer$) extra.push("The shift has begun but the expected move does not yet clear your fees" + (buffer$ > 0 ? " plus buffer." : "."));
+    if (started && ing.range_position_pct != null && ing.range_position_pct > 0.5) extra.push("The shift has begun but the price is already in the upper half of its range — not a low entry.");
+    if (!started) extra.push("The shift has not begun — this is the prepare stage, not the entry.");
+    return { label: "PREPARE TO BUY", cls: "prep", why: why.concat(extra) };
+  }
+  if (ing.direction === "UP"){
+    return { label: "KEEP HOLDINGS", cls: "keep", why: why.concat(["The expected shift is up — holding rides it; selling here pays fees to step off a rising position."]) };
+  }
+  if (!likely){
+    return { label: "KEEP HOLDINGS", cls: "keep", why: why.concat(["A down shift is below the likelihood gate — not worth paying fees over."]) };
+  }
+  const rtFrac = 2 * feePct / 100;
+  if (started && move >= 1.5 * rtFrac){
+    return { label: "GOOD TIME TO SELL", cls: "sell", why: why.concat(["The decline has begun and its expected size " + (move * 100).toFixed(2) + "% is at least 1.5x your round-trip fees (" + (rtFrac * 100).toFixed(2) + "%)."]) };
+  }
+  return { label: "PREPARE TO SELL", cls: "prep", why: why.concat([started ? "The decline has begun but is not yet 1.5x your round-trip fees in expected size." : "The decline has not begun — this is the prepare stage."]) };
+}
+function nmStateText(fc){
+  if (!fc) return "";
+  if (fc.state === "shifting") return "SHIFTING " + fc.direction;
+  if (fc.state === "possible") return "POSSIBLE SHIFT " + fc.direction;
+  return "LIKELY TO SHIFT " + fc.direction + " · approx. " + nmTime(fc.t_early) + " – " + nmTime(fc.t_late);
+}
+
+/* ---------- NORMAL data ---------- */
+async function nmPost(url, body){
+  let timer = null;
+  try {
+    const opts = { method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) };
+    if (typeof AbortController === "function"){
+      const ctl = new AbortController();
+      opts.signal = ctl.signal;
+      timer = setTimeout(() => { try { ctl.abort(); } catch (e) {} }, FETCH_TIMEOUT_MS);
+    }
+    const r = await fetch(url, opts);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) { return null; }
+  finally { if (timer != null) clearTimeout(timer); }
+}
+async function nmLoadCoin(sym){
+  const c = NM.coins[sym]; if (!c) return;
+  const d = await fetchJSON(AUTH + "/api/perp/normal?coin=" + encodeURIComponent(sym));
+  const w = await fetchJSON(AUTH + "/api/perp/normal-week?coin=" + encodeURIComponent(sym));
+  if (d) c.data = d;
+  if (w) c.week = w;
+  nmRenderCoin(sym);
+}
+function nmLoadAll(){
+  NM.loaded = true;
+  for (const sym of NM_COINS) nmLoadCoin(sym);
+}
+async function nmRefresh(sym, dataset, btn){
+  if (btn) btn.disabled = true;
+  const r = await nmPost(AUTH + "/api/perp/normal-refresh", { coin: sym, dataset });
+  const c = NM.coins[sym];
+  if (c && c.els && c.els.meta){
+    if (r && r.issued) c.els.meta.textContent = "New " + dataset + " forecast issued — the previous one closed out as issued and stays in the record.";
+    else if (r && r.note === "cooldown") c.els.meta.textContent = "Inside the 10-minute re-forecast cooldown — the active forecast stands (it is " + Math.ceil((r.retry_after_ms || 0) / 60000) + " min from being refreshable).";
+    else if (r) c.els.meta.textContent = "Refresh noted (" + (r.note || "ok") + ").";
+  }
+  await nmLoadCoin(sym);
+  if (btn) btn.disabled = false;
+}
+
+/* ---------- NORMAL charts ---------- */
+function nmZoomSpec(){
+  const z = NM.zoom, now = Date.now();
+  if (z === "live") return { spanMs: 15 * 60000, kind: "m1" };
+  const span = Number(z) * 60000;
+  if (span <= 3600000) return { spanMs: span, kind: "m1" };
+  return { spanMs: span, kind: "span" };
+}
+function nmSeriesFor(sym){
+  const c = NM.coins[sym], d = c && c.data;
+  const spec = nmZoomSpec(), now = Date.now(), t0 = now - spec.spanMs;
+  if (!d) return { past: [], fc: null, spans: null, t0, t1: now + spec.spanMs, spec };
+  let past = [];
+  if (spec.kind === "m1"){
+    past = (d.series.m1 || []).filter(p => p[0] >= t0 - 3600000);
+    if (past.length < 10) past = (d.series.m15 || []).map(p => [p[0] + 900000, p[1]]).filter(p => p[0] >= t0 - 3600000);
+  } else {
+    past = (d.series.h1 || []).map(p => [p[0] + 3600000, p[1]]).filter(p => p[0] >= t0 - 3600000);
+  }
+  let fcPts = null;
+  if (spec.kind === "m1" && d.forecast){
+    const bandMult = (NM.settings._adv && NM.settings._adv.band) || 1;
+    fcPts = d.forecast.path.map(p => {
+      const t = Date.parse(p.t), mid = p.mid;
+      return { t, mid, lo: mid - (mid - p.lo) * bandMult, hi: mid + (p.hi - mid) * bandMult };
+    });
+  }
+  let spanPts = null;
+  if (spec.kind === "span" && d.spans){
+    const key = spec.spanMs >= 24 * 3600000 ? "24h" : "12h";
+    const arr = d.spans[key] || [];
+    spanPts = arr.map(p => ({ t: Date.parse(p.t), mid: p.mid, lo: p.lo, hi: p.hi }));
+  }
+  let t1 = now + spec.spanMs * 0.75;
+  if (fcPts && fcPts.length) t1 = Math.max(t1, fcPts[fcPts.length - 1].t);
+  if (spanPts && spanPts.length) t1 = Math.max(t1, spanPts[spanPts.length - 1].t);
+  return { past, fc: fcPts, spans: spanPts, t0, t1, spec };
+}
+function nmYRange(parts){
+  let lo = Infinity, hi = -Infinity;
+  const eat = (v) => { if (v > 0 && isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } };
+  for (const pts of parts) for (const p of pts){
+    if (Array.isArray(p)) eat(p[1]);
+    else { eat(p.mid); eat(p.lo); eat(p.hi); }
+  }
+  if (!isFinite(lo)) return null;
+  const pad = (hi - lo) * 0.08 || hi * 0.01;
+  return [lo - pad, hi + pad];
+}
+function nmDraw(cv, o){
+  if (!cv) return;
+  const ctx = cv.getContext && cv.getContext("2d");
+  if (!ctx) return;
+  const W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  const RP = 64;
+  const X = (t) => 8 + (t - o.t0) / (o.t1 - o.t0) * (W - RP - 16);
+  const Y = (p) => H - 14 - (p - o.y[0]) / (o.y[1] - o.y[0]) * (H - 28);
+  ctx.font = "11px system-ui";
+  // forecast band
+  if (o.band && o.band.length > 1){
+    ctx.beginPath();
+    o.band.forEach((p, i) => { const x = X(p.t), y = Y(p.hi); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    for (let i = o.band.length - 1; i >= 0; i--) ctx.lineTo(X(o.band[i].t), Y(o.band[i].lo));
+    ctx.closePath();
+    ctx.fillStyle = "rgba(201,162,39,0.13)"; ctx.fill();
+  }
+  const line = (pts, val, color, width, dash) => {
+    if (!pts || pts.length < 2) return;
+    ctx.beginPath();
+    ctx.setLineDash(dash || []);
+    pts.forEach((p, i) => { const x = X(Array.isArray(p) ? p[0] : p.t), y = Y(val(p)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke();
+    ctx.setLineDash([]);
+  };
+  if (o.pastFaint) line(o.pastFaint, p => p[1], "rgba(154,150,173,0.55)", 1.4, null);
+  if (o.prevFc) line(o.prevFc, p => p.mid, "rgba(154,150,173,0.6)", 1.4, [4, 4]);
+  if (o.band) line(o.band, p => p.mid, "#f3d27a", 2.2, [7, 5]);
+  if (o.past) line(o.past, p => p[1], o.color, 2.4, null);
+  // now divider
+  const nx = X(Date.now());
+  if (nx > 8 && nx < W - RP){
+    ctx.beginPath(); ctx.moveTo(nx, 6); ctx.lineTo(nx, H - 6);
+    ctx.strokeStyle = "rgba(236,234,244,0.25)"; ctx.lineWidth = 1; ctx.stroke();
+  }
+  // crosshair
+  if (o.hoverT && o.hoverT >= o.t0 && o.hoverT <= o.t1){
+    const hx = X(o.hoverT);
+    ctx.beginPath(); ctx.moveTo(hx, 6); ctx.lineTo(hx, H - 6);
+    ctx.strokeStyle = "rgba(236,234,244,0.5)"; ctx.lineWidth = 1; ctx.stroke();
+  }
+  // right-edge labels: last past + forecast end
+  ctx.fillStyle = "#eceaf4";
+  if (o.past && o.past.length){
+    const lp = o.past[o.past.length - 1];
+    ctx.fillText(fmtPx(lp[1]), W - RP + 6, Y(lp[1]) + 4);
+  }
+  if (o.band && o.band.length){
+    ctx.fillStyle = "#f3d27a";
+    const lf = o.band[o.band.length - 1];
+    ctx.fillText(fmtPx(lf.mid), W - RP + 6, Y(lf.mid) + 4);
+  }
+  if ((!o.past || o.past.length < 2) && (!o.band || o.band.length < 2)){
+    ctx.fillStyle = "#9a96ad"; ctx.font = "13px system-ui";
+    ctx.fillText(o.emptyText || "Loading…", 16, H / 2);
+  }
+}
+function fmtPx(v){
+  if (!(v > 0)) return "—";
+  if (v >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  if (v >= 10) return v.toFixed(2);
+  if (v >= 1) return v.toFixed(3);
+  return v.toFixed(5);
+}
+function nmDrawCharts(sym){
+  const c = NM.coins[sym]; if (!c || !c.data || !c.els) return;
+  const s = nmSeriesFor(sym);
+  const nowMs = Date.now();
+  const pastWin = s.past.filter(p => p[0] >= s.t0 && p[0] <= nowMs + 60000);
+  const fut = s.fc || s.spans;
+  const y = nmYRange([pastWin, fut || []]);
+  if (!y) return;
+  const col = COIN_COLORS[sym] || "#c9a227";
+  const hoverT = NM.hover[sym] || null;
+  const prev = c.data.recent && c.data.recent.length
+    ? c.data.recent[0].path.map(p => ({ t: Date.parse(p.t), mid: p.mid, lo: p.lo, hi: p.hi })) : null;
+  nmDraw(c.els.cvLive, { t0: s.t0, t1: s.t1, y, past: pastWin, color: col, hoverT, emptyText: "Waiting for live candles…" });
+  nmDraw(c.els.cvPred, { t0: s.t0, t1: s.t1, y, pastFaint: pastWin, band: fut, hoverT, emptyText: "Forecast warming up…" });
+  nmDraw(c.els.cvHyb, { t0: s.t0, t1: s.t1, y, past: pastWin, band: fut, prevFc: prev, color: col, hoverT, emptyText: "Hybrid warming up…" });
+  nmDrawWeek(sym);
+}
+function nmDrawWeek(sym){
+  const c = NM.coins[sym]; if (!c || !c.els || !c.els.cvWeek) return;
+  const wk = c.week && c.week.week;
+  const cv = c.els.cvWeek, ctx = cv.getContext && cv.getContext("2d");
+  if (!ctx) return;
+  const W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.font = "11px system-ui";
+  if (!wk || !wk.segments || !wk.segments.length){
+    ctx.fillStyle = "#9a96ad"; ctx.font = "13px system-ui";
+    ctx.fillText("Weekly forecast warming up…", 16, H / 2);
+    return;
+  }
+  const t0 = Date.parse(wk.week_start), t1 = Date.parse(wk.week_end);
+  const actuals = (wk.actuals || []).map(a => [Date.parse(a.t), a.close]);
+  const flat = [];
+  for (const seg of wk.segments) for (const p of seg.path) flat.push(p);
+  const y = nmYRange([actuals, flat.map(p => ({ t: Date.parse(p.t), mid: p.mid, lo: p.lo, hi: p.hi }))]);
+  if (!y) { ctx.fillStyle = "#9a96ad"; ctx.fillText("Weekly data forming…", 16, H / 2); return; }
+  const X = (t) => 8 + (t - t0) / (t1 - t0) * (W - 72);
+  const Y = (p) => H - 14 - (p - y[0]) / (y[1] - y[0]) * (H - 28);
+  wk.segments.forEach((seg, si) => {
+    const cur = seg.id === wk.current_segment_id;
+    ctx.beginPath();
+    seg.path.forEach((p, i) => { const x = X(Date.parse(p.t)), yy = Y(p.mid); i ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy); });
+    ctx.setLineDash([6, 5]);
+    ctx.strokeStyle = cur ? "#f3d27a" : "rgba(154,150,173,0.45)";
+    ctx.lineWidth = cur ? 2.2 : 1.3;
+    ctx.stroke();
+    ctx.setLineDash([]);
+  });
+  if (actuals.length > 1){
+    ctx.beginPath();
+    actuals.forEach((p, i) => { const x = X(p[0]), yy = Y(p[1]); i ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy); });
+    ctx.strokeStyle = COIN_COLORS[sym] || "#eceaf4"; ctx.lineWidth = 2.2; ctx.stroke();
+    ctx.fillStyle = "#eceaf4";
+    ctx.fillText(fmtPx(actuals[actuals.length - 1][1]), W - 66, Y(actuals[actuals.length - 1][1]) + 4);
+  }
+  const nx = X(Date.now());
+  if (nx > 8 && nx < W - 70){
+    ctx.beginPath(); ctx.moveTo(nx, 6); ctx.lineTo(nx, H - 6);
+    ctx.strokeStyle = "rgba(236,234,244,0.3)"; ctx.lineWidth = 1; ctx.stroke();
+  }
+}
+
+/* ---------- NORMAL card rendering ---------- */
+function nmBuildCards(){
+  const wrap = document.getElementById("ncards");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  for (const sym of NM_COINS){
+    const col = COIN_COLORS[sym] || "#c9a227";
+    const el = document.createElement("div");
+    el.className = "ncard"; el.id = "ncard-" + sym;
+    el.innerHTML =
+      '<div><h3 style="display:inline;color:' + col + '">' + sym + '</h3><span class="npr"></span><span class="nstate likely"></span></div>' +
+      '<div class="nadvice none"></div>' +
+      '<div class="nctl">' +
+        '<span class="seg"><button type="button" class="nst-watch">WATCHING</button><button type="button" class="nst-hold">HOLDING</button></span>' +
+        '<label>Holdings $ <input type="number" class="nhold" min="0" step="any" placeholder="1000"></label>' +
+        '<label>Fee %/side <input type="number" class="nfee fee" min="0" step="0.1"></label>' +
+        '<button type="button" class="nbtn nwhy">Why?</button>' +
+        '<button type="button" class="nbtn nref-fc">↻ Forecast</button>' +
+        '<button type="button" class="nbtn nref-wk">↻ Week</button>' +
+        '<button type="button" class="nbtn nref-data">↻ Data</button>' +
+      '</div>' +
+      '<div class="nreasons" hidden></div>' +
+      '<div class="ncharts"><div><div class="nchartlbl">Live</div><canvas class="ncv-live" width="640" height="230"></canvas></div>' +
+      '<div><div class="nchartlbl">Prediction</div><canvas class="ncv-pred" width="640" height="230"></canvas></div></div>' +
+      '<div class="nhybrow"><div><div class="nchartlbl">Live × prediction hybrid</div><canvas class="ncv-hyb" width="760" height="250"></canvas></div>' +
+      '<div><div class="nchartlbl">This week — forecast vs actual</div><canvas class="ncv-week" width="520" height="250"></canvas></div></div>' +
+      '<div class="nmeta"></div>';
+    wrap.appendChild(el);
+    const c = {
+      el, data: null, week: null,
+      els: {
+        pr: el.querySelector(".npr"), state: el.querySelector(".nstate"),
+        adv: el.querySelector(".nadvice"), reasons: el.querySelector(".nreasons"),
+        meta: el.querySelector(".nmeta"),
+        cvLive: el.querySelector(".ncv-live"), cvPred: el.querySelector(".ncv-pred"),
+        cvHyb: el.querySelector(".ncv-hyb"), cvWeek: el.querySelector(".ncv-week"),
+        holdIn: el.querySelector(".nhold"), feeIn: el.querySelector(".nfee"),
+        stWatch: el.querySelector(".nst-watch"), stHold: el.querySelector(".nst-hold"),
+      },
+    };
+    NM.coins[sym] = c;
+    const st = nmCoinSet(sym);
+    if (c.els.holdIn) c.els.holdIn.value = st.holdings;
+    if (c.els.feeIn) c.els.feeIn.value = st.fee;
+    const setStance = (stance) => { st.stance = stance; nmSaveSet(); nmRenderCoin(sym); };
+    if (c.els.stWatch) c.els.stWatch.addEventListener("click", () => setStance("watching"));
+    if (c.els.stHold) c.els.stHold.addEventListener("click", () => setStance("holding"));
+    if (c.els.holdIn) c.els.holdIn.addEventListener("change", () => { st.holdings = c.els.holdIn.value; nmSaveSet(); nmRenderCoin(sym); });
+    if (c.els.feeIn) c.els.feeIn.addEventListener("change", () => { st.fee = c.els.feeIn.value; nmSaveSet(); nmRenderCoin(sym); });
+    const whyBtn = el.querySelector(".nwhy");
+    if (whyBtn) whyBtn.addEventListener("click", () => { if (c.els.reasons) c.els.reasons.hidden = !c.els.reasons.hidden; });
+    const rf = el.querySelector(".nref-fc"); if (rf) rf.addEventListener("click", () => nmRefresh(sym, "shift", rf));
+    const rw = el.querySelector(".nref-wk"); if (rw) rw.addEventListener("click", () => nmRefresh(sym, "week", rw));
+    const rd = el.querySelector(".nref-data"); if (rd) rd.addEventListener("click", () => nmLoadCoin(sym));
+    for (const cv of [c.els.cvLive, c.els.cvPred, c.els.cvHyb]){
+      if (!cv || !cv.addEventListener) continue;
+      cv.addEventListener("mousemove", (ev) => {
+        const r = cv.getBoundingClientRect && cv.getBoundingClientRect();
+        if (!r || !r.width) return;
+        const s = nmSeriesFor(sym);
+        const frac = (ev.clientX - r.left) / r.width;
+        NM.hover[sym] = s.t0 + frac * (s.t1 - s.t0);
+        nmDrawCharts(sym);
+      });
+      cv.addEventListener("mouseleave", () => { NM.hover[sym] = null; nmDrawCharts(sym); });
+    }
+    nmRenderCoin(sym);
+  }
+}
+function nmRenderCoin(sym){
+  const c = NM.coins[sym]; if (!c || !c.els) return;
+  const st = nmCoinSet(sym), adv = NM.settings._adv, d = c.data;
+  if (c.els.stWatch) c.els.stWatch.classList.toggle("on", st.stance !== "holding");
+  if (c.els.stHold) c.els.stHold.classList.toggle("on", st.stance === "holding");
+  if (!d){
+    if (c.els.adv) { c.els.adv.className = "nadvice none"; c.els.adv.textContent = "Loading…"; }
+    return;
+  }
+  if (c.els.pr) c.els.pr.textContent = d.live ? "  " + fmtPx(d.live.price) + (d.live.stale ? " (stale)" : "") : "";
+  if (d.shadow){
+    if (c.els.state) { c.els.state.className = "nstate likely"; c.els.state.textContent = "SHADOW"; }
+    if (c.els.adv) { c.els.adv.className = "nadvice none"; c.els.adv.innerHTML = "No forecast for NEAR yet<small>" + (d.note || "") + "</small>"; }
+    if (c.els.meta) c.els.meta.textContent = "";
+    nmDrawCharts(sym);
+    return;
+  }
+  const fc = d.forecast;
+  if (c.els.state){
+    c.els.state.className = "nstate " + (fc ? fc.state : "likely");
+    c.els.state.textContent = fc ? nmStateText(fc) : "WARMING UP";
+  }
+  const a = nmAdvice(d.advisory, st, adv);
+  if (c.els.adv){
+    c.els.adv.className = "nadvice " + a.cls;
+    c.els.adv.innerHTML = a.label + "<small>" + (fc
+      ? "Next shift: " + fc.direction + " " + (fc.expected_move_pct * 100).toFixed(2) + "% expected · likelihood " + (fc.shift_likelihood != null ? Math.round(fc.shift_likelihood * 100) + "%" : "—") + " · issued " + nmTime(fc.issued_at) + " · window " + nmTime(fc.t_early) + " – " + nmTime(fc.t_late)
+      : "Forecast warming up — the engine issues the first one shortly.") + "</small>";
+  }
+  if (c.els.reasons) c.els.reasons.innerHTML = a.why.map(w => "• " + w).join("<br>");
+  if (c.els.meta && d.record){
+    const r = d.record;
+    c.els.meta.textContent = "Shift forecast record: " + r.resolved + " resolved · " + r.shifted + " shifted · " + r.leveled + " leveled off · " + r.missed + " missed · " + r.counter + " counter-shifted · " + r.invalidated + " invalidated"
+      + (r.direction_hit_rate != null ? " · direction right " + Math.round(r.direction_hit_rate * 100) + "% of graded" : "")
+      + (r.avg_size_ratio != null ? " · avg size " + Math.round(r.avg_size_ratio * 100) + "% of predicted" : "");
+  }
+  nmDrawCharts(sym);
+}
+
+/* ---------- mode switch ---------- */
+function nmApplyMode(){
+  const normal = NM.mode === "normal";
+  const nb = document.getElementById("modeNormalBtn"), pb = document.getElementById("modePerpBtn");
+  if (nb) nb.classList.toggle("on", normal);
+  if (pb) pb.classList.toggle("on", !normal);
+  const np = document.getElementById("normalPanel"); if (np) np.hidden = !normal;
+  const ps = document.getElementById("panelSlot"); if (ps) ps.style.display = normal ? "none" : "";
+  const duo = document.querySelector(".duo"); if (duo) duo.style.display = normal ? "none" : "";
+  if (normal){
+    if (!NM.loaded) nmLoadAll();
+    else for (const sym of NM_COINS) nmDrawCharts(sym);
+  }
+}
+function nmSetMode(m){ NM.mode = m === "normal" ? "normal" : "perp"; lsSet(NM_LS_MODE, NM.mode); nmApplyMode(); }
+(function nmInit(){
+  nmBuildCards();
+  const nb = document.getElementById("modeNormalBtn"), pb = document.getElementById("modePerpBtn");
+  if (nb) nb.addEventListener("click", () => nmSetMode("normal"));
+  if (pb) pb.addEventListener("click", () => nmSetMode("perp"));
+  const seg = document.getElementById("nmZoomSeg");
+  if (seg){
+    seg.querySelectorAll("button").forEach(b => {
+      b.classList.toggle("on", b.dataset.nzoom === NM.zoom);
+      b.addEventListener("click", () => {
+        NM.zoom = b.dataset.nzoom; lsSet(NM_LS_ZOOM, NM.zoom);
+        seg.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+        for (const sym of NM_COINS) nmDrawCharts(sym);
+      });
+    });
+  }
+  const adv = NM.settings._adv;
+  const presetSel = document.getElementById("nmPresetSel"), gateIn = document.getElementById("nmGateIn"),
+    bufferIn = document.getElementById("nmBufferIn"), bandIn = document.getElementById("nmBandIn");
+  if (presetSel) presetSel.value = adv.preset || "balanced";
+  if (gateIn) gateIn.value = adv.gate;
+  if (bufferIn) bufferIn.value = adv.buffer;
+  if (bandIn) bandIn.value = adv.band;
+  if (presetSel) presetSel.addEventListener("change", () => {
+    adv.preset = presetSel.value;
+    const p = NM_PRESETS[adv.preset] || NM_PRESETS.balanced;
+    adv.gate = p.gate; adv.band = p.band;
+    if (gateIn) gateIn.value = adv.gate;
+    if (bandIn) bandIn.value = adv.band;
+    nmSaveSet(); for (const sym of NM_COINS) nmRenderCoin(sym);
+  });
+  const advChanged = () => {
+    if (gateIn && Number(gateIn.value) > 0) adv.gate = Number(gateIn.value);
+    if (bufferIn && Number(bufferIn.value) >= 0) adv.buffer = Number(bufferIn.value);
+    if (bandIn && Number(bandIn.value) > 0) adv.band = Number(bandIn.value);
+    nmSaveSet(); for (const sym of NM_COINS) nmRenderCoin(sym);
+  };
+  if (gateIn) gateIn.addEventListener("change", advChanged);
+  if (bufferIn) bufferIn.addEventListener("change", advChanged);
+  if (bandIn) bandIn.addEventListener("change", advChanged);
+  const rall = document.getElementById("nmRefreshAllBtn");
+  if (rall) rall.addEventListener("click", () => { for (const sym of NM_COINS) nmLoadCoin(sym); });
+  nmApplyMode();
+})();
+
 buildCoinGrid();
 (function init(){
   const len = S.lenMin;
