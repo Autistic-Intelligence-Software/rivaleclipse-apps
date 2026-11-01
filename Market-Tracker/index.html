@@ -2257,7 +2257,32 @@ const MKT_HZ = [5, 15, 60, 240];
    an older window's estimate would otherwise be lost) and
    recomputed whenever a fresh full-coverage read is
    available. The 1h Binance-open variant and Kalshi keep
-   their rules — neither settles on this stream. */
+   their rules — neither settles on this stream.
+   WEB52 (Shane 2026-11-01 — "go for it" on the stream-solo
+   recommendation): the WEB51 live verification measured what
+   the two-source gate costs at the 5m horizon. Polymarket
+   publishes the 5m priceToBeat only minutes after the window
+   opens (it can never arrive inside its own window), so 5m
+   targets ride path B — and path B's endpoint-agreement
+   requirement held 2 of 6 five-minute coin-windows in the
+   verification run even though the stream estimate sat
+   0.008/0.10 bp from the settled value while the endpoint
+   sat 1.73/2.6 bp from it. In every measured case the
+   ENDPOINT was the wrong source, never the stream (the
+   stream reproduced the published value within 0.05 bp in
+   every fully-covered captured window). A 5m entry
+   therefore locks on the stream TWAP under WEB48 finality
+   alone (lockSrc "stream"): the endpoint's 1 bp agreement
+   is no longer required at this horizon. The endpoint is
+   demoted to a CATASTROPHE GUARD — if its final value sits
+   more than PM_STREAM_GUARD (10 bp) from the stream, the
+   two sources are not describing the same market at all
+   and the entry HOLDS with streamBlock "guard" instead of
+   locking. Ordinary endpoint error stays below the guard
+   (0.08–8.3 bp across every capture), so the guard vetoes
+   only catastrophes — a wrong market, a crossed feed —
+   never ordinary noise. 15m and 4h keep the WEB51 gate
+   exactly; path A is unchanged at every horizon. */
 /* WEB51: the stream gate's agreement tolerance (relative).
    Measured basis (2026-11-01 capture, pm-align-audit): with
    complete per-symbol RTDS coverage, the page's stream TWAP
@@ -2268,6 +2293,14 @@ const MKT_HZ = [5, 15, 60, 240];
    1 bp leaves ~20x headroom over the stream's real error and
    still catches any genuine source disagreement. */
 const PM_STREAM_TOL = 0.0001;
+/* WEB52: the catastrophe guard for the 5m stream-solo path
+   (relative). The endpoint's final value sat 0.08–8.3 bp
+   from the settled value across every captured window —
+   ordinary endpoint noise never reaches 10 bp. A final read
+   further than this from the stream TWAP means the sources
+   disagree about which market this is, not about the price:
+   hold, never lock. */
+const PM_STREAM_GUARD = 0.001;
 async function refreshMktLines(sym, forceH){
   const cs = coinState(sym);
   if (!marketActive()){ cs.mktLines = null; return; }
@@ -2391,17 +2424,27 @@ async function refreshMktLines(sym, forceH){
            to beat locks at full precision; B) with no published
            value, the stream TWAP locks when the endpoint's
            final value agrees with it. A final-but-refused
-           target is HELD with the reason carried on the entry. */
+           target is HELD with the reason carried on the entry.
+           WEB52: at the 5m horizon path B locks on the
+           stream's own finality — the endpoint is only the
+           catastrophe guard (see the design note). */
+        const solo5 = h === 5 && got.gammaVal == null && finOk && sEst != null;
+        const guardHold = solo5 &&
+          Math.abs(got.price - sEst) > Math.max(sEst * PM_STREAM_GUARD, 1e-9);
         if (gammaStable && got.streamState === "agree"){
           got.confirmed = true; got.lockPrice = got.gammaVal; got.lockSrc = "posted";
+          got.streamBlock = null;
+        } else if (solo5 && !guardHold){
+          got.confirmed = true; got.lockPrice = sEst; got.lockSrc = "stream";
           got.streamBlock = null;
         } else if (got.gammaVal == null && finOk && got.streamState === "agree"){
           got.confirmed = true; got.lockPrice = sEst; got.lockSrc = "stream";
           got.streamBlock = null;
         } else {
           got.confirmed = false; delete got.lockPrice; delete got.lockSrc;
-          got.streamBlock = ((gammaStable || (finOk && got.gammaVal == null)) &&
-            got.streamState !== "agree") ? got.streamState : null;
+          got.streamBlock = guardHold ? "guard"
+            : (((gammaStable || (finOk && got.gammaVal == null)) &&
+                got.streamState !== "agree") ? got.streamState : null);
         }
       }
       else
@@ -2647,6 +2690,19 @@ function renderPmCheck(sym){
         (st.streamDelta != null ? " by " + fmtPrice(Math.abs(st.streamDelta)) : "") +
         ". Polymarket settles on the stream value, not the feed, so this target is HELD — nothing locks on it.</span>";
     }
+    /* WEB52: a catastrophe-guard hold is its own verdict —
+       the value IS settled, but the endpoint's final read and
+       the stream disagree by more than 10 bp, so the two
+       sources cannot be describing the same market. */
+    else if (st.streamBlock === "guard" && st.streamEst != null){
+      bad = true;
+      html += '<br><span class="pm-bad">⚠ Endpoint final read ' +
+        (st.last != null ? fmtPrice(st.last) : "—") +
+        " disagrees with the Chainlink stream estimate " + fmtPrice(st.streamEst) +
+        (st.streamDelta != null ? " by " + fmtPrice(Math.abs(st.streamDelta)) +
+          " (~" + Math.round(Math.abs(st.streamDelta) / st.streamEst * 10000) + " bp)" : "") +
+        " — beyond the 10 bp catastrophe guard. The two sources are too far apart to be the same market, so this target is HELD — nothing locks on it.</span>";
+    }
     else if (st.streamBlock === "nostream")
       html += "<br>The posted target is on hand, but the Chainlink stream check is not available for this window " +
         "(the page must be open across the window's open to hold its opening-minute ticks) — held unconfirmed rather than locking on the feed alone.";
@@ -2659,7 +2715,15 @@ function renderPmCheck(sym){
     if (st.lockSrc === "posted")
       html += "<br>Polymarket's own posted price to beat at full precision — the value the market settles on — with the Chainlink stream estimate agreeing.";
     else if (st.lockSrc === "stream")
-      html += "<br>Locked on the Chainlink stream TWAP — Polymarket's posted value was unavailable for this window, and the endpoint's final read agreed with the stream.";
+      /* WEB52: a 5m stream lock may stand on the stream's own
+         finality — when the endpoint sat outside the 1 bp
+         agreement band the verdict says so, and names the
+         catastrophe guard it stayed inside, instead of
+         claiming an agreement that never happened. */
+      html += "<br>Locked on the Chainlink stream TWAP — " +
+        (st.h === 5 && st.streamState === "disagree"
+          ? "5-minute targets lock on the stream's own finality: the endpoint's final read sat outside the 1 bp agreement band but inside the 10 bp catastrophe guard, so it does not veto the stream."
+          : "Polymarket's posted value was unavailable for this window, and the endpoint's final read agreed with the stream.");
     if (st.revised)
       html += "<br>first read " + fmtPrice(st.revised.from) + " → revised to " + fmtPrice(st.revised.to) +
         " — locks wait for the settled value, never the first read";
@@ -7033,7 +7097,10 @@ function renderPadCalls(sym){
            exists); before that, an on-hand read is marked
            "confirming…". No substitute value is ever implied to
            be the market's target. */
-        const tgt = r.streamBlock === "disagree"
+        const tgt = r.streamBlock === "guard"
+          ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + " — HELD: endpoint final read more than 10 bp from the Chainlink stream " +
+            (r.streamEst != null ? fmtPrice(r.streamEst) : "") + " — catastrophe guard)</span>"
+          : r.streamBlock === "disagree"
           ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + " — HELD: Chainlink stream estimate " +
             (r.streamEst != null ? fmtPrice(r.streamEst) : "") + " disagrees — Polymarket settles on the stream)</span>"
           : r.streamBlock === "nostream"
@@ -7509,10 +7576,18 @@ function targetStripHtml(coin, h){
         parts.push("Target <b>" + fmtPrice(eVal) + "</b> · " + M +
           ' <span class="otgtok">' +
           (e.lockSrc === "posted" ? "CONFIRMED — Polymarket's posted price to beat · Chainlink stream agrees"
-            : e.lockSrc === "stream" ? "CONFIRMED — Chainlink stream TWAP · endpoint final agrees"
+            /* WEB52: a 5m stream lock stands on the stream's
+               own finality; the endpoint is only guaranteed to
+               be inside the catastrophe guard, not in 1 bp
+               agreement — the label says exactly that. */
+            : e.lockSrc === "stream" ? (h === 5 ? "CONFIRMED — Chainlink stream TWAP · stream-final lock (endpoint inside the 10 bp guard)"
+                                                : "CONFIRMED — Chainlink stream TWAP · endpoint final agrees")
             : "CONFIRMED — posted target final" +
               (S.preset === "polymarket" && h !== 60 && e.streamEst != null ? " · Chainlink stream agrees" : "")) + '</span>' +
           '<button type="button" class="tgtuse" data-usetgt="' + eVal + '">Use</button>');
+      else if (e && e.streamBlock === "guard")
+        parts.push("Target <b>" + fmtPrice(eVal) + "</b> · " + M +
+          ' <span class="otgtbad">HELD — endpoint final read more than 10 bp from the Chainlink stream (catastrophe guard)</span>');
       else if (e && e.streamBlock === "disagree")
         parts.push("Target <b>" + fmtPrice(eVal) + "</b> · " + M +
           ' <span class="otgtbad">HELD — Chainlink stream disagrees with the posted target</span>');
@@ -7534,10 +7609,11 @@ function targetStripHtml(coin, h){
 /* The Re-check button: the WEB47 pad check's rule, run for the
    odds coin across every horizon the active market covers — force
    fresh target reads until each covered horizon's entry is
-   confirmed (WEB48 finality + the WEB51 stream gate) or the read
-   budget ends, then report each horizon plainly — a target the
-   stream gate holds is reported as held, never dressed as
-   confirmed. Locked pad calls are never touched by any of this. */
+   confirmed (WEB48 finality + the WEB51 stream gate, 5m per
+   WEB52's stream-solo rule) or the read budget ends, then report
+   each horizon plainly — a target the stream gate holds is
+   reported as held, never dressed as confirmed. Locked pad calls
+   are never touched by any of this. */
 async function oddsRecheckTargets(){
   const res = $("#oddsTargetRes"), btn = $("#oddsRecheck");
   const coin = ODDS.coin;
@@ -7567,9 +7643,14 @@ async function oddsRecheckTargets(){
        the pre-WEB51 fresh twap60Before call here could never
        answer (wrong symbol case, seconds for milliseconds), so
        this line silently never rendered. A confirmed TWAP
-       entry agreed with its estimate by construction. */
+       entry agreed with its estimate by construction.
+       WEB52: a 5m stream-solo lock did NOT earn endpoint
+       agreement — the estimate is the locked value itself, so
+       the line names the lock instead of claiming agreement. */
     if (S.preset === "polymarket" && e && e.confirmed && e.streamEst != null)
-      html += '<div>Chainlink stream estimate ' + fmtPrice(e.streamEst) + ' agrees ✓</div>';
+      html += (e.lockSrc === "stream" && e.streamState === "disagree")
+        ? '<div>Chainlink stream estimate ' + fmtPrice(e.streamEst) + ' — locked on the stream (endpoint inside the 10 bp catastrophe guard)</div>'
+        : '<div>Chainlink stream estimate ' + fmtPrice(e.streamEst) + ' agrees ✓</div>';
     return html;
   }).join("");
   if (ODDS_LIVE) refreshOdds();
