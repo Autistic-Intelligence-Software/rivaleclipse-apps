@@ -6622,6 +6622,10 @@ async function nmLoadCoin(sym){
   if (c.loadSeq !== seq) return;
   if (d && d.coin === sym) c.data = d;
   if (w && w.coin === sym) c.week = w;
+  /* WEB44: (re)build the coin's ONE canonical timeline from the
+     freshly adopted payloads — every graph in the panel renders
+     windows of this object until the next load replaces it. */
+  if (c.data) c.tl = nmBuildTimeline(c.data, c.week, Date.now());
   nmRenderCoin(sym);
 }
 function nmLoadAll(){
@@ -6787,11 +6791,14 @@ function nmRebaseFuture(pts, joinT, joinPrice){
   }
   return out.length > 1 ? out : [];
 }
-function nmCapBand(pts){
+/* WEB44: capAbs, when given, replaces the travel cap — the model
+   passes the MIN of the travel cap and the domain-relative cap
+   (NM_BAND_HALO_DOMAIN_FRAC × the view's domain height). */
+function nmCapBand(pts, capAbs){
   if (!pts || !pts.length) return [];
   let lo = Infinity, hi = -Infinity;
   for (const p of pts){ if (p.mid < lo) lo = p.mid; if (p.mid > hi) hi = p.mid; }
-  const cap = NM_BAND_HALO_TRAVEL_MULT * Math.max(0, hi - lo);
+  const cap = (capAbs != null && isFinite(capAbs)) ? Math.max(0, capAbs) : NM_BAND_HALO_TRAVEL_MULT * Math.max(0, hi - lo);
   return pts.map(p => ({
     t: p.t, mid: p.mid,
     lo: p.mid - Math.min(Math.max(0, p.mid - (p.lo != null ? p.lo : p.mid)), cap),
@@ -6815,27 +6822,242 @@ function nmExtendDomain(dom, frac){
   const pad = (dom[1] - dom[0]) * (frac || 0);
   return [dom[0] - pad, dom[1] + pad];
 }
-/* WEB43: split the stitched line into drawable segments against
-   the extended domain — out-of-domain points are DROPPED (pen
-   lifted, never clamped to the edge), and forecast resets,
-   duplicate/backwards times, long gaps and near-vertical jumps
-   all start a new segment. Pure. */
-function nmStitchSegments(pts, dom){
-  if (!pts || !pts.length || !dom) return [];
-  const range = dom[1] - dom[0];
+/* WEB44: the drawn band is ALSO capped by the chart domain — the
+   travel cap alone ballooned whenever the forecast's remaining
+   travel was large vs the span's own range (Shane's 1h/Live/15m/5m
+   shots). Drawn half-width ≤ this fraction of the domain height,
+   taking the MIN of the two caps, per view (rendering rule — the
+   band values themselves live once in the timeline). */
+const NM_BAND_HALO_DOMAIN_FRAC = 0.12;
+/* WEB44: a predecessor stitch segment is drawn only with at least
+   this many points AND a majority of its points inside the view's
+   extended domain — otherwise it is skipped whole (Shane's 12h
+   shot: detached 1–2 point arcs floating above the line). */
+const NM_STITCH_MIN_PTS = 3;
+/* WEB44: mood volatility is a per-minute RATE, so at sub-15m zooms
+   it is measured over at least this much of the finest series —
+   a 5m span holds at most ~6 one-minute bars, forever. */
+const NM_MOOD_MIN_SPAN_MS = 15 * 60000;
+/* WEB44: interpolate a {t, mid, lo, hi} path at an exact time
+   (null outside the path's own range). Pure. */
+function nmPathAt(pts, t){
+  if (!pts || !pts.length || !isFinite(t)) return null;
+  if (t < pts[0].t || t > pts[pts.length - 1].t) return null;
+  const norm = p => ({ t: p.t, mid: p.mid, lo: p.lo != null && isFinite(p.lo) ? p.lo : p.mid, hi: p.hi != null && isFinite(p.hi) ? p.hi : p.mid });
+  for (let i = 0; i < pts.length; i++){
+    if (pts[i].t === t) return norm(pts[i]);
+    if (pts[i].t > t){
+      const A = pts[i - 1], B = pts[i];
+      const f = (t - A.t) / (B.t - A.t);
+      const L = (x, y) => x + (y - x) * f;
+      const an = norm(A), bn = norm(B);
+      return { t, mid: L(an.mid, bn.mid), lo: L(an.lo, bn.lo), hi: L(an.hi, bn.hi) };
+    }
+  }
+  return null;
+}
+/* WEB44: clip a {t, mid, lo, hi} path to exactly [t0, t1], with
+   interpolated endpoints at the window edges — the forecast path
+   is CLIPPED to the hybrid window, never drawn past it (spec
+   Defect 3). Pure. */
+function nmClipPath(pts, t0, t1){
+  if (!pts || !pts.length) return [];
+  const s = pts.filter(p => p && isFinite(p.t) && isFinite(p.mid)).slice().sort((a, b) => a.t - b.t);
+  if (!s.length) return [];
   const out = [];
-  let cur = null, prev = null;
+  const push = p => { if (p && (!out.length || p.t > out[out.length - 1].t)) out.push(p); };
+  push(nmPathAt(s, t0));
+  for (const p of s) if (p.t > t0 && p.t < t1) push({ t: p.t, mid: p.mid, lo: p.lo != null && isFinite(p.lo) ? p.lo : p.mid, hi: p.hi != null && isFinite(p.hi) ? p.hi : p.mid });
+  push(nmPathAt(s, t1));
+  return out;
+}
+/* WEB44: build the as-issued stitch ONCE, in the dataset (the
+   01:08 architecture amendment) — each forecast owns the window
+   [its issuance, the next issuance), and its segment spans that
+   window fully (interpolated endpoints at both bounds), so the
+   segments tile the history with no gaps. A forecast RESET is not
+   a pen-lift into confetti and not a fake sloped join: it is
+   recorded as a connector {t, from, to} — the old forecast's own
+   value at the boundary and the new forecast's — drawn by the
+   views as a thin DOTTED vertical (honest reset marker). The
+   FINAL segment (the open forecast's pre-now path) ends with an
+   interpolated point exactly at tN, so it always reaches the NOW
+   join solid. Pure. */
+function nmStitchBuild(fcs, t0, tN){
+  const list = (fcs || []).filter(f => f && f.pts && f.pts.length >= 2 && isFinite(f.issuedMs))
+    .slice().sort((a, b) => a.issuedMs - b.issuedMs);
+  const segs = [], links = [], points = [];
+  for (let i = 0; i < list.length; i++){
+    const f = list[i];
+    const from = Math.max(f.issuedMs, t0);
+    const to = Math.min(i + 1 < list.length ? list[i + 1].issuedMs : tN, tN);
+    if (to <= from) continue;
+    const pts = [];
+    const push = p => { if (p && (!pts.length || p.t > pts[pts.length - 1].t)) pts.push(p); };
+    const startV = nmPathMidAt(f.pts, from);
+    if (isFinite(startV)) push({ t: from, mid: startV });
+    for (const p of f.pts) if (p.t > from && p.t < to) push({ t: p.t, mid: p.mid });
+    const endV = nmPathMidAt(f.pts, to);
+    if (isFinite(endV)) push({ t: to, mid: endV });
+    if (!pts.length) continue;
+    segs.push({ pts, final: false, issuedMs: f.issuedMs });
+    for (const p of pts) points.push(p);
+    if (i + 1 < list.length){
+      const b = list[i + 1].issuedMs;
+      if (b > t0 && b <= tN){
+        const fromV = nmPathMidAt(f.pts, b), toV = nmPathMidAt(list[i + 1].pts, b);
+        if (isFinite(fromV) && isFinite(toV) && fromV !== toV) links.push({ t: b, from: fromV, to: toV });
+      }
+    }
+  }
+  if (segs.length) segs[segs.length - 1].final = true;
+  return { segs, links, points };
+}
+/* WEB44: the VIEW-stage stitch filter — which of the dataset's
+   segments/connectors this zoom draws, against this view's
+   extended domain. Predecessor segments: ≥ NM_STITCH_MIN_PTS
+   points in-domain AND an in-domain majority, else skipped whole;
+   within a kept segment, out-of-domain points lift the pen and
+   only runs of ≥ NM_STITCH_MIN_PTS draw. The FINAL segment is
+   exempt from the count/majority rules (Shane's 01:03 tail rule):
+   its in-domain runs of ≥2 draw, so the line always reaches the
+   join. Connectors draw only when both ends are in-domain. Pure. */
+function nmStitchView(built, dom){
+  if (!built || !dom) return { segs: [], links: [] };
+  const inDom = v => v >= dom[0] && v <= dom[1];
+  const segs = [];
+  for (const seg of (built.segs || [])){
+    const pts = seg.pts || [];
+    const minRun = seg.final ? 2 : NM_STITCH_MIN_PTS;
+    if (!seg.final){
+      let inCount = 0;
+      for (const p of pts) if (inDom(p.mid)) inCount++;
+      if (inCount < NM_STITCH_MIN_PTS || inCount * 2 <= pts.length) continue;
+    }
+    let run = [];
+    const flush = () => { if (run.length >= minRun) segs.push(run); run = []; };
+    for (const p of pts){ if (inDom(p.mid)) run.push(p); else flush(); }
+    flush();
+  }
+  const links = (built.links || []).filter(L => inDom(L.from) && inDom(L.to));
+  return { segs, links };
+}
+/* WEB44: the drawn past for one window of the timeline — the
+   timeline's own closes inside (t0, tN], opened by a point
+   interpolated exactly at t0 from the surrounding closes, so the
+   white line spans the full window and ends at the timeline's
+   last point (the live edge) at EVERY zoom, including 5m, where
+   the raw closes alone can leave the window empty when the newest
+   completed 1m close lags the clock by a few minutes (the actual
+   WEB44 Defect-1 mechanism — measured: the series' last close ran
+   3–5 min behind on the night of Shane's sweep). Pure. */
+function nmPastChain(pts, t0, tN){
+  if (!pts || !pts.length) return [];
+  const out = [];
+  let prev = null;
   for (const p of pts){
-    if (!p || !isFinite(p.t) || !(p.mid > 0)) { cur = null; prev = null; continue; }
-    if (p.mid < dom[0] || p.mid > dom[1]) { cur = null; prev = null; continue; }
-    const brk = !cur || !!p.breakBefore || !prev || p.t <= prev.t
-      || p.t - prev.t > NM_STITCH_MAX_GAP_MS
-      || Math.abs(p.mid - prev.mid) > range * NM_STITCH_MAX_JOIN_FRAC;
-    if (brk){ cur = []; out.push(cur); }
-    cur.push({ t: p.t, mid: p.mid });
+    if (p[0] <= t0) { prev = p; continue; }
+    if (p[0] > tN) break;
+    if (prev && !out.length){
+      const f = (t0 - prev[0]) / (p[0] - prev[0]);
+      out.push([t0, prev[1] + (p[1] - prev[1]) * (isFinite(f) ? f : 0)]);
+    }
+    out.push(p);
     prev = p;
   }
-  return out.filter(seg => seg.length >= 2);
+  if (!out.length && prev) out.push([t0, prev[1]]);
+  return out;
+}
+/* WEB44: range + up-share of a span's own chain, for the insight
+   mood line (its volatility comes from nmMood over the mood
+   window; the range printed is the SELECTED span's). Pure. */
+function nmSpanStats(pts){
+  let lo = Infinity, hi = -Infinity, ups = 0, n = 0;
+  for (let i = 0; i < pts.length; i++){
+    const v = pts[i][1];
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+    if (i > 0){ n++; if (v > pts[i - 1][1]) ups++; }
+  }
+  return { rangePct: pts.length && pts[0][1] > 0 ? (hi - lo) / pts[0][1] * 100 : 0, upShare: n ? ups / n : 0.5 };
+}
+/* WEB44 (the 01:08 amendment): build the coin's ONE canonical
+   timeline from its payloads — every graph in the panel is a
+   window onto this object, and zoom changes the window and the
+   scale ONLY, never the data, never the prediction.
+     past:   ONE actuals array for the week — the week payload's
+             hourly actuals as the base layer, overlaid by h1,
+             then m15, then m1 (finest resolution per age wins per
+             timestamp; one value per timestamp), closed by the
+             payload's live price at the build instant when the
+             feed is fresh — the line's live edge.
+     stitch: the as-issued predictions timeline, built ONCE here
+             (nmStitchBuild over history + the open forecast).
+     future: ONE prediction line — the open forecast's path
+             rebased to the join (WEB43 rule), continued past its
+             end by the 24h span projection rebased to meet it;
+             with no open forecast, the span projection rebased to
+             the join. Band values live here, once; views only cap
+             how much of it they DRAW (Defect 2 is rendering).
+   Stored forecasts are never touched — rebasing happens on
+   copies, at build time, for display. Pure. */
+function nmBuildTimeline(d, weekRoot, nowMs){
+  if (!d) return null;
+  const byT = new Map();
+  const put = (t, v, r) => {
+    if (!isFinite(t) || !(v > 0)) return;
+    const cur = byT.get(t);
+    if (!cur || r >= cur.r) byT.set(t, { v, r });
+  };
+  const cal = weekRoot ? (weekRoot.calendar || weekRoot.week || null) : null;
+  if (cal && cal.actuals) for (const a of cal.actuals) put(nmT(a.t), a.close, 0);
+  const S = d.series || {};
+  for (const p of (S.h1 || [])) put(p[0] + 3600000, p[1], 1);
+  for (const p of (S.m15 || [])) put(p[0] + 900000, p[1], 2);
+  for (const p of (S.m1 || [])) put(p[0], p[1], 3);
+  let past = [];
+  for (const [t, o] of byT) if (t <= nowMs) past.push([t, o.v]);
+  past.sort((a, b) => a[0] - b[0]);
+  const livePrice = d.live && !d.live.stale && d.live.price > 0 ? d.live.price : null;
+  if (livePrice && (!past.length || past[past.length - 1][0] < nowMs - 1000)) past.push([nowMs, livePrice]);
+  const joinT = past.length ? past[past.length - 1][0] : nowMs;
+  const joinPrice = past.length ? past[past.length - 1][1] : (livePrice || 0);
+  const bandMult = (NM.settings._adv && NM.settings._adv.band) || 1;
+  const fcs = [];
+  const histSrc = d.history && d.history.length ? d.history : (d.recent || []);
+  for (const h of histSrc){
+    if (!h || !h.path) continue;
+    const pts = h.path.map(p => ({ t: nmT(p.t), mid: p.mid })).filter(p => isFinite(p.t) && p.mid > 0);
+    if (pts.length >= 2) fcs.push({ issuedMs: nmT(h.issued_at), pts });
+  }
+  let fcPts = null, fcIssuedMs = NaN;
+  if (d.forecast && d.forecast.path){
+    fcIssuedMs = nmT(d.forecast.issued_at);
+    fcPts = d.forecast.path.map(p => {
+      const t = nmT(p.t), mid = p.mid;
+      return { t, mid, lo: mid - (mid - p.lo) * bandMult, hi: mid + (p.hi - mid) * bandMult };
+    }).filter(p => isFinite(p.t) && p.mid > 0);
+    fcs.push({ issuedMs: fcIssuedMs, pts: fcPts.map(p => ({ t: p.t, mid: p.mid })) });
+  }
+  const stitch = nmStitchBuild(fcs, nowMs - 7 * 86400000, joinT);
+  const span24 = ((d.spans && d.spans["24h"]) || []).map(p => ({ t: nmT(p.t), mid: p.mid, lo: p.lo, hi: p.hi })).filter(p => isFinite(p.t) && p.mid > 0);
+  let future = [];
+  if (joinPrice > 0){
+    if (fcPts && fcPts.length) future = nmRebaseFuture(fcPts, joinT, joinPrice);
+    if (future.length && span24.length){
+      const endP = future[future.length - 1];
+      const base = nmPathMidAt(span24, endP.t);
+      if (base > 0 && endP.t < joinT + 24 * 3600000){
+        for (const p of span24){
+          if (p.t <= endP.t || p.t > joinT + 24 * 3600000) continue;
+          future.push({ t: p.t, mid: endP.mid * p.mid / base, lo: endP.mid * (p.lo != null ? p.lo : p.mid) / base, hi: endP.mid * (p.hi != null ? p.hi : p.mid) / base });
+        }
+      }
+    }
+    if (!future.length && span24.length) future = nmRebaseFuture(span24, joinT, joinPrice);
+    future = future.filter(p => p.t <= joinT + 24 * 3600000 + 1);
+  }
+  return { coin: d.coin || null, now: nowMs, past, joinT, joinPrice, stitch, future, week: cal, fcIssuedMs, liveStale: !!(d.live && d.live.stale) };
 }
 /* WEB43: the whole hybrid geometry for ONE panel, computed from
    that panel's own series only (WEB42 isolation law — no shared
@@ -6843,21 +7065,52 @@ function nmStitchSegments(pts, dom){
    the chart domain fits the actual + rebased prediction lines and
    is extended modestly for the stitch; the band exists ONLY right
    of the join (the history half never carries one). */
+/* WEB44: the hybrid model is a WINDOW onto the panel's one
+   timeline (the 01:08 amendment). The join IS the timeline's join
+   (its last past point = the live edge at the build instant), so
+   with the window [now−span, now+span] the NOW divider is dead
+   centre by construction at every zoom — WEB43 anchored the join
+   at the newest COMPLETED close, which lags the clock by minutes
+   and dragged the divider off-centre (ETH 5m: no close inside the
+   window at all — the empty chart in Shane's sweep). The future
+   is the timeline's single prediction line, clipped to exactly
+   [join, t1]; the stitch comes from the timeline's one build,
+   filtered per view. The band cap is the MIN of the WEB43 travel
+   cap and the domain cap (Defect 2). Without a timeline (unit
+   fixtures), the same rules run on the series parts. Pure. */
 function nmHybridModel(s, pastWin, nowMs){
-  const past = (pastWin || []).filter(p => p[0] >= s.t0 && p[0] <= nowMs);
-  const last = past.length ? past[past.length - 1] : null;
-  const joinT = last ? last[0] : nowMs;
-  const joinPrice = last ? last[1] : (s.livePrice || 0);
-  const rawFut = s.fc || s.spans;
-  const rawWin = rawFut ? rawFut.filter(p => p.t <= s.t1 + 1) : null;
-  const future = nmCapBand(nmRebaseFuture(rawWin || [], joinT, joinPrice));
-  const stitchSrc = (s.histFc || []).slice();
-  if (s.fc && isFinite(s.fcIssuedMs)) stitchSrc.push({ issuedMs: s.fcIssuedMs, pts: s.fc.map(p => ({ t: p.t, mid: p.mid })) });
-  const stitched = nmStitchHistory(stitchSrc, s.t0, nowMs);
-  const core = nmLineDomain([past, future]);
+  const tl = s && s.tl ? s.tl : null;
+  const pastAll = (pastWin || []).filter(p => p && isFinite(p[0]) && isFinite(p[1]));
+  const joinT = tl ? tl.joinT : (pastAll.length ? pastAll[pastAll.length - 1][0] : nowMs);
+  const joinPrice = tl ? tl.joinPrice : (pastAll.length ? pastAll[pastAll.length - 1][1] : (s.livePrice || 0));
+  const past = pastAll.filter(p => p[0] >= s.t0 && p[0] <= joinT);
+  let futureRaw;
+  if (tl) futureRaw = tl.future;
+  else {
+    const rawFut = s.fc || s.spans;
+    const rawWin = rawFut ? rawFut.filter(p => p.t <= s.t1 + 1) : null;
+    futureRaw = nmRebaseFuture(rawWin || [], joinT, joinPrice);
+  }
+  const futureWin = nmClipPath(futureRaw, joinT, s.t1);
+  const core = nmLineDomain([past, futureWin]);
+  let capAbs = 0;
+  if (core && futureWin.length){
+    let mn = Infinity, mx = -Infinity;
+    for (const p of futureWin){ if (p.mid < mn) mn = p.mid; if (p.mid > mx) mx = p.mid; }
+    capAbs = Math.min(NM_BAND_HALO_TRAVEL_MULT * (mx - mn), NM_BAND_HALO_DOMAIN_FRAC * (core[1] - core[0]));
+  }
+  const future = nmCapBand(futureWin, capAbs);
   const y = core ? nmExtendDomain(core, NM_STITCH_DOMAIN_EXT_FRAC) : null;
-  const stitchSegs = y ? nmStitchSegments(stitched, y) : [];
-  return { past, future, joinT, joinPrice, stitched, stitchSegs, y, bandShare: nmBandShare(future, y) };
+  let built;
+  if (tl) built = tl.stitch;
+  else {
+    const fcs = [];
+    for (const h of (s.histFc || [])) if (h.pts && h.pts.length) fcs.push({ issuedMs: h.issuedMs, pts: h.pts });
+    if (s.fc && s.fc.length && isFinite(s.fcIssuedMs)) fcs.push({ issuedMs: s.fcIssuedMs, pts: s.fc.map(p => ({ t: p.t, mid: p.mid })) });
+    built = nmStitchBuild(fcs, s.t0, joinT);
+  }
+  const view = y ? nmStitchView(built, y) : { segs: [], links: [] };
+  return { past, future, joinT, joinPrice, stitched: built.points, stitchSegs: view.segs, stitchLinks: view.links, y, bandShare: nmBandShare(future, y) };
 }
 const NM_ZOOM_LABELS = { live: "Live (15m)", "5": "5m", "15": "15m", "30": "30m", "60": "1h", "720": "12h", "1440": "24h" };
 /* WEB41: ET (America/New_York) helpers for the Sun–Sat weekly
@@ -6906,16 +7159,24 @@ function nmEtDayStarts(startMs){
    the selected span's own actual bars (per-minute volatility from
    log returns), with the numbers shown next to it. Pure. */
 function nmMood(pts, barMin){
-  if (!pts || pts.length < 8) return null;
+  /* WEB44: returns are normalized by their own time step (÷√dt),
+     so the per-minute volatility is correct on the timeline's
+     mixed-resolution chain (1m recent, coarser further back) —
+     for a uniform series this is exactly the old sd/√barMin. The
+     gate drops to ≥5 points: a short span's own bars are few by
+     construction, and the insight passes at least
+     NM_MOOD_MIN_SPAN_MS of the finest series (see nmSeriesFor). */
+  if (!pts || pts.length < 5) return null;
   const rets = [];
   for (let i = 1; i < pts.length; i++){
     const a = pts[i - 1][1], b = pts[i][1];
-    if (a > 0 && b > 0) rets.push(Math.log(b / a));
+    const dtMin = (pts[i][0] - pts[i - 1][0]) / 60000;
+    if (a > 0 && b > 0 && dtMin > 0) rets.push(Math.log(b / a) / Math.sqrt(dtMin));
   }
-  if (rets.length < 7) return null;
+  if (rets.length < 4) return null;
   const mean = rets.reduce((x, y) => x + y, 0) / rets.length;
   const sd = Math.sqrt(rets.reduce((x, y) => x + (y - mean) * (y - mean), 0) / rets.length);
-  const volMin = sd / Math.sqrt(Math.max(1, barMin || 1)) * 100;
+  const volMin = sd * 100;
   let lo = Infinity, hi = -Infinity;
   for (const p of pts){ if (p[1] < lo) lo = p[1]; if (p[1] > hi) hi = p[1]; }
   const rangePct = pts[0][1] > 0 ? (hi - lo) / pts[0][1] * 100 : 0;
@@ -6998,17 +7259,21 @@ function nmTrendText(d, s, mood){
 }
 function nmSeriesFor(sym){
   const c = NM.coins[sym], d = c && c.data;
-  const spec = nmZoomSpec(sym), now = Date.now();
-  const win = nmHybridWindow(now, spec.spanMs);
-  if (!d) return { past: [], fc: null, spans: null, histFc: [], fcIssuedMs: NaN, livePrice: null, barMin: 1, t0: win.t0, tN: win.tN, t1: win.t1, spec };
-  let past = [], barMin = 1;
-  if (spec.kind === "m1"){
-    past = (d.series.m1 || []).filter(p => p[0] >= win.t0 - 3600000);
-    if (past.length < 10){ past = (d.series.m15 || []).map(p => [p[0] + 900000, p[1]]).filter(p => p[0] >= win.t0 - 3600000); barMin = 15; }
-  } else {
-    past = (d.series.h1 || []).map(p => [p[0] + 3600000, p[1]]).filter(p => p[0] >= win.t0 - 3600000);
-    barMin = 60;
+  const spec = nmZoomSpec(sym);
+  if (!d){
+    const win = nmHybridWindow(Date.now(), spec.spanMs);
+    return { past: [], fc: null, spans: null, histFc: [], fcIssuedMs: NaN, livePrice: null, liveStale: false, barMin: 1, t0: win.t0, tN: win.tN, t1: win.t1, spec, tl: null, moodPts: [] };
   }
+  /* WEB44 (the 01:08 amendment): the panel's ONE canonical
+     timeline, built by nmLoadCoin from this coin's payloads only.
+     Rebuilt here only when missing or older than a minute, so
+     interacting with the panel re-anchors "now" — the data and
+     the prediction are never re-instanced per zoom; every view
+     below is a window onto c.tl, so the same minute shows the
+     same actual and the same prediction at 5m, 30m and 24h. */
+  if (!c.tl || Date.now() - c.tl.now > 60000) c.tl = nmBuildTimeline(d, c.week, Date.now());
+  const tl = c.tl;
+  const win = nmHybridWindow(tl.now, spec.spanMs);
   let fcPts = null;
   if (spec.kind === "m1" && d.forecast){
     const bandMult = (NM.settings._adv && NM.settings._adv.band) || 1;
@@ -7023,12 +7288,12 @@ function nmSeriesFor(sym){
     const arr = d.spans[key] || [];
     spanPts = arr.map(p => ({ t: nmT(p.t), mid: p.mid, lo: p.lo, hi: p.hi }));
   }
-  /* WEB41: as-issued forecast history for the hybrid's left half —
-     resolved rows only, from the server's stored-row `history`
-     (payloads without it fall back to `recent`). These are the
-     frozen issued paths; nothing is recomputed or backfilled, so
-     the overlay is necessarily partial until a full span of
-     history has accumulated. */
+  /* WEB41: as-issued forecast history — resolved rows only, from
+     the server's stored-row `history` (payloads without it fall
+     back to `recent`). These are the frozen issued paths; nothing
+     is recomputed or backfilled. (The hybrid reads them through
+     the timeline's one stitch build; this list stays for the
+     model's no-timeline fallback and the insight layer.) */
   const histSrc = (d.history && d.history.length) ? d.history : (d.recent || []);
   const histFc = [];
   for (const h of histSrc){
@@ -7036,7 +7301,14 @@ function nmSeriesFor(sym){
     const pts = h.path.map(p => ({ t: nmT(p.t), mid: p.mid })).filter(p => isFinite(p.t) && p.mid > 0);
     if (pts.length >= 2) histFc.push({ id: h.id, issuedMs: nmT(h.issued_at), pts });
   }
-  return { past, fc: fcPts, spans: spanPts, histFc, fcIssuedMs: d.forecast ? nmT(d.forecast.issued_at) : NaN, livePrice: d.live ? d.live.price : null, barMin, t0: win.t0, tN: win.tN, t1: win.t1, spec };
+  /* WEB44: the drawn past is a WINDOW of the timeline — the same
+     closes at every zoom, ending at the live edge (nmPastChain).
+     The mood window is the trailing max(span, 15m) of the same
+     array (volatility is a per-minute rate; a 5m span alone can
+     never hold enough bars — Shane's "Forming" defect). */
+  const past = nmPastChain(tl.past, win.t0, win.tN);
+  const moodPts = nmPastChain(tl.past, win.tN - Math.max(spec.spanMs, NM_MOOD_MIN_SPAN_MS), win.tN);
+  return { past, fc: fcPts, spans: spanPts, histFc, fcIssuedMs: d.forecast ? nmT(d.forecast.issued_at) : NaN, livePrice: d.live ? d.live.price : null, liveStale: !!(d.live && d.live.stale), barMin: spec.kind === "span" ? 60 : 1, t0: win.t0, tN: win.tN, t1: win.t1, spec, tl, moodPts };
 }
 function nmYRange(parts){
   let lo = Infinity, hi = -Infinity;
@@ -7085,6 +7357,20 @@ function nmDraw(cv, o){
   };
   if (o.pastFaint) line(o.pastFaint, p => p[1], "rgba(154,150,173,0.55)", 1.4, null);
   if (o.prevFc) line(o.prevFc, p => p.mid, "rgba(154,150,173,0.6)", 1.4, [4, 4]);
+  /* WEB44: forecast-reset connectors — thin DOTTED verticals at
+     each issuance boundary, spanning the old forecast's value to
+     the new one's (from the timeline's stitch metadata). They
+     read as reset points, distinct from the line itself, so the
+     history line reads continuous through churn instead of
+     degenerating into orphan dashes near NOW (Shane, 01:03). */
+  if (o.stitchLinks) for (const L of o.stitchLinks){
+    const x = X(L.t);
+    if (x < 8 || x > W - RP - 8) continue;
+    ctx.beginPath(); ctx.setLineDash([2, 3]);
+    ctx.moveTo(x, Y(L.from)); ctx.lineTo(x, Y(L.to));
+    ctx.strokeStyle = "rgba(243,210,122,0.55)"; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.setLineDash([]);
+  }
   // WEB41: as-issued historical forecast overlays (yellow family —
   // they are predictions, drawn from stored rows, never recomputed)
   if (o.histFc) for (const pts of o.histFc) line(pts, p => p.mid, "rgba(243,210,122,0.7)", 1.6, null);
@@ -7094,7 +7380,9 @@ function nmDraw(cv, o){
   // line (Shane's annotation), labelled; elsewhere it stays faint.
   // WEB43: the hybrid passes nowT = the actual line's last point, so
   // the divider sits exactly where the history ends and the
-  // (rebased) prediction begins — not at the wall-clock instant.
+  // (rebased) prediction begins. WEB44: that last point is the
+  // timeline's live edge at the centre of an exactly-symmetric
+  // window, so the divider is dead centre at every zoom.
   const nx = X(o.nowT != null ? o.nowT : Date.now());
   if (nx > 8 && nx < W - RP){
     ctx.beginPath(); ctx.moveTo(nx, 6); ctx.lineTo(nx, H - 6);
@@ -7157,24 +7445,28 @@ const NM_WHITE = "#eceaf4";
 function nmDrawCharts(sym){
   const c = NM.coins[sym]; if (!c || !c.data || !c.els) return;
   const s = nmSeriesFor(sym);
-  const nowMs = Date.now();
-  const pastWin = s.past.filter(p => p[0] >= s.t0 && p[0] <= nowMs + 60000);
+  /* WEB44: the panel's "now" is its timeline's build instant — the
+     view windows anchor to the dataset, not the wall clock, so
+     geometry is stable between data loads and identical at every
+     zoom. s.past is already the windowed chain of the timeline. */
+  const nowMs = s.tN;
+  const pastWin = s.past;
   const hoverT = NM.hover[sym] || null;
   if (c.els.lblLive) c.els.lblLive.textContent = "Live — last " + (NM_ZOOM_LABELS[nmZoomFor(sym)] || nmZoomFor(sym));
-  // (2) LIVE chart
+  // (2) LIVE chart — a window of the same timeline
   const yLive = nmYRange([pastWin]);
   if (yLive) nmDraw(c.els.cvLive, { t0: s.t0, t1: nowMs, y: yLive, past: pastWin, color: NM_WHITE, liveEdge: true, hoverT, emptyText: "Waiting for live candles…" });
-  // (4) HYBRID — WEB43 geometry (nmHybridModel, this panel's data
-  // only): the prediction is REBASED to begin at the actual line's
-  // last point (the NOW divider sits at that same point), the band
-  // is a halo-capped ribbon on the future side only, and the
-  // history-half yellow is the stitched as-issued line (WEB42)
-  // drawn in pen-lifted segments against a modestly extended
-  // domain — out-of-domain stretches gap instead of clamping, and
-  // forecast resets never paint vertical walls. Partial by design
-  // until a full span has accumulated — never backfilled.
+  // (4) HYBRID — WEB44 geometry (nmHybridModel over this panel's
+  // timeline only): the window is exactly [now−span, now+span] with
+  // the NOW divider dead centre; the prediction is the timeline's
+  // ONE line, rebased at the join (WEB43) and clipped to the
+  // window; the band is capped by travel AND domain (Defect 2);
+  // the history-half yellow is the dataset's stitch, drawn per
+  // view with dotted reset connectors — its final segment always
+  // reaches the join solid (Shane, 01:03). Partial by design until
+  // a full span has accumulated — never backfilled.
   const hm = nmHybridModel(s, pastWin, nowMs);
-  if (hm.y) nmDraw(c.els.cvHyb, { t0: s.t0, t1: s.t1, y: hm.y, past: hm.past, color: NM_WHITE, band: hm.future.length >= 2 ? hm.future : null, histFc: hm.stitchSegs, nowLine: true, nowT: hm.joinT, noPastLabel: true, hoverT, emptyText: "Hybrid warming up…" });
+  if (hm.y) nmDraw(c.els.cvHyb, { t0: s.t0, t1: s.t1, y: hm.y, past: hm.past, color: NM_WHITE, band: hm.future.length >= 2 ? hm.future : null, histFc: hm.stitchSegs, stitchLinks: hm.stitchLinks, nowLine: true, nowT: hm.joinT, noPastLabel: true, hoverT, emptyText: "Hybrid warming up…" });
   nmRenderInsight(sym, s, pastWin);
   nmDrawWeek(sym);
 }
@@ -7187,7 +7479,13 @@ function nmRenderInsight(sym, s, pastWin){
   const set = (el, txt) => { if (el) el.textContent = txt; };
   if (c.els.insSeg) c.els.insSeg.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.nzoom === nmZoomFor(sym)));
   if (!d) return;
-  const mood = nmMood(pastWin, s.barMin);
+  /* WEB44: volatility + label from the mood window (≥15m of the
+     finest series — a rate, honest at any zoom); the range and
+     up-share printed beside it are the SELECTED span's own. */
+  const moodBase = nmMood(s.moodPts && s.moodPts.length ? s.moodPts : pastWin, s.barMin);
+  const mood = moodBase && pastWin && pastWin.length >= 2
+    ? Object.assign({}, moodBase, nmSpanStats(pastWin))
+    : moodBase;
   if (d.shadow){
     set(c.els.insPred, "— (shadow: no forecast is issued for NEAR)");
     set(c.els.insConf, "—");
@@ -7231,7 +7529,13 @@ function nmDrawWeek(sym){
     return;
   }
   const t0 = nmT(src.week_start), t1 = nmT(src.week_end);
-  const actuals = (src.actuals || []).map(a => [nmT(a.t), a.close]).filter(a => isFinite(a[0]));
+  /* WEB44: the weekly actuals are the timeline's past array
+     windowed to the week (the timeline's base layer IS this
+     payload's actuals, overlaid by the finer series) — the same
+     values the LIVE and hybrid charts show for those minutes. */
+  const actuals = (c.tl && c.tl.week === src)
+    ? c.tl.past.filter(p => p[0] >= t0 && p[0] <= t1)
+    : (src.actuals || []).map(a => [nmT(a.t), a.close]).filter(a => isFinite(a[0]));
   const segs = src.segments.map(seg => ({
     id: seg.id,
     pts: (seg.path || []).map(p => ({ t: nmT(p.t), mid: p.mid, lo: p.lo, hi: p.hi })).filter(p => isFinite(p.t)),
@@ -7274,8 +7578,9 @@ function nmDrawWeek(sym){
     ctx.fillStyle = "#eceaf4";
     ctx.fillText(fmtPx(actuals[actuals.length - 1][1]), W - 66, Y(actuals[actuals.length - 1][1]) + 4);
   }
-  // current position — solid WHITE vertical (spec §5)
-  const nx = X(Date.now());
+  // current position — solid WHITE vertical (spec §5); WEB44: at
+  // the timeline's build instant, like every other view's "now"
+  const nx = X(c.tl ? c.tl.now : Date.now());
   if (nx > 8 && nx < W - 70){
     ctx.beginPath(); ctx.moveTo(nx, 6); ctx.lineTo(nx, H - 22);
     ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; ctx.stroke();
