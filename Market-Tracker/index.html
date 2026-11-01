@@ -209,6 +209,20 @@ canvas.spark{width:100%;height:150px;display:block}
 @media (max-width:760px){.ncharts,.nhybrow{grid-template-columns:1fr}}
 .flashmsg{font-size:13px;font-weight:700;margin-top:7px;min-height:16px}
 .flashmsg.right{color:var(--up)} .flashmsg.wrong{color:var(--down)}
+/* ---------- WEB41: NORMAL insight sub-panel + stacked charts ---------- */
+.nstack{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.nstack canvas{width:100%;height:auto;background:rgba(0,0,0,.18);border:1px solid var(--line);border-radius:10px}
+.ninsight{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:rgba(124,92,255,.05)}
+.nin-zoom{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.nin-lbl{font-size:11px;color:var(--mut);letter-spacing:.07em;text-transform:uppercase}
+.nin-seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.nin-seg button{background:none;border:none;color:var(--mut);padding:5px 9px;font-size:12px;font-weight:700;cursor:pointer}
+.nin-seg button.on{background:rgba(201,162,39,.25);color:var(--gold2)}
+.nin-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px 16px;margin-top:9px}
+.nin-grid .nin-k{display:block;font-size:11px;color:var(--mut);letter-spacing:.07em;text-transform:uppercase}
+.nin-grid .nin-v{font-size:13.5px;font-weight:600;line-height:1.45}
+.nin-trend{margin-top:9px;font-size:13px;line-height:1.55;color:#b9b4d6;border-top:1px dashed var(--line);padding-top:8px}
+@media (max-width:760px){.nin-grid{grid-template-columns:1fr}}
 #scoreTable,#scorePackedTable{width:100%;border-collapse:collapse;font-size:14px}
 #scoreTable th,#scoreTable td,#scorePackedTable th,#scorePackedTable td{border-bottom:1px solid var(--line);padding:7px 6px;text-align:left}
 #scoreTable th,#scorePackedTable th{color:var(--mut);font-weight:600;font-size:12px;letter-spacing:.1em;text-transform:uppercase}
@@ -6597,6 +6611,21 @@ async function nmLoadCoin(sym){
 function nmLoadAll(){
   NM.loaded = true;
   for (const sym of NM_COINS) nmLoadCoin(sym);
+  nmLoadSnipe(false);
+}
+/* WEB41: the insight panel's snipe line reads the same /api/perp/
+   snipe payload the PERPETUALS spotter uses. PERPETUALS loads it in
+   its own boot flow; NORMAL entry fetches it lazily (and the Data
+   button force-refreshes it) so the line never depends on having
+   visited PERPETUALS first. */
+let NM_SNIPE_AT = 0;
+async function nmLoadSnipe(force){
+  if (!force && typeof SNIPE !== "undefined" && SNIPE && Date.now() - NM_SNIPE_AT < 120000) return;
+  const j = await fetchJSON(AUTH + "/api/perp/snipe");
+  if (j && j.ok){
+    SNIPE = j; NM_SNIPE_AT = Date.now();
+    for (const sym of NM_COINS) nmRenderCoin(sym);
+  }
 }
 async function nmRefresh(sym, dataset, btn){
   if (btn) btn.disabled = true;
@@ -6619,22 +6648,175 @@ function nmZoomSpec(){
   if (span <= 3600000) return { spanMs: span, kind: "m1" };
   return { spanMs: span, kind: "span" };
 }
+/* WEB41: robust time parse — payloads mix ISO strings and epoch-ms
+   numbers (the WEB40 week/span paths carried ms numbers, which
+   Date.parse() turns into NaN; those lines silently never drew). */
+function nmT(x){
+  if (x == null) return NaN;
+  if (typeof x === "number") return x;
+  const t = Date.parse(x);
+  return isFinite(t) ? t : NaN;
+}
+/* WEB41: the hybrid window — history equal to the zoom on the left
+   of NOW, prediction equal to the zoom on the right. Pure. */
+function nmHybridWindow(now, spanMs){
+  return { t0: now - spanMs, tN: now, t1: now + spanMs };
+}
+const NM_ZOOM_LABELS = { live: "Live (15m)", "5": "5m", "15": "15m", "30": "30m", "60": "1h", "720": "12h", "1440": "24h" };
+/* WEB41: ET (America/New_York) helpers for the Sun–Sat weekly
+   chart's day boundaries — mirrors the server's etWeekBounds. */
+const NM_ET_FMT = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+const NM_ET_WD = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short" });
+function nmEtWallParts(ms){
+  const o = {};
+  for (const p of NM_ET_FMT.formatToParts(new Date(ms))) if (p.type !== "literal") o[p.type] = Number(p.value);
+  return o;
+}
+function nmEtWallToUtc(y, mo, d, hh, mm, ss){
+  const target = Date.UTC(y, mo - 1, d, hh || 0, mm || 0, ss || 0);
+  let guess = target;
+  for (let i = 0; i < 3; i++){
+    const p = nmEtWallParts(guess);
+    const wallAsUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute, p.second);
+    const diff = target - wallAsUtc;
+    if (diff === 0) break;
+    guess += diff;
+  }
+  return guess;
+}
+function nmEtWeekBounds(now){
+  const p = nmEtWallParts(now);
+  const dow = new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay();
+  const s = new Date(Date.UTC(p.year, p.month - 1, p.day - dow));
+  const e = new Date(Date.UTC(p.year, p.month - 1, p.day - dow + 7));
+  return {
+    start: nmEtWallToUtc(s.getUTCFullYear(), s.getUTCMonth() + 1, s.getUTCDate()),
+    end: nmEtWallToUtc(e.getUTCFullYear(), e.getUTCMonth() + 1, e.getUTCDate()),
+  };
+}
+function nmEtDayStarts(startMs){
+  const out = [];
+  let cur = startMs;
+  for (let i = 0; i < 7; i++){
+    out.push({ t: cur, label: NM_ET_WD.format(new Date(cur)) });
+    const p = nmEtWallParts(cur);
+    const nx = new Date(Date.UTC(p.year, p.month - 1, p.day + 1));
+    cur = nmEtWallToUtc(nx.getUTCFullYear(), nx.getUTCMonth() + 1, nx.getUTCDate());
+  }
+  return out;
+}
+/* WEB41: mood of fluctuations — a descriptive label computed from
+   the selected span's own actual bars (per-minute volatility from
+   log returns), with the numbers shown next to it. Pure. */
+function nmMood(pts, barMin){
+  if (!pts || pts.length < 8) return null;
+  const rets = [];
+  for (let i = 1; i < pts.length; i++){
+    const a = pts[i - 1][1], b = pts[i][1];
+    if (a > 0 && b > 0) rets.push(Math.log(b / a));
+  }
+  if (rets.length < 7) return null;
+  const mean = rets.reduce((x, y) => x + y, 0) / rets.length;
+  const sd = Math.sqrt(rets.reduce((x, y) => x + (y - mean) * (y - mean), 0) / rets.length);
+  const volMin = sd / Math.sqrt(Math.max(1, barMin || 1)) * 100;
+  let lo = Infinity, hi = -Infinity;
+  for (const p of pts){ if (p[1] < lo) lo = p[1]; if (p[1] > hi) hi = p[1]; }
+  const rangePct = pts[0][1] > 0 ? (hi - lo) / pts[0][1] * 100 : 0;
+  const ups = rets.filter(r => r > 0).length;
+  const upShare = rets.length ? ups / rets.length : 0.5;
+  let label = "CALM";
+  if (volMin >= 0.16) label = "VIOLENT";
+  else if (volMin >= 0.09) label = "HEATING UP";
+  else if (volMin >= 0.045) label = "CHOPPY";
+  return { label, volMin, rangePct, upShare };
+}
+function nmMoodText(m){
+  return m.label + " — " + m.volMin.toFixed(3) + "% typical move per minute · " + m.rangePct.toFixed(2) + "% total range in span · " + Math.round(m.upShare * 100) + "% of bars up";
+}
+/* WEB41: the snipe spot for (coin, zoom). The spotter runs on
+   5m/15m/60m perpetuals only: those zooms map to their own horizon;
+   Live takes the soonest-closing live spot; 30m/12h/24h have no
+   snipe horizon and say so (kind "nohorizon") instead of being
+   stretched onto one. Pure. */
+function nmSnipeFor(sym, zoom, now){
+  if (typeof SNIPE === "undefined" || !SNIPE || !Array.isArray(SNIPE.spots)) return { kind: "loading" };
+  const spots = SNIPE.spots.filter(sp => sp.coin === sym && (sp.close_at || 0) > now);
+  if (!spots.length) return { kind: "none" };
+  if (zoom === "live"){
+    return { kind: "spot", spot: spots.slice().sort((a, b) => a.close_at - b.close_at)[0], via: "soonest close" };
+  }
+  const h = Number(zoom);
+  if (h === 5 || h === 15 || h === 60){
+    const m = spots.filter(sp => sp.horizon_min === h).sort((a, b) => a.close_at - b.close_at);
+    return m.length ? { kind: "spot", spot: m[0] } : { kind: "none" };
+  }
+  return { kind: "nohorizon" };
+}
+function nmSnipeText(r, sym){
+  if (r.kind === "loading") return "Loading the snipe scan…";
+  if (r.kind === "nohorizon") return "No snipe at this zoom — the spotter runs on 5m / 15m / 60m perpetuals only, and no horizon is stretched to fit this one.";
+  if (r.kind === "none") return "No live snipe spot for " + sym + " at this zoom right now.";
+  const sp = r.spot;
+  return "🎯 " + (sp.side === "over" ? "UP" : "DOWN") + " side at " + Math.round((sp.prob_now || 0) * 100) + "% on the " + sp.horizon_min + "m"
+    + (sp.required_move_pct != null ? " — needs " + (sp.required_move_pct * 100).toFixed(2) + "% more" : "")
+    + " · closes " + nmTime(new Date(sp.close_at).toISOString());
+}
+/* WEB41: prediction + confidence for the selected zoom. Sub-hourly
+   zooms read the frozen shift forecast (its own likelihood is the
+   confidence); 12h/24h read the span projection and quote the band
+   as the uncertainty — no likelihood is invented for them. */
+function nmZoomPrediction(d, s){
+  const fc = d && d.forecast;
+  if (s.spec.kind === "m1"){
+    if (!fc) return { pred: "No forecast open right now", conf: "—" };
+    return {
+      pred: fc.direction + " shift of " + (fc.expected_move_pct >= 0 ? "+" : "") + (fc.expected_move_pct * 100).toFixed(2) + "% expected",
+      conf: fc.shift_likelihood != null ? Math.round(fc.shift_likelihood * 100) + "% shift likelihood — the frozen forecast's own number" : "likelihood —",
+    };
+  }
+  const pts = s.spans;
+  if (!pts || pts.length < 2) return { pred: "Projection forming…", conf: "—" };
+  const a = pts[0], b = pts[pts.length - 1];
+  const delta = a.mid > 0 ? (b.mid / a.mid - 1) * 100 : 0;
+  const bandPct = b.mid > 0 ? ((b.hi - b.lo) / 2 / b.mid) * 100 : 0;
+  return {
+    pred: (delta >= 0 ? "UP +" : "DOWN ") + Math.abs(delta).toFixed(2) + "% projected over " + Math.round(s.spec.spanMs / 3600000) + "h",
+    conf: "Projection band ±" + bandPct.toFixed(2) + "% at the horizon — a span projection, not a frozen shift forecast",
+  };
+}
+/* WEB41: trend path — ONE short plain-language sentence built only
+   from numbers already shown in the panel. */
+function nmTrendText(d, s, mood){
+  const fc = d.forecast, adv = d.advisory;
+  const parts = [];
+  if (fc) parts.push("the open forecast leans " + fc.direction + " into its " + nmTime(fc.t_early) + " – " + nmTime(fc.t_late) + " window, expecting about " + (fc.expected_move_pct * 100).toFixed(2) + "% if the shift fires");
+  else parts.push("no shift forecast is open, so the path call rests on the span projection alone");
+  if (s.spec.kind === "span" && s.spans && s.spans.length >= 2){
+    const a = s.spans[0], b = s.spans[s.spans.length - 1];
+    if (a.mid > 0) parts.push("the " + Math.round(s.spec.spanMs / 3600000) + "h projection drifts " + ((b.mid / a.mid - 1) * 100).toFixed(2) + "% overall");
+  }
+  if (adv && adv.range_position_pct != null) parts.push("price sits at the " + Math.round(adv.range_position_pct * 100) + "th percentile of its trailing 24h range");
+  if (mood) parts.push("fluctuations underneath are " + mood.label.toLowerCase());
+  return "Trend path: " + parts.join("; ") + ".";
+}
 function nmSeriesFor(sym){
   const c = NM.coins[sym], d = c && c.data;
-  const spec = nmZoomSpec(), now = Date.now(), t0 = now - spec.spanMs;
-  if (!d) return { past: [], fc: null, spans: null, t0, t1: now + spec.spanMs, spec };
-  let past = [];
+  const spec = nmZoomSpec(), now = Date.now();
+  const win = nmHybridWindow(now, spec.spanMs);
+  if (!d) return { past: [], fc: null, spans: null, histFc: [], barMin: 1, t0: win.t0, tN: win.tN, t1: win.t1, spec };
+  let past = [], barMin = 1;
   if (spec.kind === "m1"){
-    past = (d.series.m1 || []).filter(p => p[0] >= t0 - 3600000);
-    if (past.length < 10) past = (d.series.m15 || []).map(p => [p[0] + 900000, p[1]]).filter(p => p[0] >= t0 - 3600000);
+    past = (d.series.m1 || []).filter(p => p[0] >= win.t0 - 3600000);
+    if (past.length < 10){ past = (d.series.m15 || []).map(p => [p[0] + 900000, p[1]]).filter(p => p[0] >= win.t0 - 3600000); barMin = 15; }
   } else {
-    past = (d.series.h1 || []).map(p => [p[0] + 3600000, p[1]]).filter(p => p[0] >= t0 - 3600000);
+    past = (d.series.h1 || []).map(p => [p[0] + 3600000, p[1]]).filter(p => p[0] >= win.t0 - 3600000);
+    barMin = 60;
   }
   let fcPts = null;
   if (spec.kind === "m1" && d.forecast){
     const bandMult = (NM.settings._adv && NM.settings._adv.band) || 1;
     fcPts = d.forecast.path.map(p => {
-      const t = Date.parse(p.t), mid = p.mid;
+      const t = nmT(p.t), mid = p.mid;
       return { t, mid, lo: mid - (mid - p.lo) * bandMult, hi: mid + (p.hi - mid) * bandMult };
     });
   }
@@ -6642,12 +6824,22 @@ function nmSeriesFor(sym){
   if (spec.kind === "span" && d.spans){
     const key = spec.spanMs >= 24 * 3600000 ? "24h" : "12h";
     const arr = d.spans[key] || [];
-    spanPts = arr.map(p => ({ t: Date.parse(p.t), mid: p.mid, lo: p.lo, hi: p.hi }));
+    spanPts = arr.map(p => ({ t: nmT(p.t), mid: p.mid, lo: p.lo, hi: p.hi }));
   }
-  let t1 = now + spec.spanMs * 0.75;
-  if (fcPts && fcPts.length) t1 = Math.max(t1, fcPts[fcPts.length - 1].t);
-  if (spanPts && spanPts.length) t1 = Math.max(t1, spanPts[spanPts.length - 1].t);
-  return { past, fc: fcPts, spans: spanPts, t0, t1, spec };
+  /* WEB41: as-issued forecast history for the hybrid's left half —
+     resolved rows only, from the server's stored-row `history`
+     (payloads without it fall back to `recent`). These are the
+     frozen issued paths; nothing is recomputed or backfilled, so
+     the overlay is necessarily partial until a full span of
+     history has accumulated. */
+  const histSrc = (d.history && d.history.length) ? d.history : (d.recent || []);
+  const histFc = [];
+  for (const h of histSrc){
+    if (!h || !h.path) continue;
+    const pts = h.path.map(p => ({ t: nmT(p.t), mid: p.mid })).filter(p => isFinite(p.t) && p.mid > 0);
+    if (pts.length >= 2) histFc.push({ id: h.id, issuedMs: nmT(h.issued_at), pts });
+  }
+  return { past, fc: fcPts, spans: spanPts, histFc, barMin, t0: win.t0, tN: win.tN, t1: win.t1, spec };
 }
 function nmYRange(parts){
   let lo = Infinity, hi = -Infinity;
@@ -6688,13 +6880,34 @@ function nmDraw(cv, o){
   };
   if (o.pastFaint) line(o.pastFaint, p => p[1], "rgba(154,150,173,0.55)", 1.4, null);
   if (o.prevFc) line(o.prevFc, p => p.mid, "rgba(154,150,173,0.6)", 1.4, [4, 4]);
+  // WEB41: as-issued historical forecast overlays (yellow family —
+  // they are predictions, drawn from stored rows, never recomputed)
+  if (o.histFc) for (const pts of o.histFc) line(pts, p => p.mid, "rgba(243,210,122,0.7)", 1.6, null);
   if (o.band) line(o.band, p => p.mid, "#f3d27a", 2.2, [7, 5]);
   if (o.past) line(o.past, p => p[1], o.color, 2.4, null);
-  // now divider
+  // now divider — WEB41: the hybrid's NOW divider is a solid WHITE
+  // line (Shane's annotation), labelled; elsewhere it stays faint.
   const nx = X(Date.now());
   if (nx > 8 && nx < W - RP){
     ctx.beginPath(); ctx.moveTo(nx, 6); ctx.lineTo(nx, H - 6);
-    ctx.strokeStyle = "rgba(236,234,244,0.25)"; ctx.lineWidth = 1; ctx.stroke();
+    if (o.nowLine){
+      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = "#ffffff"; ctx.font = "bold 11px system-ui";
+      ctx.fillText("NOW", nx + 4, 15);
+      ctx.font = "11px system-ui";
+    } else {
+      ctx.strokeStyle = "rgba(236,234,244,0.25)"; ctx.lineWidth = 1; ctx.stroke();
+    }
+  }
+  // WEB41: the LIVE chart's right edge is the live edge — solid
+  // white, marked.
+  if (o.liveEdge){
+    const lx = X(o.t1);
+    ctx.beginPath(); ctx.moveTo(lx, 6); ctx.lineTo(lx, H - 6);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = "#ffffff"; ctx.font = "bold 11px system-ui";
+    ctx.fillText("LIVE", lx - 30, 15);
+    ctx.font = "11px system-ui";
   }
   // crosshair
   if (o.hoverT && o.hoverT >= o.t0 && o.hoverT <= o.t1){
@@ -6702,9 +6915,10 @@ function nmDraw(cv, o){
     ctx.beginPath(); ctx.moveTo(hx, 6); ctx.lineTo(hx, H - 6);
     ctx.strokeStyle = "rgba(236,234,244,0.5)"; ctx.lineWidth = 1; ctx.stroke();
   }
-  // right-edge labels: last past + forecast end
+  // right-edge labels: last past + forecast end (the hybrid
+  // suppresses the past label — its right edge is the forecast's)
   ctx.fillStyle = "#eceaf4";
-  if (o.past && o.past.length){
+  if (o.past && o.past.length && !o.noPastLabel){
     const lp = o.past[o.past.length - 1];
     ctx.fillText(fmtPx(lp[1]), W - RP + 6, Y(lp[1]) + 4);
   }
@@ -6725,50 +6939,125 @@ function fmtPx(v){
   if (v >= 1) return v.toFixed(3);
   return v.toFixed(5);
 }
+const NM_WHITE = "#eceaf4";
+/* WEB41 layout per panel: (2) LIVE chart — white actual only, one
+   zoom-span, right edge = the live edge; (3) insight sub-panel;
+   (4) HYBRID — white actual + as-issued yellow history left of a
+   white NOW divider, yellow prediction right, both halves equal to
+   the zoom on one shared price scale; (5) Sun–Sat weekly. The
+   WEB40 standalone PREDICTION graph is gone (spec §3). */
 function nmDrawCharts(sym){
   const c = NM.coins[sym]; if (!c || !c.data || !c.els) return;
   const s = nmSeriesFor(sym);
   const nowMs = Date.now();
   const pastWin = s.past.filter(p => p[0] >= s.t0 && p[0] <= nowMs + 60000);
   const fut = s.fc || s.spans;
-  const y = nmYRange([pastWin, fut || []]);
-  if (!y) return;
-  const col = COIN_COLORS[sym] || "#c9a227";
+  const futWin = fut ? fut.filter(p => p.t <= s.t1 + 1) : null;
   const hoverT = NM.hover[sym] || null;
-  const prev = c.data.recent && c.data.recent.length
-    ? c.data.recent[0].path.map(p => ({ t: Date.parse(p.t), mid: p.mid, lo: p.lo, hi: p.hi })) : null;
-  nmDraw(c.els.cvLive, { t0: s.t0, t1: s.t1, y, past: pastWin, color: col, hoverT, emptyText: "Waiting for live candles…" });
-  nmDraw(c.els.cvPred, { t0: s.t0, t1: s.t1, y, pastFaint: pastWin, band: fut, hoverT, emptyText: "Forecast warming up…" });
-  nmDraw(c.els.cvHyb, { t0: s.t0, t1: s.t1, y, past: pastWin, band: fut, prevFc: prev, color: col, hoverT, emptyText: "Hybrid warming up…" });
+  if (c.els.lblLive) c.els.lblLive.textContent = "Live — last " + (NM_ZOOM_LABELS[NM.zoom] || NM.zoom);
+  // (2) LIVE chart
+  const yLive = nmYRange([pastWin]);
+  if (yLive) nmDraw(c.els.cvLive, { t0: s.t0, t1: nowMs, y: yLive, past: pastWin, color: NM_WHITE, liveEdge: true, hoverT, emptyText: "Waiting for live candles…" });
+  // (4) HYBRID — historical yellow = forecasts actually issued for
+  // [t0, now]: resolved rows (server history) + the still-open
+  // forecast's own pre-now path. Partial by design until a full
+  // span has accumulated — never backfilled.
+  const histLines = [];
+  for (const h of s.histFc){
+    const pts = h.pts.filter(p => p.t >= s.t0 && p.t <= nowMs);
+    if (pts.length >= 2) histLines.push(pts);
+  }
+  if (s.fc){
+    const pre = s.fc.filter(p => p.t >= s.t0 && p.t <= nowMs).map(p => ({ t: p.t, mid: p.mid }));
+    if (pre.length >= 2) histLines.push(pre);
+  }
+  const yH = nmYRange([pastWin, futWin || [], ...histLines]);
+  if (yH) nmDraw(c.els.cvHyb, { t0: s.t0, t1: s.t1, y: yH, past: pastWin, color: NM_WHITE, band: futWin, histFc: histLines, nowLine: true, noPastLabel: true, hoverT, emptyText: "Hybrid warming up…" });
+  nmRenderInsight(sym, s, pastWin);
   nmDrawWeek(sym);
 }
+/* WEB41 (3): the insight sub-panel — everything derived from the
+   selected zoom + data already in the panel; advice reuses the
+   WEB40 nmAdvice (incl. its math in the Why? pop-out). */
+function nmRenderInsight(sym, s, pastWin){
+  const c = NM.coins[sym]; if (!c || !c.els || !c.els.insPred) return;
+  const d = c.data;
+  const set = (el, txt) => { if (el) el.textContent = txt; };
+  if (c.els.insSeg) c.els.insSeg.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.nzoom === NM.zoom));
+  if (!d) return;
+  const mood = nmMood(pastWin, s.barMin);
+  if (d.shadow){
+    set(c.els.insPred, "— (shadow: no forecast is issued for NEAR)");
+    set(c.els.insConf, "—");
+    set(c.els.insShift, "—");
+    set(c.els.insAdv, "Shadow — tracked, no advice");
+    set(c.els.insSnipe, "—");
+    set(c.els.insMood, mood ? nmMoodText(mood) : "Forming…");
+    set(c.els.insTrend, "Trend path: NEAR runs in shadow in NORMAL mode — its live fluctuations are tracked in the charts, but no forecast or trend call is issued for it yet.");
+    return;
+  }
+  const fc = d.forecast;
+  const zp = nmZoomPrediction(d, s);
+  set(c.els.insPred, zp.pred);
+  set(c.els.insConf, zp.conf);
+  set(c.els.insShift, fc
+    ? fc.direction + " " + (fc.expected_move_pct >= 0 ? "+" : "") + (fc.expected_move_pct * 100).toFixed(2) + "% · window " + nmTime(fc.t_early) + " – " + nmTime(fc.t_late) + " · state " + String(fc.state || "likely").toUpperCase()
+    : "No shift forecast open right now.");
+  const a = nmAdvice(d.advisory, nmCoinSet(sym), NM.settings._adv);
+  set(c.els.insAdv, a.label + " — the math is in the Why? pop-out above.");
+  set(c.els.insSnipe, nmSnipeText(nmSnipeFor(sym, NM.zoom, Date.now()), sym));
+  set(c.els.insMood, mood ? nmMoodText(mood) : "Forming — not enough live bars in this span yet.");
+  set(c.els.insTrend, nmTrendText(d, s, mood));
+}
+/* WEB41 (5): weekly tracker sliced to the Sun–Sat ET calendar week
+   (server `calendar` block; the WEB40 rolling block is the fallback
+   for older payloads). White actual vs yellow as-issued forecasts,
+   white vertical line at the current position, Sun–Sat day ticks. */
 function nmDrawWeek(sym){
   const c = NM.coins[sym]; if (!c || !c.els || !c.els.cvWeek) return;
-  const wk = c.week && c.week.week;
   const cv = c.els.cvWeek, ctx = cv.getContext && cv.getContext("2d");
   if (!ctx) return;
   const W = cv.width, H = cv.height;
   ctx.clearRect(0, 0, W, H);
   ctx.font = "11px system-ui";
-  if (!wk || !wk.segments || !wk.segments.length){
+  const root = c.week || {};
+  const isCal = !!root.calendar;
+  const src = root.calendar || root.week;
+  if (!src || !src.segments || !src.segments.length){
     ctx.fillStyle = "#9a96ad"; ctx.font = "13px system-ui";
     ctx.fillText("Weekly forecast warming up…", 16, H / 2);
     return;
   }
-  const t0 = Date.parse(wk.week_start), t1 = Date.parse(wk.week_end);
-  const actuals = (wk.actuals || []).map(a => [Date.parse(a.t), a.close]);
+  const t0 = nmT(src.week_start), t1 = nmT(src.week_end);
+  const actuals = (src.actuals || []).map(a => [nmT(a.t), a.close]).filter(a => isFinite(a[0]));
+  const segs = src.segments.map(seg => ({
+    id: seg.id,
+    pts: (seg.path || []).map(p => ({ t: nmT(p.t), mid: p.mid, lo: p.lo, hi: p.hi })).filter(p => isFinite(p.t)),
+  }));
   const flat = [];
-  for (const seg of wk.segments) for (const p of seg.path) flat.push(p);
-  const y = nmYRange([actuals, flat.map(p => ({ t: Date.parse(p.t), mid: p.mid, lo: p.lo, hi: p.hi }))]);
+  for (const sg of segs) for (const p of sg.pts) flat.push(p);
+  const y = nmYRange([actuals, flat]);
   if (!y) { ctx.fillStyle = "#9a96ad"; ctx.fillText("Weekly data forming…", 16, H / 2); return; }
   const X = (t) => 8 + (t - t0) / (t1 - t0) * (W - 72);
-  const Y = (p) => H - 14 - (p - y[0]) / (y[1] - y[0]) * (H - 28);
-  wk.segments.forEach((seg, si) => {
-    const cur = seg.id === wk.current_segment_id;
+  const Y = (p) => H - 26 - (p - y[0]) / (y[1] - y[0]) * (H - 40);
+  if (isCal){
+    ctx.fillStyle = "#9a96ad";
+    for (const dt of nmEtDayStarts(t0)){
+      const x = X(dt.t);
+      if (x > 8 && x < W - 70){
+        ctx.beginPath(); ctx.moveTo(x, 6); ctx.lineTo(x, H - 22);
+        ctx.strokeStyle = "rgba(154,150,173,0.18)"; ctx.lineWidth = 1; ctx.stroke();
+      }
+      ctx.fillText(dt.label, Math.min(Math.max(x + 3, 8), W - 90), H - 8);
+    }
+  }
+  segs.forEach((sg) => {
+    if (sg.pts.length < 2) return;
+    const cur = sg.id === src.current_segment_id;
     ctx.beginPath();
-    seg.path.forEach((p, i) => { const x = X(Date.parse(p.t)), yy = Y(p.mid); i ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy); });
+    sg.pts.forEach((p, i) => { const x = X(p.t), yy = Y(p.mid); i ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy); });
     ctx.setLineDash([6, 5]);
-    ctx.strokeStyle = cur ? "#f3d27a" : "rgba(154,150,173,0.45)";
+    ctx.strokeStyle = cur ? "#f3d27a" : "rgba(243,210,122,0.4)";
     ctx.lineWidth = cur ? 2.2 : 1.3;
     ctx.stroke();
     ctx.setLineDash([]);
@@ -6776,14 +7065,15 @@ function nmDrawWeek(sym){
   if (actuals.length > 1){
     ctx.beginPath();
     actuals.forEach((p, i) => { const x = X(p[0]), yy = Y(p[1]); i ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy); });
-    ctx.strokeStyle = COIN_COLORS[sym] || "#eceaf4"; ctx.lineWidth = 2.2; ctx.stroke();
+    ctx.strokeStyle = NM_WHITE; ctx.lineWidth = 2.2; ctx.stroke();
     ctx.fillStyle = "#eceaf4";
     ctx.fillText(fmtPx(actuals[actuals.length - 1][1]), W - 66, Y(actuals[actuals.length - 1][1]) + 4);
   }
+  // current position — solid WHITE vertical (spec §5)
   const nx = X(Date.now());
   if (nx > 8 && nx < W - 70){
-    ctx.beginPath(); ctx.moveTo(nx, 6); ctx.lineTo(nx, H - 6);
-    ctx.strokeStyle = "rgba(236,234,244,0.3)"; ctx.lineWidth = 1; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(nx, 6); ctx.lineTo(nx, H - 22);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; ctx.stroke();
   }
 }
 
@@ -6809,10 +7099,25 @@ function nmBuildCards(){
         '<button type="button" class="nbtn nref-data">↻ Data</button>' +
       '</div>' +
       '<div class="nreasons" hidden></div>' +
-      '<div class="ncharts"><div><div class="nchartlbl">Live</div><canvas class="ncv-live" width="640" height="230"></canvas></div>' +
-      '<div><div class="nchartlbl">Prediction</div><canvas class="ncv-pred" width="640" height="230"></canvas></div></div>' +
-      '<div class="nhybrow"><div><div class="nchartlbl">Live × prediction hybrid</div><canvas class="ncv-hyb" width="760" height="250"></canvas></div>' +
-      '<div><div class="nchartlbl">This week — forecast vs actual</div><canvas class="ncv-week" width="520" height="250"></canvas></div></div>' +
+      '<div class="nstack">' +
+        '<div><div class="nchartlbl nlbl-live">Live</div><canvas class="ncv-live" width="900" height="240"></canvas></div>' +
+        '<div class="ninsight">' +
+          '<div class="nin-zoom"><span class="nin-lbl">Zoom — drives every chart in this panel</span><span class="nin-seg">' +
+            '<button type="button" data-nzoom="live">Live</button><button type="button" data-nzoom="5">5m</button><button type="button" data-nzoom="15">15m</button><button type="button" data-nzoom="30">30m</button><button type="button" data-nzoom="60">1h</button><button type="button" data-nzoom="720">12h</button><button type="button" data-nzoom="1440">24h</button>' +
+          '</span></div>' +
+          '<div class="nin-grid">' +
+            '<div><span class="nin-k">Prediction</span><span class="nin-v nin-pred"></span></div>' +
+            '<div><span class="nin-k">Confidence</span><span class="nin-v nin-conf"></span></div>' +
+            '<div><span class="nin-k">Next likely shift</span><span class="nin-v nin-shift"></span></div>' +
+            '<div><span class="nin-k">Advice</span><span class="nin-v nin-adv"></span></div>' +
+            '<div><span class="nin-k">Snipe — this zoom</span><span class="nin-v nin-snipe"></span></div>' +
+            '<div><span class="nin-k">Mood of fluctuations</span><span class="nin-v nin-mood"></span></div>' +
+          '</div>' +
+          '<div class="nin-trend"></div>' +
+        '</div>' +
+        '<div><div class="nchartlbl">Live × prediction hybrid — history | prediction</div><canvas class="ncv-hyb" width="900" height="260"></canvas></div>' +
+        '<div><div class="nchartlbl">This week (Sun–Sat) — forecast vs actual</div><canvas class="ncv-week" width="900" height="240"></canvas></div>' +
+      '</div>' +
       '<div class="nmeta"></div>';
     wrap.appendChild(el);
     const c = {
@@ -6821,8 +7126,14 @@ function nmBuildCards(){
         pr: el.querySelector(".npr"), state: el.querySelector(".nstate"),
         adv: el.querySelector(".nadvice"), reasons: el.querySelector(".nreasons"),
         meta: el.querySelector(".nmeta"),
-        cvLive: el.querySelector(".ncv-live"), cvPred: el.querySelector(".ncv-pred"),
+        cvLive: el.querySelector(".ncv-live"),
         cvHyb: el.querySelector(".ncv-hyb"), cvWeek: el.querySelector(".ncv-week"),
+        lblLive: el.querySelector(".nlbl-live"),
+        insSeg: el.querySelector(".nin-seg"),
+        insPred: el.querySelector(".nin-pred"), insConf: el.querySelector(".nin-conf"),
+        insShift: el.querySelector(".nin-shift"), insAdv: el.querySelector(".nin-adv"),
+        insSnipe: el.querySelector(".nin-snipe"), insMood: el.querySelector(".nin-mood"),
+        insTrend: el.querySelector(".nin-trend"),
         holdIn: el.querySelector(".nhold"), feeIn: el.querySelector(".nfee"),
         stWatch: el.querySelector(".nst-watch"), stHold: el.querySelector(".nst-hold"),
       },
@@ -6840,15 +7151,20 @@ function nmBuildCards(){
     if (whyBtn) whyBtn.addEventListener("click", () => { if (c.els.reasons) c.els.reasons.hidden = !c.els.reasons.hidden; });
     const rf = el.querySelector(".nref-fc"); if (rf) rf.addEventListener("click", () => nmRefresh(sym, "shift", rf));
     const rw = el.querySelector(".nref-wk"); if (rw) rw.addEventListener("click", () => nmRefresh(sym, "week", rw));
-    const rd = el.querySelector(".nref-data"); if (rd) rd.addEventListener("click", () => nmLoadCoin(sym));
-    for (const cv of [c.els.cvLive, c.els.cvPred, c.els.cvHyb]){
+    const rd = el.querySelector(".nref-data"); if (rd) rd.addEventListener("click", () => { nmLoadCoin(sym); nmLoadSnipe(true); });
+    if (c.els.insSeg) c.els.insSeg.querySelectorAll("button").forEach(b => {
+      b.classList.toggle("on", b.dataset.nzoom === NM.zoom);
+      b.addEventListener("click", () => nmSetZoom(b.dataset.nzoom));
+    });
+    for (const [cv, kind] of [[c.els.cvLive, "live"], [c.els.cvHyb, "hyb"]]){
       if (!cv || !cv.addEventListener) continue;
       cv.addEventListener("mousemove", (ev) => {
         const r = cv.getBoundingClientRect && cv.getBoundingClientRect();
         if (!r || !r.width) return;
         const s = nmSeriesFor(sym);
+        const b = kind === "live" ? Date.now() : s.t1;
         const frac = (ev.clientX - r.left) / r.width;
-        NM.hover[sym] = s.t0 + frac * (s.t1 - s.t0);
+        NM.hover[sym] = s.t0 + frac * (b - s.t0);
         nmDrawCharts(sym);
       });
       cv.addEventListener("mouseleave", () => { NM.hover[sym] = null; nmDrawCharts(sym); });
@@ -6910,6 +7226,20 @@ function nmApplyMode(){
   }
 }
 function nmSetMode(m){ NM.mode = m === "normal" ? "normal" : "perp"; lsSet(NM_LS_MODE, NM.mode); nmApplyMode(); }
+/* WEB41: one shared zoom (as in WEB40) — settable from the panel
+   header segment or any coin's insight-panel segment; every
+   control and every chart in every panel follows it. */
+function nmSetZoom(z){
+  NM.zoom = String(z);
+  lsSet(NM_LS_ZOOM, NM.zoom);
+  const seg = document.getElementById("nmZoomSeg");
+  if (seg) seg.querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.nzoom === NM.zoom));
+  for (const sym of NM_COINS){
+    const c = NM.coins[sym];
+    if (c && c.els && c.els.insSeg) c.els.insSeg.querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.nzoom === NM.zoom));
+    nmDrawCharts(sym);
+  }
+}
 (function nmInit(){
   nmBuildCards();
   const nb = document.getElementById("modeNormalBtn"), pb = document.getElementById("modePerpBtn");
@@ -6919,11 +7249,7 @@ function nmSetMode(m){ NM.mode = m === "normal" ? "normal" : "perp"; lsSet(NM_LS
   if (seg){
     seg.querySelectorAll("button").forEach(b => {
       b.classList.toggle("on", b.dataset.nzoom === NM.zoom);
-      b.addEventListener("click", () => {
-        NM.zoom = b.dataset.nzoom; lsSet(NM_LS_ZOOM, NM.zoom);
-        seg.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
-        for (const sym of NM_COINS) nmDrawCharts(sym);
-      });
+      b.addEventListener("click", () => nmSetZoom(b.dataset.nzoom));
     });
   }
   const adv = NM.settings._adv;
