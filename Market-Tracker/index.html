@@ -176,6 +176,8 @@ canvas.spark{width:100%;height:150px;display:block}
 .snap{background:none;border:none;color:var(--gold2);cursor:pointer;font-size:12px;padding:0}
 .rec{color:var(--mut);font-size:12px;margin-top:9px}
 .fcrec{color:var(--mut);font-size:12px;margin-top:3px;line-height:1.55}
+.engline{color:var(--mut);font-size:12px;margin-top:3px;line-height:1.55}
+.engline b{color:var(--gold2);font-weight:600}
 .flashmsg{font-size:13px;font-weight:700;margin-top:7px;min-height:16px}
 .flashmsg.right{color:var(--up)} .flashmsg.wrong{color:var(--down)}
 #scoreTable,#scorePackedTable{width:100%;border-collapse:collapse;font-size:14px}
@@ -2239,6 +2241,7 @@ function addCard(sym){
     '<div class="flashmsg"></div>' +
     '<div class="fcrec"></div>' +
     '<div class="learnline"></div>' +
+    '<div class="engline" hidden></div>' +
     '<div class="pooline"></div>' +
     '<div class="srcline" hidden></div></div>' +
     '</div>' +   /* .cardpop */
@@ -2296,6 +2299,7 @@ function addCard(sym){
     locked: el.querySelector(".lockedline"),
     detBtn: el.querySelector(".detbtn"), details: el.querySelector(".carddetails"),
     fcrec: el.querySelector(".fcrec"), learn: el.querySelector(".learnline"),
+    eng: el.querySelector(".engline"),
     pool: el.querySelector(".pooline"), src: el.querySelector(".srcline"),
     roCur: el.querySelector(".ro-cur"),
     roDist: el.querySelector(".ro-dist"), pill: el.querySelector(".pill"),
@@ -2376,6 +2380,7 @@ function addCard(sym){
   renderPast(sym);
   renderFCRec(sym);
   renderGlobalLine(sym);
+  renderEngineLine(sym);
   renderAdvCard(sym);
   renderCardAdvice(sym);
   updateLineUI(sym);
@@ -4063,7 +4068,7 @@ async function loadGlobal(){
   GLOBAL_POOL = j.coins; GLOBAL_TOTALS = j.totals || null;
   GLOBAL_AT = Date.now();
   renderGlobalScore();
-  S.selected.forEach(sym => { renderGlobalLine(sym); renderFCRec(sym); renderFC30Stat(sym); if (S.cycle.active) predict(sym); });
+  S.selected.forEach(sym => { renderGlobalLine(sym); renderFCRec(sym); renderEngineLine(sym); renderFC30Stat(sym); if (S.cycle.active) predict(sym); });
   /* WEB35: forecast sections waiting on the snapshot check gate
      re-capture now that fresh pool data has landed — the pending
      state resolves into the checked system snapshot (or stays
@@ -4300,6 +4305,58 @@ function renderGlobalLine(sym){
   }
   if (cs.els.learn.textContent !== txt) cs.els.learn.textContent = txt;
   renderPool(sym);
+}
+
+/* WEB39 (perp-integration S2/S7, Shane 2026-10-31): the per-coin
+   DEDICATED engine line. Each kept coin has its own engine on the
+   server (fitted on that coin's data alone), frozen at every cycle
+   open beside the pooled record and scored on its own record —
+   served as coin.engine on /api/perp/global. This line only READS
+   that frozen object: lean per horizon (with its own record as the
+   label), the coin's own timing + sharpness reads, and its snipe
+   flag. NEAR's engine runs SHADOW (its Kalshi strike basis is
+   still being measured): the payload carries no lean values for
+   it, and this line says exactly that instead of inventing a lean.
+   Packed coins have no engine object — the line stays hidden. */
+function renderEngineLine(sym){
+  const cs = coinState(sym);
+  if (!cs.els.eng) return;
+  const g = GLOBAL_POOL && GLOBAL_POOL[sym];
+  const e = g && g.engine;
+  if (!e){ cs.els.eng.hidden = true; return; }
+  cs.els.eng.hidden = false;
+  let txt;
+  if (e.shadow){
+    txt = "Dedicated engine (" + sym + "'s own model): running in SHADOW — " +
+      "stored and scored server-side, but its lean is not shown live yet " +
+      "(this coin's market strike basis is still being measured).";
+  } else if (e.live && e.horizons && Object.keys(e.horizons).length){
+    const pct = (v) => Math.round(v * 100) + "%";
+    const leans = [], timings = [];
+    for (const h of [15, 30, 45, 60]){
+      const hz = e.horizons[h];
+      if (!hz) continue;
+      leans.push(h + "m " + String(hz.dir || "").toUpperCase() + " " + pct(hz.lean_p) + (hz.called ? " (call)" : ""));
+      if (hz.timing_p != null) timings.push(h + "m " + pct(hz.timing_p));
+    }
+    txt = "Dedicated engine (" + sym + "'s own model, frozen at each cycle open): lean " +
+      leans.join(" · ");
+    if (timings.length) txt += " — timing " + timings.join(" · ");
+    if (e.sharpness && e.sharpness.score != null)
+      txt += " — sharpness " + (+e.sharpness.score).toFixed(2) + (e.sharpness.high ? " (HIGH — sharp move likely)" : "");
+    if (e.snipe && e.snipe.flag) txt += " — snipe setup flagged by " + sym + "'s own model";
+    const r = e.record || {};
+    txt += ". Its own record: " + (r.leans || 0) + " scored leans" +
+      (r.lean_hit_rate != null ? ", " + pct(r.lean_hit_rate) + " lean hits" : "") +
+      (r.calls ? " · " + r.calls + " calls, " + pct(r.call_hit_rate || 0) + " call hits" : "");
+  } else if (e.live){
+    txt = "Dedicated engine (" + sym + "'s own model): warming up — no frozen cycle yet; " +
+      "its lean appears here at the next cycle open.";
+  } else {
+    cs.els.eng.hidden = true;
+    return;
+  }
+  if (cs.els.eng.textContent !== txt) cs.els.eng.textContent = txt;
 }
 
 /* ---------- prediction ---------- */
