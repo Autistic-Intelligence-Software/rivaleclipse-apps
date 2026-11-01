@@ -6700,13 +6700,20 @@ function nmStitchHistory(fcs, t0, tN){
     const from = Math.max(sorted[i].issuedMs, t0);
     const to = Math.min(i + 1 < sorted.length ? sorted[i + 1].issuedMs : tN, tN);
     if (to <= from) continue;
+    let firstInSegment = true;
     for (const p of sorted[i].pts){
       // segment i owns [from, to) — at the exact issuance minute the
       // NEW forecast is the active one; the last segment owns its end
       const inSeg = i + 1 < sorted.length ? (p.t >= from && p.t < to) : (p.t >= from && p.t <= to);
       if (inSeg && p.mid > 0){
         if (out.length && out[out.length - 1].t >= p.t) continue;
-        out.push({ t: p.t, mid: p.mid });
+        const q = { t: p.t, mid: p.mid };
+        // WEB43: a forecast reset is a discontinuity in what was
+        // being predicted, not a price move — mark it so the drawer
+        // lifts the pen instead of painting a vertical wall.
+        if (firstInSegment && out.length) q.breakBefore = true;
+        out.push(q);
+        firstInSegment = false;
       }
     }
   }
@@ -6728,6 +6735,129 @@ function nmLineDomain(parts){
   if (!isFinite(lo)) return null;
   const pad = (hi - lo) * 0.08 || hi * 0.01;
   return [lo - pad, hi + pad];
+}
+/* WEB43 — hybrid continuity (Shane 2026-11-01 00:48 EDT): the NOW
+   divider sits where the actual line ENDS, and the prediction line
+   begins at that exact point. The stored forecast path is never
+   altered: the future path is REBASED at draw time by the ratio
+   path(t)/path(now), preserving its relative shape (direction, %
+   travel, timing) while growing out of the live price. The drawn
+   band is capped to a halo — at most NM_BAND_HALO_TRAVEL_MULT of
+   the prediction line's own travel on each side — at low opacity;
+   the true band ±% stays available as a number in the insight
+   panel. The stitched history is drawn against the line domain
+   extended by NM_STITCH_DOMAIN_EXT_FRAC per side; points outside
+   that extended domain lift the pen (a gap), never clamp or hug
+   the edge, and forecast resets / vertical jumps break the line. */
+const NM_BAND_HALO_TRAVEL_MULT = 0.30;
+const NM_BAND_HALO_OPACITY = 0.10;
+const NM_STITCH_DOMAIN_EXT_FRAC = 0.15;
+const NM_STITCH_MAX_GAP_MS = 10 * 60000;
+const NM_STITCH_MAX_JOIN_FRAC = 0.5;
+function nmPathMidAt(pts, t){
+  const s = (pts || []).filter(p => p && isFinite(p.t) && p.mid > 0)
+    .slice().sort((a, b) => a.t - b.t);
+  if (!s.length) return NaN;
+  if (t <= s[0].t) return s[0].mid;
+  if (t >= s[s.length - 1].t) return s[s.length - 1].mid;
+  for (let i = 1; i < s.length; i++){
+    if (s[i].t >= t){
+      const a = s[i - 1], b = s[i];
+      if (b.t === a.t) return b.mid;
+      return a.mid + (b.mid - a.mid) * (t - a.t) / (b.t - a.t);
+    }
+  }
+  return s[s.length - 1].mid;
+}
+function nmRebaseFuture(pts, joinT, joinPrice){
+  if (!pts || !pts.length || !isFinite(joinT) || !(joinPrice > 0)) return [];
+  const s = pts.filter(p => p && isFinite(p.t) && p.mid > 0)
+    .slice().sort((a, b) => a.t - b.t);
+  const base = nmPathMidAt(s, joinT);
+  if (!(base > 0)) return [];
+  const out = [{ t: joinT, mid: joinPrice, lo: joinPrice, hi: joinPrice }];
+  for (const p of s){
+    if (p.t <= joinT) continue;
+    out.push({
+      t: p.t,
+      mid: joinPrice * p.mid / base,
+      lo: joinPrice * (p.lo != null ? p.lo : p.mid) / base,
+      hi: joinPrice * (p.hi != null ? p.hi : p.mid) / base,
+    });
+  }
+  return out.length > 1 ? out : [];
+}
+function nmCapBand(pts){
+  if (!pts || !pts.length) return [];
+  let lo = Infinity, hi = -Infinity;
+  for (const p of pts){ if (p.mid < lo) lo = p.mid; if (p.mid > hi) hi = p.mid; }
+  const cap = NM_BAND_HALO_TRAVEL_MULT * Math.max(0, hi - lo);
+  return pts.map(p => ({
+    t: p.t, mid: p.mid,
+    lo: p.mid - Math.min(Math.max(0, p.mid - (p.lo != null ? p.lo : p.mid)), cap),
+    hi: p.mid + Math.min(Math.max(0, (p.hi != null ? p.hi : p.mid) - p.mid), cap),
+  }));
+}
+/* Band polygon area as a share of the prediction-half plot area
+   (trapezoid integral of the domain-clipped band thickness over
+   the drawn future span). Pure — used by the WEB43 proof. */
+function nmBandShare(pts, dom){
+  if (!pts || pts.length < 2 || !dom || !(dom[1] > dom[0])) return 0;
+  const thick = (p) => Math.max(0, Math.min(p.hi, dom[1]) - Math.max(p.lo, dom[0]));
+  let area = 0;
+  for (let i = 1; i < pts.length; i++)
+    area += (pts[i].t - pts[i - 1].t) * (thick(pts[i]) + thick(pts[i - 1])) / 2;
+  const span = pts[pts.length - 1].t - pts[0].t;
+  return span > 0 ? area / (span * (dom[1] - dom[0])) : 0;
+}
+function nmExtendDomain(dom, frac){
+  if (!dom) return null;
+  const pad = (dom[1] - dom[0]) * (frac || 0);
+  return [dom[0] - pad, dom[1] + pad];
+}
+/* WEB43: split the stitched line into drawable segments against
+   the extended domain — out-of-domain points are DROPPED (pen
+   lifted, never clamped to the edge), and forecast resets,
+   duplicate/backwards times, long gaps and near-vertical jumps
+   all start a new segment. Pure. */
+function nmStitchSegments(pts, dom){
+  if (!pts || !pts.length || !dom) return [];
+  const range = dom[1] - dom[0];
+  const out = [];
+  let cur = null, prev = null;
+  for (const p of pts){
+    if (!p || !isFinite(p.t) || !(p.mid > 0)) { cur = null; prev = null; continue; }
+    if (p.mid < dom[0] || p.mid > dom[1]) { cur = null; prev = null; continue; }
+    const brk = !cur || !!p.breakBefore || !prev || p.t <= prev.t
+      || p.t - prev.t > NM_STITCH_MAX_GAP_MS
+      || Math.abs(p.mid - prev.mid) > range * NM_STITCH_MAX_JOIN_FRAC;
+    if (brk){ cur = []; out.push(cur); }
+    cur.push({ t: p.t, mid: p.mid });
+    prev = p;
+  }
+  return out.filter(seg => seg.length >= 2);
+}
+/* WEB43: the whole hybrid geometry for ONE panel, computed from
+   that panel's own series only (WEB42 isolation law — no shared
+   geometry state). The future is the rebased + halo-capped path;
+   the chart domain fits the actual + rebased prediction lines and
+   is extended modestly for the stitch; the band exists ONLY right
+   of the join (the history half never carries one). */
+function nmHybridModel(s, pastWin, nowMs){
+  const past = (pastWin || []).filter(p => p[0] >= s.t0 && p[0] <= nowMs);
+  const last = past.length ? past[past.length - 1] : null;
+  const joinT = last ? last[0] : nowMs;
+  const joinPrice = last ? last[1] : (s.livePrice || 0);
+  const rawFut = s.fc || s.spans;
+  const rawWin = rawFut ? rawFut.filter(p => p.t <= s.t1 + 1) : null;
+  const future = nmCapBand(nmRebaseFuture(rawWin || [], joinT, joinPrice));
+  const stitchSrc = (s.histFc || []).slice();
+  if (s.fc && isFinite(s.fcIssuedMs)) stitchSrc.push({ issuedMs: s.fcIssuedMs, pts: s.fc.map(p => ({ t: p.t, mid: p.mid })) });
+  const stitched = nmStitchHistory(stitchSrc, s.t0, nowMs);
+  const core = nmLineDomain([past, future]);
+  const y = core ? nmExtendDomain(core, NM_STITCH_DOMAIN_EXT_FRAC) : null;
+  const stitchSegs = y ? nmStitchSegments(stitched, y) : [];
+  return { past, future, joinT, joinPrice, stitched, stitchSegs, y, bandShare: nmBandShare(future, y) };
 }
 const NM_ZOOM_LABELS = { live: "Live (15m)", "5": "5m", "15": "15m", "30": "30m", "60": "1h", "720": "12h", "1440": "24h" };
 /* WEB41: ET (America/New_York) helpers for the Sun–Sat weekly
@@ -6870,7 +7000,7 @@ function nmSeriesFor(sym){
   const c = NM.coins[sym], d = c && c.data;
   const spec = nmZoomSpec(sym), now = Date.now();
   const win = nmHybridWindow(now, spec.spanMs);
-  if (!d) return { past: [], fc: null, spans: null, histFc: [], fcIssuedMs: NaN, barMin: 1, t0: win.t0, tN: win.tN, t1: win.t1, spec };
+  if (!d) return { past: [], fc: null, spans: null, histFc: [], fcIssuedMs: NaN, livePrice: null, barMin: 1, t0: win.t0, tN: win.tN, t1: win.t1, spec };
   let past = [], barMin = 1;
   if (spec.kind === "m1"){
     past = (d.series.m1 || []).filter(p => p[0] >= win.t0 - 3600000);
@@ -6906,7 +7036,7 @@ function nmSeriesFor(sym){
     const pts = h.path.map(p => ({ t: nmT(p.t), mid: p.mid })).filter(p => isFinite(p.t) && p.mid > 0);
     if (pts.length >= 2) histFc.push({ id: h.id, issuedMs: nmT(h.issued_at), pts });
   }
-  return { past, fc: fcPts, spans: spanPts, histFc, fcIssuedMs: d.forecast ? nmT(d.forecast.issued_at) : NaN, barMin, t0: win.t0, tN: win.tN, t1: win.t1, spec };
+  return { past, fc: fcPts, spans: spanPts, histFc, fcIssuedMs: d.forecast ? nmT(d.forecast.issued_at) : NaN, livePrice: d.live ? d.live.price : null, barMin, t0: win.t0, tN: win.tN, t1: win.t1, spec };
 }
 function nmYRange(parts){
   let lo = Infinity, hi = -Infinity;
@@ -6932,6 +7062,9 @@ function nmDraw(cv, o){
   // forecast band — WEB42: CLIPPED to the plot area. The chart
   // domain is line-fit (nmLineDomain), so the band may bleed off
   // the top/bottom edges; it never dictates the scale again.
+  // WEB43: the points arriving here are already halo-capped
+  // (nmCapBand) and future-only, so the shader reads as a ribbon
+  // around the prediction line — never a filled half.
   if (o.band && o.band.length > 1){
     ctx.save();
     ctx.beginPath(); ctx.rect(8, 6, W - RP - 16, H - 12); ctx.clip();
@@ -6939,7 +7072,7 @@ function nmDraw(cv, o){
     o.band.forEach((p, i) => { const x = X(p.t), y = Y(p.hi); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
     for (let i = o.band.length - 1; i >= 0; i--) ctx.lineTo(X(o.band[i].t), Y(o.band[i].lo));
     ctx.closePath();
-    ctx.fillStyle = "rgba(201,162,39,0.13)"; ctx.fill();
+    ctx.fillStyle = "rgba(201,162,39," + NM_BAND_HALO_OPACITY + ")"; ctx.fill();
     ctx.restore();
   }
   const line = (pts, val, color, width, dash) => {
@@ -6959,7 +7092,10 @@ function nmDraw(cv, o){
   if (o.past) line(o.past, p => p[1], o.color, 2.4, null);
   // now divider — WEB41: the hybrid's NOW divider is a solid WHITE
   // line (Shane's annotation), labelled; elsewhere it stays faint.
-  const nx = X(Date.now());
+  // WEB43: the hybrid passes nowT = the actual line's last point, so
+  // the divider sits exactly where the history ends and the
+  // (rebased) prediction begins — not at the wall-clock instant.
+  const nx = X(o.nowT != null ? o.nowT : Date.now());
   if (nx > 8 && nx < W - RP){
     ctx.beginPath(); ctx.moveTo(nx, 6); ctx.lineTo(nx, H - 6);
     if (o.nowLine){
@@ -7023,23 +7159,22 @@ function nmDrawCharts(sym){
   const s = nmSeriesFor(sym);
   const nowMs = Date.now();
   const pastWin = s.past.filter(p => p[0] >= s.t0 && p[0] <= nowMs + 60000);
-  const fut = s.fc || s.spans;
-  const futWin = fut ? fut.filter(p => p.t <= s.t1 + 1) : null;
   const hoverT = NM.hover[sym] || null;
   if (c.els.lblLive) c.els.lblLive.textContent = "Live — last " + (NM_ZOOM_LABELS[nmZoomFor(sym)] || nmZoomFor(sym));
   // (2) LIVE chart
   const yLive = nmYRange([pastWin]);
   if (yLive) nmDraw(c.els.cvLive, { t0: s.t0, t1: nowMs, y: yLive, past: pastWin, color: NM_WHITE, liveEdge: true, hoverT, emptyText: "Waiting for live candles…" });
-  // (4) HYBRID — historical yellow = ONE stitched line (WEB42):
-  // at each minute, the mid of the forecast that was ACTIVE then
-  // (resolved rows + the open forecast's pre-now path). Partial by
-  // design until a full span has accumulated — never backfilled.
-  // The scale is LINE-FIT (actual + mids only); the band is clipped.
-  const stitchSrc = s.histFc.slice();
-  if (s.fc && isFinite(s.fcIssuedMs)) stitchSrc.push({ issuedMs: s.fcIssuedMs, pts: s.fc.map(p => ({ t: p.t, mid: p.mid })) });
-  const stitched = nmStitchHistory(stitchSrc, s.t0, nowMs);
-  const yH = nmLineDomain([pastWin, futWin || [], stitched]);
-  if (yH) nmDraw(c.els.cvHyb, { t0: s.t0, t1: s.t1, y: yH, past: pastWin, color: NM_WHITE, band: futWin, histFc: stitched.length >= 2 ? [stitched] : [], nowLine: true, noPastLabel: true, hoverT, emptyText: "Hybrid warming up…" });
+  // (4) HYBRID — WEB43 geometry (nmHybridModel, this panel's data
+  // only): the prediction is REBASED to begin at the actual line's
+  // last point (the NOW divider sits at that same point), the band
+  // is a halo-capped ribbon on the future side only, and the
+  // history-half yellow is the stitched as-issued line (WEB42)
+  // drawn in pen-lifted segments against a modestly extended
+  // domain — out-of-domain stretches gap instead of clamping, and
+  // forecast resets never paint vertical walls. Partial by design
+  // until a full span has accumulated — never backfilled.
+  const hm = nmHybridModel(s, pastWin, nowMs);
+  if (hm.y) nmDraw(c.els.cvHyb, { t0: s.t0, t1: s.t1, y: hm.y, past: hm.past, color: NM_WHITE, band: hm.future.length >= 2 ? hm.future : null, histFc: hm.stitchSegs, nowLine: true, nowT: hm.joinT, noPastLabel: true, hoverT, emptyText: "Hybrid warming up…" });
   nmRenderInsight(sym, s, pastWin);
   nmDrawWeek(sym);
 }
