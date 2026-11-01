@@ -388,6 +388,8 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
    thing they explain; the text they open is generated at open
    time from the stored prediction's own inputs. */
 .whybtn{margin-top:5px;font-size:11px;padding:3px 9px;border-radius:8px;background:#141424;border:1px solid var(--line);color:var(--txt);cursor:pointer}
+.whybtn.on{border-color:var(--gold);color:var(--gold2)}
+.poprow{margin-top:2px}
 .predcheck{color:var(--gold2);font-weight:700}
 .formstrip{margin-top:5px;line-height:1.35;font-size:13px}
 .formstrip .ft{position:relative;display:inline-block;width:15px;text-align:center}
@@ -1007,6 +1009,24 @@ function applyDetailsHome(sym){
   const cs = coinState(sym);
   if (cs.els.details) cs.els.details.hidden = !cs.detailsOpen;
   if (cs.els.detBtn) cs.els.detBtn.textContent = cs.detailsOpen ? "Details ▴" : "Details ▸";
+}
+/* ---------- WEB45 (Shane 2026-11-01): the Perpetuals panel's two
+   walls of text live behind pop-up triggers now. (1) The forecast-
+   lines explainer (.fcadjrec + .fc30stat, wrapped in .fcexplain)
+   and (2) the regime/trend block (.regime + .trend + .swline +
+   .trendread, wrapped in .trendpop) are MOVED into the shared
+   context window by openCtxPanel while open and restored home on
+   close — the very nodes the renderers write to, so every line
+   keeps updating from the same bindings and nothing is copied or
+   hardcoded. The test-prediction box now sits directly under the
+   forecast-check graphs, above both triggers. ---------- */
+function toggleCardPop(sym, which){
+  const cs = coinState(sym);
+  const node = which === "fc" ? cs.els.fcExplain : cs.els.trendPop;
+  const btn = which === "fc" ? cs.els.fcExplainBtn : cs.els.trendPopBtn;
+  if (!node || !btn) return;
+  if (CTX.node === node && SIMPL.pop && !SIMPL.pop.hidden) closeCtxNode(node);
+  else openCtxPanel(btn, sym + (which === "fc" ? " — prediction lines & experiment loop" : " — regime & trend read"), node, cs.els.root);
 }
 /* When the shared window closes a card's Details from outside
    (another window opened, outside tap, Escape), the card's own
@@ -2287,20 +2307,23 @@ function addCard(sym){
     '<div class="zoomrow"><div class="zoomseg fczoomseg"><button type="button" data-fczoom="5">5 Min</button><button type="button" data-fczoom="10">10 Min</button><button type="button" data-fczoom="15">15 Min</button><button type="button" data-fczoom="30">30 Min</button></div><span class="note fc30age"></span></div>' +
     '<div class="fclines"><span class="fclegend">Lines: <i style="background:#eceaf4"></i>Actual <i style="background:#f3d27a"></i>Main <i style="background:#ff4747"></i>Strong adj. <i style="background:#3f8cff"></i>Mild adj.</span>' +
     '<button type="button" class="fcadjtog on" data-adj="a">Strong adj.</button><button type="button" class="fcadjtog on" data-adj="b">Mild adj.</button></div>' +
-    '<div class="fcadjrec"></div>' +
-    '<div class="fc30stat"></div></div></div>' +
+    '<div class="fcexplain" hidden><div class="fcadjrec"></div>' +
+    '<div class="fc30stat"></div></div></div></div>' +
     '<div class="row" style="margin-top:6px"><button class="fc30btn snap" type="button">Forecast section: off</button></div>' +
     '<div class="wavetest"><div class="row" style="margin-top:6px"><button class="wtbtn snap" type="button" aria-pressed="false">Update test prediction</button></div>' +
     '<div class="wtbox" hidden><div class="wt-hzrow"><span class="note">Perpetual</span><div class="zoomseg wtseg">' +
     '<button type="button" data-wth="5">5m</button><button type="button" data-wth="15">15m</button><button type="button" data-wth="30">30m</button><button type="button" data-wth="45">45m</button><button type="button" data-wth="60">60m</button>' +
     '</div></div><div class="wtcontent"></div><div class="note wt-countdown"></div></div></div>' +
+    '<div class="poprow"><button type="button" class="whybtn ctxkeep fcexplainbtn">Prediction lines &amp; experiment loop — details</button></div>' +
     '<div class="simplrow"><button type="button" class="simplbtn" data-simpl="trend">Simplified</button></div>' +
-    '<div class="regime">Loading 6 months of pattern stats…</div>' +
+    '<div class="poprow"><button type="button" class="whybtn ctxkeep trendpopbtn">Regime &amp; trend read — details</button></div>' +
+    '<div class="trendpop" hidden><div class="regime">Loading 6 months of pattern stats…</div>' +
     '<div class="trend"></div>' +
     '<div class="swline"></div>' +
+    '<div class="trendread" hidden></div></div>' +
     '<div class="snipe" hidden></div>' +
     '<div class="bspot" hidden></div>' +
-    '<div class="pred"><div class="call noedge">NO CYCLE RUNNING</div><div class="conf">Set your line, then press Start — every call is for the close vs your line, never for right now.</div><div class="trendread" hidden></div><div class="pbar"><div style="width:0%"></div></div><div><button type="button" class="whybtn predwhy">Why this call?</button></div></div>' +
+    '<div class="pred"><div class="call noedge">NO CYCLE RUNNING</div><div class="conf">Set your line, then press Start — every call is for the close vs your line, never for right now.</div><div class="pbar"><div style="width:0%"></div></div><div><button type="button" class="whybtn predwhy">Why this call?</button></div></div>' +
     '<div class="posbtns"><button type="button" class="posbtn up">(+) Up — I hold OVER</button><button type="button" class="posbtn down">(-) Down — I hold UNDER</button></div>' +
     '<div class="lockedline" hidden></div>' +
     '<div class="cardpop" hidden>' +
@@ -2388,6 +2411,8 @@ function addCard(sym){
     wtcontent: el.querySelector(".wtcontent"), wtCountdown: el.querySelector(".wt-countdown"),
     wtHzBtns: el.querySelectorAll(".wtseg button"),
     fcadjbtns: el.querySelectorAll(".fcadjtog"), fcadjrec: el.querySelector(".fcadjrec"),
+    fcExplain: el.querySelector(".fcexplain"), fcExplainBtn: el.querySelector(".fcexplainbtn"),
+    trendPop: el.querySelector(".trendpop"), trendPopBtn: el.querySelector(".trendpopbtn"),
     /* WEB36: the main chart's range buttons are collected by their
        data-zoom attribute ONLY. The old class-based collection
        (every .zoomseg group's buttons except the forecast-check
@@ -2418,6 +2443,8 @@ function addCard(sym){
     b.addEventListener("click", () => setFCAdjShow(b.dataset.adj, !FC_ADJ_SHOW[b.dataset.adj]));
   });
   cs.els.fc30btn.addEventListener("click", () => setFC30(sym, !cs.fc30on));
+  if (cs.els.fcExplainBtn) cs.els.fcExplainBtn.addEventListener("click", () => toggleCardPop(sym, "fc"));
+  if (cs.els.trendPopBtn) cs.els.trendPopBtn.addEventListener("click", () => toggleCardPop(sym, "trend"));
   if (cs.els.tabtn) cs.els.tabtn.addEventListener("click", () => setTimingAssist(sym, !cs.timingOn));
   if (cs.els.wtbtn) cs.els.wtbtn.addEventListener("click", () => setWaveTest(sym, !cs.waveTestOn));
   /* WEB35: the wave-test box's reason button is rebuilt with the
