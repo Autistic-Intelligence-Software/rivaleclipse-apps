@@ -7100,7 +7100,7 @@ function nmHybridModel(s, pastWin, nowMs){
     capAbs = Math.min(NM_BAND_HALO_TRAVEL_MULT * (mx - mn), NM_BAND_HALO_DOMAIN_FRAC * (core[1] - core[0]));
   }
   const future = nmCapBand(futureWin, capAbs);
-  const y = core ? nmExtendDomain(core, NM_STITCH_DOMAIN_EXT_FRAC) : null;
+  let y = core ? nmExtendDomain(core, NM_STITCH_DOMAIN_EXT_FRAC) : null;
   let built;
   if (tl) built = tl.stitch;
   else {
@@ -7108,6 +7108,26 @@ function nmHybridModel(s, pastWin, nowMs){
     for (const h of (s.histFc || [])) if (h.pts && h.pts.length) fcs.push({ issuedMs: h.issuedMs, pts: h.pts });
     if (s.fc && s.fc.length && isFinite(s.fcIssuedMs)) fcs.push({ issuedMs: s.fcIssuedMs, pts: s.fc.map(p => ({ t: p.t, mid: p.mid })) });
     built = nmStitchBuild(fcs, s.t0, joinT);
+  }
+  /* WEB44 tail-fit: the FINAL stitch segment (the open forecast's
+     pre-now path) must be drawable all the way to the join
+     (Shane's 01:03 tail rule) — so the view domain is widened to
+     include the final segment's in-window points. Without this,
+     on a flat night the line-fit domain is so tight that the
+     tail's points all fall outside it and the pen never draws
+     near NOW (measured live: BTC 5m, the drawn stitch stopped
+     ~19 min short of the join). Predecessor segments are NOT
+     fitted — they keep the lift/skip rules. */
+  if (y && built && built.segs && built.segs.length){
+    const fin = built.segs[built.segs.length - 1];
+    if (fin && fin.final){
+      for (const p of fin.pts){
+        if (p.t >= s.t0 && p.t <= joinT && isFinite(p.mid)){
+          if (p.mid < y[0]) y = [p.mid, y[1]];
+          if (p.mid > y[1]) y = [y[0], p.mid];
+        }
+      }
+    }
   }
   const view = y ? nmStitchView(built, y) : { segs: [], links: [] };
   return { past, future, joinT, joinPrice, stitched: built.points, stitchSegs: view.segs, stitchLinks: view.links, y, bandShare: nmBandShare(future, y) };
