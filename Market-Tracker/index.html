@@ -7194,22 +7194,25 @@ async function oddsRecheckTargets(){
   }).join("");
   if (ODDS_LIVE) refreshOdds();
 }
-/* One bulk recent-calls fetch for every kept coin, fired when the
-   Odds drawer opens: the crown spans all kept coins, including
-   ones not on the watch panel. Per-coin loads keep it fresh. */
+/* Windowed-record loads for every kept coin, fired when the Odds
+   drawer opens: the crown spans all kept coins, including ones
+   not on the watch panel. PER COIN in parallel, like loadRecentForm
+   (WEB32's lesson: one batch request for many coins can exceed the
+   fetch timeout and sink every coin at once — each coin here lands
+   or fails on its own). Per-coin housekeeping loads keep it fresh. */
 let WINREC_BUSY = false;
 async function loadWinRecAll(){
   if (WINREC_BUSY) return;
   WINREC_BUSY = true;
   try {
-    const j = await fetchJSON(AUTH + "/api/perp/recent-calls?coins=" + encodeURIComponent(keptCoins().join(",")));
-    if (!j || !j.ok || !j.windows) return;
-    for (const sym of keptCoins()){
+    await Promise.all(keptCoins().map(async (sym) => {
+      const j = await fetchJSON(AUTH + "/api/perp/recent-calls?coins=" + encodeURIComponent(sym));
+      if (!j || !j.ok || !j.windows) return;
       const cs = S.coins[sym];
-      if (!cs) continue;
+      if (!cs) return;
       if (j.windows[sym]) cs.winRec = j.windows[sym];
       if (j.records && j.records[sym] && !cs.records) cs.records = j.records[sym];
-    }
+    }));
     renderOddsBest4h();
     renderOddsPicks();
   } finally { WINREC_BUSY = false; }
