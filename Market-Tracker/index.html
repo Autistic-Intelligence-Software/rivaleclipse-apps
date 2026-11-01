@@ -147,6 +147,15 @@ canvas.spark{width:100%;height:150px;display:block}
   margin-top:9px;border:2px solid var(--gold);color:var(--gold2);font-weight:800;font-size:14px;
   background:rgba(201,162,39,.10);border-radius:10px;padding:7px 10px;
 }
+/* WEB47 (Shane 2026-11-01): BEST OPTION line — the coin's best
+   current profit option across the market's horizons: its locked
+   call at that horizon, scored by the system's own graded record
+   for the coin × horizon weighted with the call's confidence. */
+.bestopt{
+  margin-top:9px;border:1px solid var(--gold);color:var(--gold2);font-weight:700;font-size:13.5px;
+  background:rgba(201,162,39,.10);border-radius:10px;padding:7px 10px;line-height:1.45;
+}
+.bestopt.none{background:#101020;border-color:var(--line);color:var(--mut);font-weight:600}
 .spotrow{border:1px solid var(--gold);border-radius:12px;padding:10px 12px;margin-top:9px;background:rgba(201,162,39,.07);font-size:14px;line-height:1.5}
 .spotrow .acoin,.spotrecent .acoin{font-weight:800;color:var(--gold2)}
 .spotrow .atime{color:var(--mut);font-size:12px;margin-left:8px}
@@ -454,6 +463,19 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
 .cpad-calls table{width:100%;border-collapse:collapse;font-size:13px;margin-top:2px}
 .cpad-calls th,.cpad-calls td{text-align:left;padding:3px 4px;border-bottom:1px solid var(--line)}
 .cpad-calls th{color:var(--mut);font-weight:600;font-size:11.5px;letter-spacing:.04em;text-transform:uppercase}
+/* WEB47 (Shane 2026-11-01): the pad's forced market-target check
+   result (under the "Check Polymarket target" button) + the
+   outlook's BEST OPTION row highlight. A mismatch is deliberately
+   unmissable: red border, red tint, heavy type. */
+.cpad-pmres{margin-top:8px;font-size:12.5px;line-height:1.5;border:1px solid var(--line);
+  border-radius:12px;padding:8px 10px;background:#0c0c18;color:var(--txt)}
+.cpad-pmres .pm-ok{color:var(--up);font-weight:800}
+.cpad-pmres .pm-state{color:var(--gold2);font-weight:800}
+.cpad-pmres.bad{border-color:#ff4747;background:rgba(255,71,71,.10)}
+.cpad-pmres .pm-bad{color:#ff6b6b;font-weight:800;font-size:13.5px}
+.cpad-calls tr.bestrow td{background:rgba(201,162,39,.13)}
+.cpad-calls tr.bestrow td:first-child{box-shadow:inset 3px 0 0 var(--gold)}
+.cpad-calls .beststar{color:var(--gold2);font-weight:800;font-size:11.5px;white-space:nowrap}
 /* ---------- WEB13: "Simplified" explainer pop-outs (Shane
    2026-10-28) — one small button in the top-pick banner and in
    each card's advisory / chart / trend sections; a single shared
@@ -941,6 +963,7 @@ function coinState(sym){
     padLiveEst: {},            // WEB28: per-horizon DISPLAY-ONLY live estimates shown under the LOCKED outlook rows {h: {closeAt, p, call, winP, est, stampMs}} — written only by a manual outlook refresh tap (padRefreshCalls), keyed to the window's closeAt so a rolled window never shows the old estimate; never scored, never feeds padLock
     padCallsBusy: false,       // WEB28: one manual outlook refresh in flight per card
     form: null,                // WEB29: recent-form strip data {h: [{close_at, dir, call, hit}]} from GET /api/perp/recent-calls — SETTLED canonical history only, display only; null until the first payload lands, and the strip renders nothing while null/empty
+    records: null,             // WEB47: per-horizon graded records {h: {calls, hits, hitRate, pm}} from the same recent-calls payload (perp_horizon_stats counters) — the BEST OPTION highlight's record source; null until the first payload lands (or forever on an older server), and the highlight stays silent while null
     formPm: null,              // WEB31: in Polymarket mode, per-window {open, close} from Polymarket's own posted prices, keyed h:startMs — the strip re-grades its markers on the market's values (see loadFormPm); completed windows are immutable, so entries are cached for the session
     formPmBusy: false,         // WEB31: one Polymarket strip pass in flight per card
     waveTest: null,            // WEB23: FROZEN server row {closeAt, horizon, row} — replaced only on toggle-on / horizon change / cycle roll (see fetchWaveTest)
@@ -2130,6 +2153,173 @@ function mktLineFor(sym, h){
   return ml.start === winStartMs(Date.now(), h) ? ml : null;
 }
 
+/* ---------- WEB47 (Shane 2026-11-01): the pad's forced market-
+   target check + the per-coin BEST OPTION highlight -------------
+   Feature 1 — "Check Polymarket target": a button in the pad
+   column, directly under the number-pad keys, that FORCES an
+   immediate target check for the pad's selected coin at the
+   setup's chosen perpetual length (S.lenMin) — it does not wait
+   for the normal refresh cadence. The reads run through the WEB46
+   confirmation discipline (refreshMktLines, forced for the one
+   horizon): the target is CONFIRMED only when two successive
+   reads of the market's own endpoint agree (or the window is
+   ≥120s old at first read, or — Kalshi — on publication). If the
+   reads disagree the check keeps reading, up to PM_CHECK_MAX_READS
+   reads spaced PM_CHECK_GAP_MS apart, showing its progress on the
+   button. The result names the posted target, its state, a
+   revision caught mid-check (Polymarket replacing its first
+   posted value — both values shown), and how it compares to the
+   system's locked target for the window: a MISMATCH is reported
+   in the open, never silently re-based (immutable-prediction law:
+   the locked call keeps its line, always). A confirmed check lets
+   the normal outlook lock flow proceed from that value
+   (renderPadCalls) — the existing machinery working, not a
+   re-base. */
+let PM_CHECK_GAP_MS = 900;
+const PM_CHECK_MAX_READS = 8;
+function pmCheckWait(){
+  return PM_CHECK_GAP_MS > 0
+    ? new Promise(r => setTimeout(r, PM_CHECK_GAP_MS))
+    : Promise.resolve();
+}
+/* Same tick tolerance refreshMktLines uses to call two reads
+   "agreeing". */
+function pmTickEq(a, b){ return Math.abs(a - b) <= Math.max(1e-9, b * 1e-9); }
+function pmMarketName(){ return S.preset === "kalshi" ? "Kalshi" : "Polymarket"; }
+function pmCheckLabel(){ return "Check " + pmMarketName() + " target"; }
+async function pmTargetCheck(sym){
+  const cs = coinState(sym), cp = cardPad(sym);
+  if (cp.pmBusy) return;
+  const tsym = cp.target, h = S.lenMin, tcs = coinState(tsym);
+  const start0 = winStartMs(Date.now(), h);
+  const base = {tsym: tsym, h: h, start: start0, src: pmMarketName()};
+  if (!marketActive()){
+    cp.pmCheck = Object.assign({}, base, {kind: "off"});
+    renderPmCheck(sym);
+    return;
+  }
+  if (!mktCovers(tsym, h)){
+    cp.pmCheck = Object.assign({}, base, {kind: "nocover"});
+    renderPmCheck(sym);
+    return;
+  }
+  cp.pmBusy = true;
+  cp.pmCheck = Object.assign({}, base, {kind: "checking", reads: 0});
+  renderPmCheck(sym);
+  /* The first read this check can see — an on-hand entry for the
+     current window counts (it is a value the market posted); any
+     later read that differs from it is a revision, reported with
+     both values. */
+  const onHand = mktLineFor(tsym, h);
+  let firstPrice = onHand ? onHand.price : null;
+  try {
+    for (let i = 0; i < PM_CHECK_MAX_READS; i++){
+      if (winStartMs(Date.now(), h) !== start0) break;   // window rolled mid-check
+      await refreshMktLines(tsym, h);
+      const ml = mktLineFor(tsym, h);
+      if (cp.pmCheck && cp.pmCheck.kind === "checking") cp.pmCheck.reads = i + 1;
+      if (ml){
+        if (firstPrice == null) firstPrice = ml.price;
+        if (ml.confirmed) break;
+      }
+      renderPmCheck(sym);
+      if (i < PM_CHECK_MAX_READS - 1) await pmCheckWait();
+    }
+  } finally {
+    cp.pmBusy = false;
+  }
+  if (winStartMs(Date.now(), h) !== start0){
+    cp.pmCheck = Object.assign({}, base, {kind: "rolled"});
+    renderPmCheck(sym);
+    return;
+  }
+  const ml = mktLineFor(tsym, h);
+  if (ml && ml.confirmed){
+    const closeAt = winBoundaryMs(Date.now(), h);
+    const lock = tcs.padLock && tcs.padLock[h];
+    let match = "nolock", lockedLine = null;
+    if (lock && lock.closeAt === closeAt){
+      lockedLine = lock.line;
+      match = pmTickEq(lock.line, ml.price) ? "match" : "mismatch";
+    }
+    cp.pmCheck = Object.assign({}, base, {
+      kind: "confirmed", price: ml.price, src: ml.src || base.src,
+      revised: (firstPrice != null && !pmTickEq(firstPrice, ml.price))
+        ? {from: firstPrice, to: ml.price} : null,
+      match: match, lockedLine: lockedLine});
+    renderPmCheck(sym);
+    /* The confirmed value is on hand: the target coin's outlook
+       may lock from it through the normal flow (WEB46 rules —
+       only confirmed entries ever base a lock). */
+    renderPadCalls(tsym);
+    return;
+  }
+  cp.pmCheck = Object.assign({}, base, {
+    kind: "unconfirmed", last: ml ? ml.price : null,
+    src: ml ? (ml.src || base.src) : base.src});
+  renderPmCheck(sym);
+}
+function renderPmCheck(sym){
+  const cs = coinState(sym), cp = cardPad(sym);
+  const btn = cs.els && cs.els.padPmBtn, res = cs.els && cs.els.padPmRes;
+  if (btn){
+    const lbl = cp.pmBusy ? "Checking…" : pmCheckLabel();
+    if (btn.textContent !== lbl) btn.textContent = lbl;
+    btn.disabled = !!cp.pmBusy;
+  }
+  if (!res) return;
+  const st = cp.pmCheck;
+  /* A result belongs to the (coin, length) it checked — a pad
+     retarget or a length change retires it, never re-labels it. */
+  if (!st || st.tsym !== cp.target || st.h !== S.lenMin){
+    if (st && (st.tsym !== cp.target || st.h !== S.lenMin)) cp.pmCheck = null;
+    res.hidden = true;
+    if (res.innerHTML) res.innerHTML = "";
+    return;
+  }
+  const hLbl = lenLabel(st.h);
+  const win = new Date(st.start).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"}) + "–" +
+              new Date(st.start + st.h * 60000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
+  const head = escHtml(st.src) + " target · " + escHtml(st.tsym) + " " + hLbl + " · window " + win + "<br>";
+  let html = "", bad = false;
+  if (st.kind === "off")
+    html = "No market preset is active — this check reads the mimicked market's own posted target. Turn on a market in Setup (Mimic a market) first.";
+  else if (st.kind === "nocover")
+    html = head + escHtml(st.src) + " doesn't run a " + hLbl + " window for " + escHtml(st.tsym) + " — there is no posted target to check.";
+  else if (st.kind === "checking")
+    html = head + '<span class="pm-state">Checking…</span> read ' + (st.reads || 0) +
+      " — a target confirms only when two successive reads of the market's own endpoint agree.";
+  else if (st.kind === "rolled")
+    html = head + "The window rolled while checking — tap again for the new window's target.";
+  else if (st.kind === "unconfirmed")
+    html = head + '<span class="pm-state">UNCONFIRMED</span> — ' +
+      (st.last != null
+        ? "last read " + fmtPrice(st.last) + " has not been matched by a second agreeing read"
+        : "no read landed — the endpoint did not answer") +
+      ". Nothing locks against a substitute value.";
+  else if (st.kind === "confirmed"){
+    html = head + "<b>" + fmtPrice(st.price) + '</b> · <span class="pm-ok">CONFIRMED</span>';
+    if (st.revised)
+      html += "<br>first read " + fmtPrice(st.revised.from) + " → revised to " + fmtPrice(st.revised.to) +
+        " — locks wait for the settled value, never the first read";
+    if (st.match === "match")
+      html += '<br><span class="pm-ok">locked target matches ✓</span>';
+    else if (st.match === "nolock")
+      html += "<br>not locked yet — the outlook row locks on this confirmed target";
+    else if (st.match === "mismatch"){
+      bad = true;
+      html += '<br><span class="pm-bad">⚠ MISMATCH — locked ' + fmtPrice(st.lockedLine) +
+        " vs " + escHtml(st.src) + " " + fmtPrice(st.price) + "</span>" +
+        "<br>Reported, never hidden: the locked call keeps its own line (locked calls are never re-based) — a mismatch means the market revised its target after the lock, or the lock took a read the market later replaced.";
+    }
+    if (st.start !== winStartMs(Date.now(), st.h))
+      html += "<br>(that window has since closed — tap to check the current one)";
+  }
+  res.className = "cpad-pmres" + (bad ? " bad" : "");
+  if (res.innerHTML !== html) res.innerHTML = html;
+  res.hidden = false;
+}
+
 /* Polymarket RTDS — the live Chainlink price stream Polymarket
    itself displays (wss://ws-live-data.polymarket.com, public, no
    auth). Wire protocol per Polymarket's official RTDS→PolyBolt
@@ -2347,6 +2537,7 @@ function addCard(sym){
     '<div class="trendread" hidden></div></div>' +
     '<div class="snipe" hidden></div>' +
     '<div class="bspot" hidden></div>' +
+    '<div class="bestopt" hidden></div>' +
     '<div class="pred"><div class="call noedge">NO CYCLE RUNNING</div><div class="conf">Set your line, then press Start — every call is for the close vs your line, never for right now.</div><div class="pbar"><div style="width:0%"></div></div><div><button type="button" class="whybtn predwhy">Why this call?</button></div></div>' +
     '<div class="posbtns"><button type="button" class="posbtn up">(+) Up — I hold OVER</button><button type="button" class="posbtn down">(-) Down — I hold UNDER</button></div>' +
     '<div class="lockedline" hidden></div>' +
@@ -2389,6 +2580,8 @@ function addCard(sym){
     '<button class="padbtn cpad-btn util" type="button" data-cpad="back">⌫</button>' +
     '<button class="padbtn cpad-btn util" type="button" data-cpad="clear" style="grid-column:1 / -1">C — clear</button>' +
     '</div>' +
+    '<button class="btn ghost cpad-pmcheck" type="button" style="width:100%;margin-top:9px">Check Polymarket target</button>' +
+    '<div class="cpad-pmres" hidden></div>' +
     '<button class="btn ghost cpad-snap" type="button" style="width:100%;margin-top:9px">Set target to current market</button>' +
     '<button class="btn primary cpad-enter" type="button" style="width:100%;margin-top:9px;padding:12px;font-size:15px">ENTER — run the numbers</button>' +
     '<div class="cpad-out"></div>' +
@@ -2413,6 +2606,8 @@ function addCard(sym){
     padSel: el.querySelector(".cpad-sel"), padLive: el.querySelector(".cpad-live"),
     padDisp: el.querySelector(".cpad-disp"), padInfo: el.querySelector(".cpad-info"),
     padBtns: el.querySelectorAll(".cpad-btn"), padSnap: el.querySelector(".cpad-snap"),
+    padPmBtn: el.querySelector(".cpad-pmcheck"), padPmRes: el.querySelector(".cpad-pmres"),
+    bestopt: el.querySelector(".bestopt"),
     padEnter: el.querySelector(".cpad-enter"), padOut: el.querySelector(".cpad-out"),
     padCalls: el.querySelector(".cpad-calls"),
     pbar: el.querySelector(".pbar > div"), lineIn: el.querySelector(".ro-line-in"),
@@ -4285,6 +4480,12 @@ async function loadRecentForm(only){
     if (!j || !j.ok || !j.coins) return;
     const cs = S.coins[sym]; if (!cs) return;
     cs.form = j.coins[sym] || {};
+    /* WEB47: the same response carries the per-(coin, horizon)
+       graded records (additive `records` sibling) — the BEST
+       OPTION highlight's record source. Absent on an older server:
+       cs.records stays null and the highlight stays silent. */
+    cs.records = (j.records && j.records[sym]) || null;
+    renderBestOpt(sym);
     if (cs.padNow) renderPadNow(sym);
     renderPadCalls(sym);
     if (S.preset === "polymarket") loadFormPm(sym);
@@ -4360,6 +4561,95 @@ function formStripHTML(sym, h){
       const ov = w.call == null ? "" : '<span class="ft-ov">' + (hit ? "⭕" : "❌") + "</span>";
       return '<span class="ft ' + (up ? "ft-up" : "ft-dn") + '">' + (up ? "▲" : "▼") + ov + "</span>";
     }).join("") + "</div>";
+}
+/* ---------- WEB47 (Shane 2026-11-01): BEST OPTION per coin ---
+   The graded record behind one (coin, horizon), from the WEB47
+   server field on GET /api/perp/recent-calls (cs.records — the
+   perp_horizon_stats counters folded by the system's own
+   scorers: the banded locked-opening-call record). In Polymarket
+   mode the Polymarket dual-grade record is preferred where it
+   has calls (it grades the system's calls on the market's own
+   target + close); where PM grading has no calls yet the
+   canonical record stands, labelled Coinbase-graded so the basis
+   is never ambiguous. In every other mode the canonical record
+   is the record. */
+function recordFor(sym, h){
+  const cs = coinState(sym);
+  const rec = cs.records && cs.records[h];
+  if (!rec) return null;
+  if (S.preset === "polymarket" && rec.pm && rec.pm.calls > 0)
+    return {hitRate: rec.pm.hitRate, n: rec.pm.calls, basis: "Polymarket-graded"};
+  if (rec.calls > 0)
+    return {hitRate: rec.hitRate, n: rec.calls,
+            basis: S.preset === "polymarket" ? "Coinbase-graded" : null};
+  if (rec.pm && rec.pm.calls > 0)
+    return {hitRate: rec.pm.hitRate, n: rec.pm.calls, basis: "Polymarket-graded"};
+  return null;
+}
+const BEST_MIN_N = 10;    // a record thinner than this cannot stand behind a pick at all
+const BEST_THIN_N = 30;   // below this a shown pick is labelled "thin record"
+/* The coin's best current profit option across the horizons the
+   active market runs for it (padHzFor — Polymarket mode: 5m /
+   15m / 1h). A horizon qualifies only when ALL of these hold:
+   (a) the system's CURRENT locked call for this window is a real
+       call — it must pass outlookLockCheck, the same WEB35 gate
+       the outlook renders through (NO EDGE and pending rows are
+       not calls and never qualify);
+   (b) the coin × horizon graded record has at least BEST_MIN_N
+       calls behind it;
+   (c) that record beats a coin flip (hit rate > 50%) — a record
+       at or under 50% is never dressed up as a "best option".
+   Qualifying options score record hit-rate × the locked call's
+   own published confidence (winP) — how often this coin ×
+   horizon has been right, weighted by how strongly the system
+   believes this window's call. Ties break to the larger record,
+   then the shorter horizon. Null when nothing qualifies: the
+   card says "No standout option right now" — a pick is never
+   forced. Reads only stored state (padLock + records); it locks
+   nothing and recomputes nothing. */
+function bestOptionFor(sym){
+  const cs = coinState(sym);
+  if (!cs.padLock || !cs.records) return null;
+  const now = Date.now();
+  let best = null;
+  for (const h of padHzFor(sym)){
+    const lock = cs.padLock[h];
+    if (!lock || !lock.call || !(lock.winP > 0)) continue;
+    if (!outlookLockCheck(sym, h, lock, winBoundaryMs(now, h))) continue;
+    const rec = recordFor(sym, h);
+    if (!rec || rec.n < BEST_MIN_N || !(rec.hitRate > 0.5)) continue;
+    const cand = {h: h, call: lock.call, winP: lock.winP, hitRate: rec.hitRate,
+      n: rec.n, thin: rec.n < BEST_THIN_N, basis: rec.basis,
+      score: rec.hitRate * lock.winP};
+    if (!best || cand.score > best.score + 1e-12 ||
+        (Math.abs(cand.score - best.score) <= 1e-12 &&
+         (cand.n > best.n || (cand.n === best.n && cand.h < best.h)))) best = cand;
+  }
+  return best;
+}
+function bestHzLabel(h){ return h < 60 ? h + "m" : (h / 60) + "h"; }
+function renderBestOpt(sym){
+  const cs = coinState(sym), b = cs.els && cs.els.bestopt;
+  if (!b) return;
+  /* Records not loaded yet — the line stays silent rather than
+     claiming "no standout" before the data has even arrived. */
+  if (!cs.records && !cs.form){ if (!b.hidden) b.hidden = true; return; }
+  const best = bestOptionFor(sym);
+  b.hidden = false;
+  if (!best){
+    b.className = "bestopt none";
+    if (b.textContent !== "No standout option right now")
+      b.textContent = "No standout option right now";
+    return;
+  }
+  b.className = "bestopt";
+  const txt = "★ BEST OPTION — " + bestHzLabel(best.h) + " " + best.call +
+    " · confidence " + Math.round(best.winP * 100) + "%" +
+    " · system's " + bestHzLabel(best.h) + " record on " + sym + ": " +
+    Math.round(best.hitRate * 100) + "% (n=" + best.n + ")" +
+    (best.thin ? " · thin record" : "") +
+    (best.basis ? " · " + best.basis : "");
+  if (b.textContent !== txt) b.textContent = txt;
 }
 function globalCoin(sym){
   const g = GLOBAL_POOL && GLOBAL_POOL[sym];
@@ -5659,6 +5949,9 @@ function padRender(sym){
   if (cs.els.padInfo) cs.els.padInfo.textContent = isFinite(line) && line > 0 && price
     ? "Line for " + cp.target + " · " + fmtPct(line / price - 1, true) + " vs the live price"
     : "No line typed — ENTER will pin " + cp.target + "'s line at the live price.";
+  /* WEB47: the check button's label follows the active market,
+     and its result re-renders (or retires) with the pad's scope. */
+  renderPmCheck(sym);
 }
 /* Another card's pad may be targeting this coin: after its line
    or price moves, refresh those pads' context lines. */
@@ -6217,7 +6510,11 @@ function renderPadCalls(sym){
   const cs = coinState(sym), out = cs.els && cs.els.padCalls;
   if (!out) return;
   const rows = padCallsRows(sym);
-  if (!rows){ if (out.innerHTML) out.innerHTML = ""; return; }
+  if (!rows){ if (out.innerHTML) out.innerHTML = ""; renderBestOpt(sym); return; }
+  /* WEB47: this coin's BEST OPTION (record × confidence over its
+     locked calls) — computed AFTER padCallsRows so this render's
+     fresh locks count; its outlook row is highlighted below. */
+  const bestH = (bestOptionFor(sym) || {}).h || null;
   const anyMkt = rows.some(r => r.mkt);
   const lineRef = anyMkt
     ? "vs " + (S.preset === "kalshi" ? "Kalshi's strike + the card line" : "the market's own per-window targets")
@@ -6272,15 +6569,16 @@ function renderPadCalls(sym){
         const tgt = r.unconf
           ? '<br><span class="note">' + (r.mkt ? "target " + fmtPrice(r.line) + " (" + r.mkt + " — UNCONFIRMED)" : "target unconfirmed") + "</span>"
           : (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + (r.unconfRead ? " — confirming…" : "") + ")</span>" : "");
-        return "<tr><td>" + (r.h === 60 ? "1 hour" : r.h + " min") +
+        return "<tr" + (r.h === bestH ? ' class="bestrow"' : "") + "><td>" + (r.h === 60 ? "1 hour" : r.h + " min") +
         ' · <span class="cdft" data-cdh="' + r.h + '">' + fmtClock(r.remaining * 1000) + " left</span>" +
         tgt +
         '</td><td><span class="note predcheck">' + (r.unconf ? "target unconfirmed" : "checking…") + '</span>' +
         formStripHTML(sym, r.h) +
         "</td><td>—</td></tr>";
       }
-      return "<tr><td>" + (r.h === 60 ? "1 hour" : r.h + " min") +
+      return "<tr" + (r.h === bestH ? ' class="bestrow"' : "") + "><td>" + (r.h === 60 ? "1 hour" : r.h + " min") +
       ' · <span class="cdft" data-cdh="' + r.h + '">' + fmtClock(r.remaining * 1000) + " left</span>" +
+      (r.h === bestH ? '<br><span class="beststar">★ best option</span>' : "") +
       (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + ")</span>" : "") +
       '<br><button class="padrefresh" type="button" data-padcallrefresh="' + r.h + '" aria-label="Refresh prediction for the ' + (r.h === 60 ? "1 hour" : r.h + " min") + ' perpetual"' + busyAttr + '>↻ Refresh prediction</button>' +
       "</td><td>" +
@@ -6305,6 +6603,7 @@ function renderPadCalls(sym){
     '<div class="note" style="margin-top:4px">' + footShown +
     ' <button type="button" class="whybtn" data-padexplain="1">How the outlook works ▸</button></div>';
   if (out.innerHTML !== html) out.innerHTML = html;
+  renderBestOpt(sym);
 }
 /* WEB35: the outlook's full explanation — the text that used to
    fill the table's footnote (mode/targets wording, the
@@ -6408,6 +6707,7 @@ function initCardPad(sym){
     cp.target = cs.els.padSel.value; cp.text = ""; ACTIVE_PAD = sym; padRender(sym);
   });
   if (cs.els.padSnap) cs.els.padSnap.addEventListener("click", () => padSnapToMarket(sym));
+  if (cs.els.padPmBtn) cs.els.padPmBtn.addEventListener("click", () => pmTargetCheck(sym));
   if (cs.els.padEnter) cs.els.padEnter.addEventListener("click", () => cardPadEnter(sym));
   /* WEB28: the outlook panel re-renders on price ticks, so its
      Refresh prediction buttons are wired ONCE, by delegation on
