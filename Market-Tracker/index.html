@@ -2104,7 +2104,29 @@ const MKT_HZ = [5, 15, 60, 240];
    live estimates may show an unconfirmed read, labelled as such.
    Entries written before WEB46 carry no flag and count as
    confirmed (undefined !== false) — only the tracker below ever
-   writes explicit false. */
+   writes explicit false.
+   WEB48 (Shane 2026-11-01 — pm-align-audit/DIAGNOSIS-2026-11-01.md):
+   measurement killed the two-agreeing-reads rule for Polymarket
+   TWAP variants. The endpoint can print a PRELIMINARY value in a
+   window's first seconds and revise it (measured live 2026-11-01
+   15:30Z: BTC fiveminute 77956.4957 at +1.2s -> 77955.4896 at
+   +16.0s; ETH likewise; the revised value is the completed final)
+   — two quick agreeing reads certified a value Polymarket then
+   replaced, and the row locked it under a CONFIRMED stamp. A PM
+   TWAP entry (5m/15m/4h) now confirms only when the window is
+   >=65s old AND the standing value has been unchanged for >=15s
+   across >=2 reads; a disagreeing read restarts the stability
+   clock and revokes. Confirmed PM TWAP entries re-verify on a
+   45s latch (not 20s), so a late revision still revokes before
+   it can stamp a match. The 1h variant (Binance candle open — a
+   printed fact, not a forming TWAP) and Kalshi (final on
+   publication) keep the rules above; neither is indicted by the
+   diagnosis. The endpoint's final can still sit a few bp from
+   the Chainlink TWAP-60 stream value Polymarket settles on —
+   that value is not publicly readable in real time — so the
+   check button reports the stream estimate alongside the posted
+   target (see pmTargetCheck) instead of implying the posted
+   target IS the settlement value. */
 async function refreshMktLines(sym, forceH){
   const cs = coinState(sym);
   if (!marketActive()){ cs.mktLines = null; return; }
@@ -2114,10 +2136,15 @@ async function refreshMktLines(sym, forceH){
     const start = winStartMs(now, h);
     const cur = cs.mktLines[h];
     const forced = forceH === true || forceH === h;
-    if (cur && cur.start === start && cur.confirmed !== false && !forced && now - cur.at < 20000) continue;
+    const variant = S.preset === "polymarket" ? PM_VARIANT[h] : null;
+    /* WEB48: confirmed PM TWAP entries re-verify on a slower 45s
+       latch so a late revision can still revoke them; everything
+       else keeps the 20s latch. Unconfirmed entries (confirmed
+       === false) always refetch. */
+    const latchMs = (variant && variant !== "hourly") ? 45000 : 20000;
+    if (cur && cur.start === start && cur.confirmed !== false && !forced && now - cur.at < latchMs) continue;
     let got = null;
     if (S.preset === "polymarket"){
-      const variant = PM_VARIANT[h];
       if (variant && (variant === "hourly" || PM_TWAP_COINS.includes(sym))){
         const j = await pmPrice(sym, start, variant);
         if (j && isFinite(+j.openPrice) && +j.openPrice > 0)
@@ -2136,7 +2163,25 @@ async function refreshMktLines(sym, forceH){
       const prev = (cur && cur.start === start) ? cur : null;
       const agree = !!prev && Math.abs(prev.price - got.price) <= Math.max(1e-9, got.price * 1e-9);
       got.reads = agree ? (prev.reads || 1) + 1 : 1;
-      got.confirmed = agree || got.final === true || (now - start >= 120000);
+      /* WEB48: firstAt/lastChgAt track the standing value's
+         stability span for THIS window — a changed value restarts
+         the clock at the read that first showed it. */
+      got.firstAt = agree ? (prev.firstAt || prev.at || got.at) : got.at;
+      got.lastChgAt = agree ? (prev.lastChgAt || prev.firstAt || prev.at || got.at) : got.at;
+      /* The first price this window ever printed (kept across
+         revisions) — the check button reports a revision against
+         it even when the revision predates the check. */
+      got.firstPrice = agree ? (prev.firstPrice != null ? prev.firstPrice : prev.price)
+                             : (prev && prev.firstPrice != null ? prev.firstPrice : got.price);
+      if (got.final === true) got.confirmed = true;   // Kalshi: final on publication
+      else if (variant && variant !== "hourly")
+        /* WEB48 finality (PM TWAP variants): the window is >=65s
+           old AND the standing value has been unchanged for >=15s
+           across >=2 reads. Two quick agreeing reads inside the
+           revision window no longer confirm anything. */
+        got.confirmed = (now - start >= 65000) && (got.at - got.lastChgAt >= 15000) && got.reads >= 2;
+      else
+        got.confirmed = agree || (now - start >= 120000);
       delete got.final;
       cs.mktLines[h] = got;
     }
@@ -2159,11 +2204,15 @@ function mktLineFor(sym, h){
    column, directly under the number-pad keys, that FORCES an
    immediate target check for the pad's selected coin at the
    setup's chosen perpetual length (S.lenMin) — it does not wait
-   for the normal refresh cadence. The reads run through the WEB46
-   confirmation discipline (refreshMktLines, forced for the one
-   horizon): the target is CONFIRMED only when two successive
-   reads of the market's own endpoint agree (or the window is
-   ≥120s old at first read, or — Kalshi — on publication). If the
+   for the normal refresh cadence. The reads run through the
+   confirmation discipline in refreshMktLines (forced for the one
+   horizon): WEB48 — a Polymarket TWAP target is CONFIRMED only
+   once the posted value is final (window ≥65s old, unchanged
+   ≥15s across ≥2 reads; the 1h variant and Kalshi keep their
+   WEB46/19 rules). A check pressed inside the first ~65s of a
+   window therefore reports UNCONFIRMED with the settling reason
+   — the cadence confirms the target as soon as the market's
+   value is final, and the outlook locks then. If the
    reads disagree the check keeps reading, up to PM_CHECK_MAX_READS
    reads spaced PM_CHECK_GAP_MS apart, showing its progress on the
    button. The result names the posted target, its state, a
@@ -2242,11 +2291,29 @@ async function pmTargetCheck(sym){
       lockedLine = lock.line;
       match = pmTickEq(lock.line, ml.price) ? "match" : "mismatch";
     }
+    /* WEB48: cross-check the posted target against the Chainlink
+       stream estimate from the page's own RTDS prints (the stream
+       is what Polymarket settles on; its exact value is not
+       publicly readable, so this is an estimate, labelled as
+       such). Null when the stream buffer doesn't cover the
+       window's opening minute — then nothing is claimed. */
+    let streamEst = null;
+    if (S.preset === "polymarket"){
+      try { if (typeof twap60Before === "function") streamEst = twap60Before(tsym, start0); }
+      catch (e) { streamEst = null; }
+      if (streamEst != null && !isFinite(streamEst)) streamEst = null;
+    }
+    /* WEB48: a revision is reported against the first price the
+       window ever printed (the entry remembers it), not only
+       against reads this check happened to see. */
+    const fpC = ml.firstPrice != null ? ml.firstPrice : firstPrice;
     cp.pmCheck = Object.assign({}, base, {
       kind: "confirmed", price: ml.price, src: ml.src || base.src,
-      revised: (firstPrice != null && !pmTickEq(firstPrice, ml.price))
-        ? {from: firstPrice, to: ml.price} : null,
-      match: match, lockedLine: lockedLine});
+      revised: (fpC != null && !pmTickEq(fpC, ml.price))
+        ? {from: fpC, to: ml.price} : null,
+      match: match, lockedLine: lockedLine,
+      streamEst: streamEst,
+      streamDelta: streamEst != null ? (ml.price - streamEst) : null});
     renderPmCheck(sym);
     /* The confirmed value is on hand: the target coin's outlook
        may lock from it through the normal flow (WEB46 rules —
@@ -2254,8 +2321,11 @@ async function pmTargetCheck(sym){
     renderPadCalls(tsym);
     return;
   }
+  const fpU = ml && ml.firstPrice != null ? ml.firstPrice : firstPrice;
   cp.pmCheck = Object.assign({}, base, {
     kind: "unconfirmed", last: ml ? ml.price : null,
+    revised: (fpU != null && ml && !pmTickEq(fpU, ml.price))
+      ? {from: fpU, to: ml.price} : null,
     src: ml ? (ml.src || base.src) : base.src});
   renderPmCheck(sym);
 }
@@ -2288,22 +2358,29 @@ function renderPmCheck(sym){
     html = head + escHtml(st.src) + " doesn't run a " + hLbl + " window for " + escHtml(st.tsym) + " — there is no posted target to check.";
   else if (st.kind === "checking")
     html = head + '<span class="pm-state">Checking…</span> read ' + (st.reads || 0) +
-      " — a target confirms only when two successive reads of the market's own endpoint agree.";
+      " — a target confirms only once the market's posted value has settled: past the early revision window (~65s in) and unchanged across successive reads.";
   else if (st.kind === "rolled")
     html = head + "The window rolled while checking — tap again for the new window's target.";
-  else if (st.kind === "unconfirmed")
+  else if (st.kind === "unconfirmed"){
+    const ageS = Math.max(0, Math.round((Date.now() - st.start) / 1000));
     html = head + '<span class="pm-state">UNCONFIRMED</span> — ' +
       (st.last != null
-        ? "last read " + fmtPrice(st.last) + " has not been matched by a second agreeing read"
+        ? "last read " + fmtPrice(st.last) + " is not settled yet"
         : "no read landed — the endpoint did not answer") +
+      ". The market's first posted value can revise in the opening seconds, so a target confirms only from ~65s in, unchanged across reads" +
+      (ageS < 65 ? " (this window is " + ageS + "s old)" : "") +
       ". Nothing locks against a substitute value.";
+    if (st.revised)
+      html += "<br>already revised once during this check: " + fmtPrice(st.revised.from) +
+        " → " + fmtPrice(st.revised.to) + " — the first read was preliminary";
+  }
   else if (st.kind === "confirmed"){
     html = head + "<b>" + fmtPrice(st.price) + '</b> · <span class="pm-ok">CONFIRMED</span>';
     if (st.revised)
       html += "<br>first read " + fmtPrice(st.revised.from) + " → revised to " + fmtPrice(st.revised.to) +
         " — locks wait for the settled value, never the first read";
     if (st.match === "match")
-      html += '<br><span class="pm-ok">locked target matches ✓</span>';
+      html += '<br><span class="pm-ok">locked target matches Polymarket\'s posted target ✓</span>';
     else if (st.match === "nolock")
       html += "<br>not locked yet — the outlook row locks on this confirmed target";
     else if (st.match === "mismatch"){
@@ -2311,6 +2388,24 @@ function renderPmCheck(sym){
       html += '<br><span class="pm-bad">⚠ MISMATCH — locked ' + fmtPrice(st.lockedLine) +
         " vs " + escHtml(st.src) + " " + fmtPrice(st.price) + "</span>" +
         "<br>Reported, never hidden: the locked call keeps its own line (locked calls are never re-based) — a mismatch means the market revised its target after the lock, or the lock took a read the market later replaced.";
+    }
+    /* WEB48: the settlement cross-check. Polymarket settles on
+       the Chainlink TWAP-60 stream value, which is not the same
+       number as the posted target in general (diagnosis: the
+       posted final sat 0.16–3.3 bp from the app/stream value in
+       Shane's 2026-11-01 windows). When the page's stream
+       estimate is on hand, say how the posted target compares —
+       agreement is claimed only within a tight tolerance. */
+    if (st.streamEst != null && st.streamDelta != null){
+      if (Math.abs(st.streamDelta) <= Math.max(st.price * 0.0002, 1e-9))
+        html += "<br>Chainlink stream estimate " + fmtPrice(st.streamEst) +
+          " agrees ✓ (Polymarket settles on the stream value)";
+      else {
+        bad = true;
+        html += '<br><span class="pm-bad">⚠ Chainlink stream estimate ' + fmtPrice(st.streamEst) +
+          " — " + fmtPrice(Math.abs(st.streamDelta)) +
+          " away from the posted target. Polymarket settles on the stream value, not the feed, so treat this target as approximate.</span>";
+      }
     }
     if (st.start !== winStartMs(Date.now(), st.h))
       html += "<br>(that window has since closed — tap to check the current one)";
@@ -6401,8 +6496,9 @@ function padCallsRows(sym){
     const remaining = Math.max(1, (closeAt - now) / 1000);
     const mlRaw = mktLineFor(sym, h);
     /* WEB46 (Shane 2026-11-01): a covered row locks ONLY against
-       a CONFIRMED market target (see refreshMktLines — two
-       agreeing reads of the market's own endpoint). An
+       a CONFIRMED market target (see refreshMktLines — WEB48:
+       the market's posted value FINAL, past its revision window,
+       for Polymarket TWAP variants). An
        unconfirmed first read never bases a locked call; the row
        waits in the deferral branch below instead. */
     const ml = (mlRaw && mlRaw.confirmed === false) ? null : mlRaw;
