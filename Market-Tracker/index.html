@@ -148,6 +148,7 @@ canvas.spark{width:100%;height:150px;display:block}
 #oddsPicks{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin-top:12px}
 .opickbox{border:1px solid rgba(201,162,39,.55);border-radius:12px;background:#0c0c18;padding:10px 12px}
 .opickbox h4{margin:0 0 7px;font-size:12px;letter-spacing:.09em;color:var(--gold2)}
+.opicknote{border:1px dashed rgba(201,162,39,.4);border-radius:12px;padding:10px 12px;color:var(--mut);font-size:13px}
 .opickrows{font-size:12.5px;line-height:1.65;color:var(--txt)}
 .opickrow{display:flex;justify-content:space-between;gap:8px;border-top:1px dashed rgba(255,255,255,.07);padding:3px 0}
 .opickrow:first-child{border-top:none}
@@ -619,13 +620,7 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
     <h2>Odds — the system's own calls</h2>
     <p class="note" style="margin-top:0">Pick any crypto and a value. The system — the same global brain the watch panel runs on — returns its OVER / UNDER odds for the close at each horizon, computed server-side. It scores only its own predictions: every card shows that horizon's real global record, and a horizon running at coin-flip gets flagged weak instead of hiding behind the average.</p>
     <div id="oddsBest4h" class="oddsbest4h none">★ Best accuracy — past 4 hours: loading the graded record…</div>
-    <div id="oddsPicks">
-      <div class="opickbox" data-pickbox="5"><h4>5 MIN — MOST LIKELY</h4><div class="opickrows">Loading the graded records…</div></div>
-      <div class="opickbox" data-pickbox="15"><h4>15 MIN — MOST LIKELY</h4><div class="opickrows">Loading the graded records…</div></div>
-      <div class="opickbox" data-pickbox="30"><h4>30 MIN — MOST LIKELY</h4><div class="opickrows">Loading the graded records…</div></div>
-      <div class="opickbox" data-pickbox="60"><h4>60 MIN — MOST LIKELY</h4><div class="opickrows">Loading the graded records…</div></div>
-      <div class="opickbox" data-pickbox="1440"><h4>24 HR — MOST LIKELY</h4><div class="opickrows">No graded 24-hour record exists yet — this box is waiting on its data basis.</div></div>
-    </div>
+    <div id="oddsPicks"></div>
     <div class="row" style="margin-top:10px">
       <label class="note" for="oddsCoin">Crypto</label>
       <select id="oddsCoin"></select>
@@ -1906,6 +1901,9 @@ function applyPreset(name, skipLen){
   // WEB12: switching markets mid-cycle re-targets the running lines
   // to the newly chosen market's target for this window.
   if (!skipLen && S.cycle.active) S.selected.forEach(sym => applyMarketStrike(sym));
+  // WEB49 (final ruling): the most-likely boxes follow the active
+  // market's real windows — regenerate them on every switch.
+  if (typeof renderOddsPicks === "function") renderOddsPicks();
 }
 function setLen(min, fromCustom){
   S.lenMin = clamp(Math.round(min) || 15, 1, 1440);
@@ -7105,13 +7103,16 @@ function renderOddsBest4h(){
     "</b> — " + Math.round(best.b.hitRate * 100) + "% over last 4h (" + best.b.hits + "/" + best.b.n +
     " graded calls" + (best.b.basis ? " · " + best.b.basis : "") + ")";
 }
-/* The MOST LIKELY boxes (Shane's five red boxes, labels literal:
-   5 MIN / 15 MIN / 30 MIN / 60 MIN / 24 HR — the 60 MIN box runs
-   on the 1-hour horizon's calls and record; the 24 HR box is a
-   layout slot whose data basis Shane is still picking, so it
-   carries its waiting state in the markup and is never wired to
-   a substitute record). Each box lists EVERY selected coin: its
-   locked call for the current window at that horizon (read
+/* The MOST LIKELY boxes (Shane's red boxes; final ruling
+   2026-11-01 12:03 EST): ONE BOX PER REAL PERPETUAL THE ACTIVE
+   MARKET ACTUALLY RUNS — generated from the same coverage rule
+   the outlook and target fetches use (mktCovers), never a fixed
+   list. Polymarket runs 5m/15m/1h windows → three boxes; Kalshi
+   mirrors 15m only → one box; no market picked → no boxes, just
+   a note saying so. Windows a market doesn't run (30m anywhere,
+   24h everywhere) get NO box — nothing is invented to fill a
+   grid. Each box lists every selected coin the market covers at
+   that horizon: its locked call for the current window (read
    through the same outlookLockCheck gate the outlook renders
    through; no lock → the row says so) and its trailing-50 graded
    record (hits/n — n is the real graded count, under 50 whenever
@@ -7119,6 +7120,10 @@ function renderOddsBest4h(){
    best trailing-50 accuracy leads the box, starred. The boxes
    render from winRec + padLock ONLY — they do not depend on the
    odds endpoint, so an odds stall cannot blank them. */
+function oddsPickHorizons(){
+  if (!marketActive()) return [];
+  return [5, 15, 30, 60].filter(h => keptCoins().some(sym => mktCovers(sym, h)));
+}
 function oddsCoinPick(sym, h){
   const cs = coinState(sym);
   const b = cs.winRec ? winRecordFor(cs.winRec[h] && cs.winRec[h].last50) : null;
@@ -7130,9 +7135,13 @@ function oddsCoinPick(sym, h){
 function oddsPickRowsHtml(h){
   if (!S.selected.length)
     return '<div class="opickrow"><span>No coins picked on the watch panel.</span></div>';
-  if (!S.selected.some(sym => S.coins[sym] && S.coins[sym].winRec))
+  const covered = S.selected.filter(sym => mktCovers(sym, h));
+  if (!covered.length)
+    return '<div class="opickrow"><span>' + pmMarketName() +
+      ' runs none of your picked coins at this window.</span></div>';
+  if (!covered.some(sym => S.coins[sym] && S.coins[sym].winRec))
     return '<div class="opickrow"><span>Loading the graded records…</span></div>';
-  const rows = S.selected.map(sym => oddsCoinPick(sym, h));
+  const rows = covered.map(sym => oddsCoinPick(sym, h));
   let lead = null;
   for (const r of rows){
     if (!r.b || !(r.b.n > 0)) continue;
@@ -7150,12 +7159,22 @@ function oddsPickRowsHtml(h){
   }).join("");
 }
 function renderOddsPicks(){
-  document.querySelectorAll("[data-pickbox]").forEach(el => {
-    const h = +el.getAttribute("data-pickbox");
-    if (h === 1440) return;   // 24 HR: layout slot only — data basis is Shane's pending pick
-    const host = el.querySelector(".opickrows");
-    if (host) host.innerHTML = oddsPickRowsHtml(h);
-  });
+  const host = $("#oddsPicks");
+  if (!host) return;
+  if (!marketActive()){
+    host.innerHTML = '<div class="opicknote">Pick a market in Setup (Polymarket or Kalshi) — ' +
+      'these most-likely boxes follow the chosen market\u2019s real windows.</div>';
+    return;
+  }
+  const hs = oddsPickHorizons();
+  if (!hs.length){
+    host.innerHTML = '<div class="opicknote">' + pmMarketName() +
+      ' runs no perpetual windows for the kept coins.</div>';
+    return;
+  }
+  host.innerHTML = hs.map(h =>
+    '<div class="opickbox" data-pickbox="' + h + '"><h4>' + h + ' MIN — MOST LIKELY</h4>' +
+    '<div class="opickrows">' + oddsPickRowsHtml(h) + '</div></div>').join("");
 }
 /* A horizon card's target strip: the mimicked market's target for
    the odds coin at this horizon under the WEB48 rules (CONFIRMED
