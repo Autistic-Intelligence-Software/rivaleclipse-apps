@@ -590,10 +590,7 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
     <div class="secthead"><h2 style="margin:0">📈 Normal mode — next-shift forecasts</h2><button type="button" class="ctxbtn" id="nmRefreshAllBtn" title="Reload every coin's Normal data">↻ Refresh all</button></div>
     <p class="note" style="margin-top:6px">Rolling wave forecasts for day-traders: what the system expects each coin to do next, when, and what it advises for <i>your</i> position. Forecasts freeze when issued — a re-forecast is a new line, never an edit; the old line stays on the chart and in the record.</p>
     <div class="row" style="margin-top:8px;gap:8px;align-items:center">
-      <span class="note">Zoom</span>
-      <div class="zoomseg" id="nmZoomSeg">
-        <button type="button" data-nzoom="live">Live</button><button type="button" data-nzoom="5">5 min</button><button type="button" data-nzoom="15">15 min</button><button type="button" data-nzoom="30">30 min</button><button type="button" data-nzoom="60">1 hr</button><button type="button" data-nzoom="720">12 hr</button><button type="button" data-nzoom="1440">24 hr</button>
-      </div>
+      <span class="note">Zoom is set per coin panel below — each panel's zoom drives only its own charts.</span>
     </div>
     <details id="nmAdvPanel" style="margin-top:10px">
       <summary style="cursor:pointer;color:var(--mut);font-weight:600;font-size:12px;letter-spacing:.08em">ADVANCED — FORECAST CONTROLS (THIS DEVICE ONLY)</summary>
@@ -6511,10 +6508,22 @@ const NM_LS_MODE = "ph.mode.v1", NM_LS_SET = "ph.normal.set.v1", NM_LS_ZOOM = "p
 const NM_PRESETS = { conservative: { gate: 85, band: 1.25 }, balanced: { gate: 75, band: 1.0 }, sensitive: { gate: 60, band: 0.8 } };
 const NM = {
   mode: lsGet(NM_LS_MODE, "perp") === "normal" ? "normal" : "perp",
-  zoom: String(lsGet(NM_LS_ZOOM, "15")),
+  /* WEB42: zoom is PER-PANEL state (Shane 2026-11-01) — WEB41 wired
+     every panel to one shared NM.zoom, so a zoom click in one panel
+     silently re-scaled all the others. zoomByCoin maps coin -> zoom
+     key, persisted per panel; the pre-WEB42 shared key is only a
+     first-run default for panels that have never set their own. */
+  zoomByCoin: lsGet("ph.normal.zoomByCoin.v1", {}),
   settings: lsGet(NM_LS_SET, {}),
   coins: {}, loaded: false, hover: {},
 };
+if (!NM.zoomByCoin || typeof NM.zoomByCoin !== "object" || Array.isArray(NM.zoomByCoin)) NM.zoomByCoin = {};
+function nmZoomFor(sym){
+  const z = NM.zoomByCoin[sym];
+  if (typeof z === "string" && NM_ZOOM_LABELS[z]) return z;
+  const dflt = String(lsGet(NM_LS_ZOOM, "15"));
+  return NM_ZOOM_LABELS[dflt] ? dflt : "15";
+}
 if (!NM.settings || typeof NM.settings !== "object" || Array.isArray(NM.settings)) NM.settings = {};
 if (!NM.settings._adv) NM.settings._adv = { preset: "balanced", gate: 75, buffer: 0, band: 1 };
 function nmCoinSet(sym){
@@ -6545,7 +6554,7 @@ function nmAdvice(ing, st, adv){
   const buffer$ = H * ((adv && adv.buffer) || 0) / 100;
   const started = ing.state === "possible" || ing.state === "shifting";
   const why = [
-    "Expected shift: " + ing.direction + " " + (move * 100).toFixed(2) + "% — on " + nmMoney(H) + " of this coin, a full-size shift is " + nmMoney(gross) + " of movement.",
+    "Expected shift: " + ing.direction + " " + nmSignedPct(ing.direction, move) + " — on " + nmMoney(H) + " of this coin, a full-size shift is " + nmMoney(gross) + " of movement.",
     "Your round-trip fees at " + feePct + "% per side come to " + nmMoney(fees) + "; net if the shift lands in full: " + nmMoney(net) + ".",
     "Shift likelihood " + (like != null ? Math.round(like * 100) + "%" : "—") + " vs the PREPARE gate of " + Math.round(gate * 100) + "% — " + (likely ? "a shift counts as imminent." : "no shift counts as imminent yet."),
     "Forecast state: " + String(ing.state || "likely").toUpperCase() + (ing.range_position_pct != null ? "; the live price sits at the " + Math.round(ing.range_position_pct * 100) + "th percentile of its trailing 24h range." : "."),
@@ -6602,10 +6611,17 @@ async function nmPost(url, body){
 }
 async function nmLoadCoin(sym){
   const c = NM.coins[sym]; if (!c) return;
+  /* WEB42 isolation: a response is adopted ONLY if it names the coin
+     it was requested for, and only the LATEST load for that coin may
+     land — a slow BTC response can never render into ETH's panel,
+     and a stale response for the same coin can't overwrite a newer
+     one. Each coin's loads are sequenced independently. */
+  const seq = (c.loadSeq = (c.loadSeq || 0) + 1);
   const d = await fetchJSON(AUTH + "/api/perp/normal?coin=" + encodeURIComponent(sym));
   const w = await fetchJSON(AUTH + "/api/perp/normal-week?coin=" + encodeURIComponent(sym));
-  if (d) c.data = d;
-  if (w) c.week = w;
+  if (c.loadSeq !== seq) return;
+  if (d && d.coin === sym) c.data = d;
+  if (w && w.coin === sym) c.week = w;
   nmRenderCoin(sym);
 }
 function nmLoadAll(){
@@ -6641,8 +6657,8 @@ async function nmRefresh(sym, dataset, btn){
 }
 
 /* ---------- NORMAL charts ---------- */
-function nmZoomSpec(){
-  const z = NM.zoom, now = Date.now();
+function nmZoomSpec(sym){
+  const z = nmZoomFor(sym), now = Date.now();
   if (z === "live") return { spanMs: 15 * 60000, kind: "m1" };
   const span = Number(z) * 60000;
   if (span <= 3600000) return { spanMs: span, kind: "m1" };
@@ -6661,6 +6677,57 @@ function nmT(x){
    of NOW, prediction equal to the zoom on the right. Pure. */
 function nmHybridWindow(now, spanMs){
   return { t0: now - spanMs, tN: now, t1: now + spanMs };
+}
+/* WEB42: signed expected-move rendering — a DOWN shift's size is
+   negative (the WEB41 panel printed "DOWN shift of +0.61%"). */
+function nmSignedPct(direction, frac){
+  const v = Math.abs((frac || 0) * 100).toFixed(2);
+  return (direction === "DOWN" ? "-" : "+") + v + "%";
+}
+/* WEB42: the hybrid's history-half yellow is ONE stitched line —
+   for every minute, the mid of the forecast that was ACTIVE then
+   (latest issued <= that minute). WEB41 drew every dead forecast's
+   full path stacked, which rendered as a bundle of stray lines.
+   Segments join at issuance boundaries; minutes with no active
+   forecast stay gaps. Inputs: [{issuedMs, pts:[{t,mid}]}], ascending
+   by issuance; the open forecast is just the last entry. Pure. */
+function nmStitchHistory(fcs, t0, tN){
+  if (!fcs || !fcs.length) return [];
+  const sorted = fcs.filter(f => f && isFinite(f.issuedMs) && f.pts && f.pts.length)
+    .slice().sort((a, b) => a.issuedMs - b.issuedMs);
+  const out = [];
+  for (let i = 0; i < sorted.length; i++){
+    const from = Math.max(sorted[i].issuedMs, t0);
+    const to = Math.min(i + 1 < sorted.length ? sorted[i + 1].issuedMs : tN, tN);
+    if (to <= from) continue;
+    for (const p of sorted[i].pts){
+      // segment i owns [from, to) — at the exact issuance minute the
+      // NEW forecast is the active one; the last segment owns its end
+      const inSeg = i + 1 < sorted.length ? (p.t >= from && p.t < to) : (p.t >= from && p.t <= to);
+      if (inSeg && p.mid > 0){
+        if (out.length && out[out.length - 1].t >= p.t) continue;
+        out.push({ t: p.t, mid: p.mid });
+      }
+    }
+  }
+  return out;
+}
+/* WEB42: line-fit chart domain — the y-range comes from the LINES
+   (actual closes + forecast MIDS), never from the uncertainty band.
+   The band is drawn clipped to the plot (see nmDraw), so a wide
+   band on a calm night can no longer squash the lines into a
+   sliver (the WEB41 hybrid: ~0.97% band vs a 0.12% market range).
+   Pure. */
+function nmLineDomain(parts){
+  let lo = Infinity, hi = -Infinity;
+  const eat = (v) => { if (v > 0 && isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } };
+  for (const pts of parts) for (const p of pts){
+    if (Array.isArray(p)) eat(p[1]);
+    else eat(p.mid);
+  }
+  if (!isFinite(lo)) return null;
+  const pad = (hi - lo) * 0.08 || hi * 0.01;
+  return [lo - pad, hi + pad];
 }
 const NM_ZOOM_LABELS = { live: "Live (15m)", "5": "5m", "15": "15m", "30": "30m", "60": "1h", "720": "12h", "1440": "24h" };
 /* WEB41: ET (America/New_York) helpers for the Sun–Sat weekly
@@ -6770,7 +6837,7 @@ function nmZoomPrediction(d, s){
   if (s.spec.kind === "m1"){
     if (!fc) return { pred: "No forecast open right now", conf: "—" };
     return {
-      pred: fc.direction + " shift of " + (fc.expected_move_pct >= 0 ? "+" : "") + (fc.expected_move_pct * 100).toFixed(2) + "% expected",
+      pred: fc.direction + " shift of " + nmSignedPct(fc.direction, fc.expected_move_pct) + " expected",
       conf: fc.shift_likelihood != null ? Math.round(fc.shift_likelihood * 100) + "% shift likelihood — the frozen forecast's own number" : "likelihood —",
     };
   }
@@ -6789,7 +6856,7 @@ function nmZoomPrediction(d, s){
 function nmTrendText(d, s, mood){
   const fc = d.forecast, adv = d.advisory;
   const parts = [];
-  if (fc) parts.push("the open forecast leans " + fc.direction + " into its " + nmTime(fc.t_early) + " – " + nmTime(fc.t_late) + " window, expecting about " + (fc.expected_move_pct * 100).toFixed(2) + "% if the shift fires");
+  if (fc) parts.push("the open forecast leans " + fc.direction + " into its " + nmTime(fc.t_early) + " – " + nmTime(fc.t_late) + " window, expecting about " + nmSignedPct(fc.direction, fc.expected_move_pct) + " if the shift fires");
   else parts.push("no shift forecast is open, so the path call rests on the span projection alone");
   if (s.spec.kind === "span" && s.spans && s.spans.length >= 2){
     const a = s.spans[0], b = s.spans[s.spans.length - 1];
@@ -6801,9 +6868,9 @@ function nmTrendText(d, s, mood){
 }
 function nmSeriesFor(sym){
   const c = NM.coins[sym], d = c && c.data;
-  const spec = nmZoomSpec(), now = Date.now();
+  const spec = nmZoomSpec(sym), now = Date.now();
   const win = nmHybridWindow(now, spec.spanMs);
-  if (!d) return { past: [], fc: null, spans: null, histFc: [], barMin: 1, t0: win.t0, tN: win.tN, t1: win.t1, spec };
+  if (!d) return { past: [], fc: null, spans: null, histFc: [], fcIssuedMs: NaN, barMin: 1, t0: win.t0, tN: win.tN, t1: win.t1, spec };
   let past = [], barMin = 1;
   if (spec.kind === "m1"){
     past = (d.series.m1 || []).filter(p => p[0] >= win.t0 - 3600000);
@@ -6839,7 +6906,7 @@ function nmSeriesFor(sym){
     const pts = h.path.map(p => ({ t: nmT(p.t), mid: p.mid })).filter(p => isFinite(p.t) && p.mid > 0);
     if (pts.length >= 2) histFc.push({ id: h.id, issuedMs: nmT(h.issued_at), pts });
   }
-  return { past, fc: fcPts, spans: spanPts, histFc, barMin, t0: win.t0, tN: win.tN, t1: win.t1, spec };
+  return { past, fc: fcPts, spans: spanPts, histFc, fcIssuedMs: d.forecast ? nmT(d.forecast.issued_at) : NaN, barMin, t0: win.t0, tN: win.tN, t1: win.t1, spec };
 }
 function nmYRange(parts){
   let lo = Infinity, hi = -Infinity;
@@ -6862,13 +6929,18 @@ function nmDraw(cv, o){
   const X = (t) => 8 + (t - o.t0) / (o.t1 - o.t0) * (W - RP - 16);
   const Y = (p) => H - 14 - (p - o.y[0]) / (o.y[1] - o.y[0]) * (H - 28);
   ctx.font = "11px system-ui";
-  // forecast band
+  // forecast band — WEB42: CLIPPED to the plot area. The chart
+  // domain is line-fit (nmLineDomain), so the band may bleed off
+  // the top/bottom edges; it never dictates the scale again.
   if (o.band && o.band.length > 1){
+    ctx.save();
+    ctx.beginPath(); ctx.rect(8, 6, W - RP - 16, H - 12); ctx.clip();
     ctx.beginPath();
     o.band.forEach((p, i) => { const x = X(p.t), y = Y(p.hi); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
     for (let i = o.band.length - 1; i >= 0; i--) ctx.lineTo(X(o.band[i].t), Y(o.band[i].lo));
     ctx.closePath();
     ctx.fillStyle = "rgba(201,162,39,0.13)"; ctx.fill();
+    ctx.restore();
   }
   const line = (pts, val, color, width, dash) => {
     if (!pts || pts.length < 2) return;
@@ -6954,25 +7026,20 @@ function nmDrawCharts(sym){
   const fut = s.fc || s.spans;
   const futWin = fut ? fut.filter(p => p.t <= s.t1 + 1) : null;
   const hoverT = NM.hover[sym] || null;
-  if (c.els.lblLive) c.els.lblLive.textContent = "Live — last " + (NM_ZOOM_LABELS[NM.zoom] || NM.zoom);
+  if (c.els.lblLive) c.els.lblLive.textContent = "Live — last " + (NM_ZOOM_LABELS[nmZoomFor(sym)] || nmZoomFor(sym));
   // (2) LIVE chart
   const yLive = nmYRange([pastWin]);
   if (yLive) nmDraw(c.els.cvLive, { t0: s.t0, t1: nowMs, y: yLive, past: pastWin, color: NM_WHITE, liveEdge: true, hoverT, emptyText: "Waiting for live candles…" });
-  // (4) HYBRID — historical yellow = forecasts actually issued for
-  // [t0, now]: resolved rows (server history) + the still-open
-  // forecast's own pre-now path. Partial by design until a full
-  // span has accumulated — never backfilled.
-  const histLines = [];
-  for (const h of s.histFc){
-    const pts = h.pts.filter(p => p.t >= s.t0 && p.t <= nowMs);
-    if (pts.length >= 2) histLines.push(pts);
-  }
-  if (s.fc){
-    const pre = s.fc.filter(p => p.t >= s.t0 && p.t <= nowMs).map(p => ({ t: p.t, mid: p.mid }));
-    if (pre.length >= 2) histLines.push(pre);
-  }
-  const yH = nmYRange([pastWin, futWin || [], ...histLines]);
-  if (yH) nmDraw(c.els.cvHyb, { t0: s.t0, t1: s.t1, y: yH, past: pastWin, color: NM_WHITE, band: futWin, histFc: histLines, nowLine: true, noPastLabel: true, hoverT, emptyText: "Hybrid warming up…" });
+  // (4) HYBRID — historical yellow = ONE stitched line (WEB42):
+  // at each minute, the mid of the forecast that was ACTIVE then
+  // (resolved rows + the open forecast's pre-now path). Partial by
+  // design until a full span has accumulated — never backfilled.
+  // The scale is LINE-FIT (actual + mids only); the band is clipped.
+  const stitchSrc = s.histFc.slice();
+  if (s.fc && isFinite(s.fcIssuedMs)) stitchSrc.push({ issuedMs: s.fcIssuedMs, pts: s.fc.map(p => ({ t: p.t, mid: p.mid })) });
+  const stitched = nmStitchHistory(stitchSrc, s.t0, nowMs);
+  const yH = nmLineDomain([pastWin, futWin || [], stitched]);
+  if (yH) nmDraw(c.els.cvHyb, { t0: s.t0, t1: s.t1, y: yH, past: pastWin, color: NM_WHITE, band: futWin, histFc: stitched.length >= 2 ? [stitched] : [], nowLine: true, noPastLabel: true, hoverT, emptyText: "Hybrid warming up…" });
   nmRenderInsight(sym, s, pastWin);
   nmDrawWeek(sym);
 }
@@ -6983,7 +7050,7 @@ function nmRenderInsight(sym, s, pastWin){
   const c = NM.coins[sym]; if (!c || !c.els || !c.els.insPred) return;
   const d = c.data;
   const set = (el, txt) => { if (el) el.textContent = txt; };
-  if (c.els.insSeg) c.els.insSeg.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.nzoom === NM.zoom));
+  if (c.els.insSeg) c.els.insSeg.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.nzoom === nmZoomFor(sym)));
   if (!d) return;
   const mood = nmMood(pastWin, s.barMin);
   if (d.shadow){
@@ -7001,11 +7068,11 @@ function nmRenderInsight(sym, s, pastWin){
   set(c.els.insPred, zp.pred);
   set(c.els.insConf, zp.conf);
   set(c.els.insShift, fc
-    ? fc.direction + " " + (fc.expected_move_pct >= 0 ? "+" : "") + (fc.expected_move_pct * 100).toFixed(2) + "% · window " + nmTime(fc.t_early) + " – " + nmTime(fc.t_late) + " · state " + String(fc.state || "likely").toUpperCase()
+    ? fc.direction + " " + nmSignedPct(fc.direction, fc.expected_move_pct) + " · window " + nmTime(fc.t_early) + " – " + nmTime(fc.t_late) + " · state " + String(fc.state || "likely").toUpperCase()
     : "No shift forecast open right now.");
   const a = nmAdvice(d.advisory, nmCoinSet(sym), NM.settings._adv);
   set(c.els.insAdv, a.label + " — the math is in the Why? pop-out above.");
-  set(c.els.insSnipe, nmSnipeText(nmSnipeFor(sym, NM.zoom, Date.now()), sym));
+  set(c.els.insSnipe, nmSnipeText(nmSnipeFor(sym, nmZoomFor(sym), Date.now()), sym));
   set(c.els.insMood, mood ? nmMoodText(mood) : "Forming — not enough live bars in this span yet.");
   set(c.els.insTrend, nmTrendText(d, s, mood));
 }
@@ -7036,7 +7103,10 @@ function nmDrawWeek(sym){
   }));
   const flat = [];
   for (const sg of segs) for (const p of sg.pts) flat.push(p);
-  const y = nmYRange([actuals, flat]);
+  /* WEB42: line-fit domain (actuals + segment mids) — the weekly
+     segments carry no drawn band, but their lo/hi must not set the
+     scale either. */
+  const y = nmLineDomain([actuals, flat]);
   if (!y) { ctx.fillStyle = "#9a96ad"; ctx.fillText("Weekly data forming…", 16, H / 2); return; }
   const X = (t) => 8 + (t - t0) / (t1 - t0) * (W - 72);
   const Y = (p) => H - 26 - (p - y[0]) / (y[1] - y[0]) * (H - 40);
@@ -7153,8 +7223,8 @@ function nmBuildCards(){
     const rw = el.querySelector(".nref-wk"); if (rw) rw.addEventListener("click", () => nmRefresh(sym, "week", rw));
     const rd = el.querySelector(".nref-data"); if (rd) rd.addEventListener("click", () => { nmLoadCoin(sym); nmLoadSnipe(true); });
     if (c.els.insSeg) c.els.insSeg.querySelectorAll("button").forEach(b => {
-      b.classList.toggle("on", b.dataset.nzoom === NM.zoom);
-      b.addEventListener("click", () => nmSetZoom(b.dataset.nzoom));
+      b.classList.toggle("on", b.dataset.nzoom === nmZoomFor(sym));
+      b.addEventListener("click", () => nmSetZoom(sym, b.dataset.nzoom));
     });
     for (const [cv, kind] of [[c.els.cvLive, "live"], [c.els.cvHyb, "hyb"]]){
       if (!cv || !cv.addEventListener) continue;
@@ -7198,7 +7268,7 @@ function nmRenderCoin(sym){
   if (c.els.adv){
     c.els.adv.className = "nadvice " + a.cls;
     c.els.adv.innerHTML = a.label + "<small>" + (fc
-      ? "Next shift: " + fc.direction + " " + (fc.expected_move_pct * 100).toFixed(2) + "% expected · likelihood " + (fc.shift_likelihood != null ? Math.round(fc.shift_likelihood * 100) + "%" : "—") + " · issued " + nmTime(fc.issued_at) + " · window " + nmTime(fc.t_early) + " – " + nmTime(fc.t_late)
+      ? "Next shift: " + fc.direction + " " + nmSignedPct(fc.direction, fc.expected_move_pct) + " expected · likelihood " + (fc.shift_likelihood != null ? Math.round(fc.shift_likelihood * 100) + "%" : "—") + " · issued " + nmTime(fc.issued_at) + " · window " + nmTime(fc.t_early) + " – " + nmTime(fc.t_late)
       : "Forecast warming up — the engine issues the first one shortly.") + "</small>";
   }
   if (c.els.reasons) c.els.reasons.innerHTML = a.why.map(w => "• " + w).join("<br>");
@@ -7226,32 +7296,24 @@ function nmApplyMode(){
   }
 }
 function nmSetMode(m){ NM.mode = m === "normal" ? "normal" : "perp"; lsSet(NM_LS_MODE, NM.mode); nmApplyMode(); }
-/* WEB41: one shared zoom (as in WEB40) — settable from the panel
-   header segment or any coin's insight-panel segment; every
-   control and every chart in every panel follows it. */
-function nmSetZoom(z){
-  NM.zoom = String(z);
-  lsSet(NM_LS_ZOOM, NM.zoom);
-  const seg = document.getElementById("nmZoomSeg");
-  if (seg) seg.querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.nzoom === NM.zoom));
-  for (const sym of NM_COINS){
-    const c = NM.coins[sym];
-    if (c && c.els && c.els.insSeg) c.els.insSeg.querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.nzoom === NM.zoom));
-    nmDrawCharts(sym);
-  }
+/* WEB42: PER-PANEL zoom (Shane 2026-11-01) — a panel's zoom
+   control drives ONLY that panel's charts + insight content; every
+   other panel is untouched. The choice persists per panel. (WEB41's
+   shared NM.zoom is gone; the old shared localStorage key survives
+   only as nmZoomFor's first-run default.) */
+function nmSetZoom(sym, z){
+  if (!NM_ZOOM_LABELS[String(z)]) return;
+  NM.zoomByCoin[sym] = String(z);
+  lsSet("ph.normal.zoomByCoin.v1", NM.zoomByCoin);
+  const c = NM.coins[sym];
+  if (c && c.els && c.els.insSeg) c.els.insSeg.querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.nzoom === NM.zoomByCoin[sym]));
+  nmDrawCharts(sym);
 }
 (function nmInit(){
   nmBuildCards();
   const nb = document.getElementById("modeNormalBtn"), pb = document.getElementById("modePerpBtn");
   if (nb) nb.addEventListener("click", () => nmSetMode("normal"));
   if (pb) pb.addEventListener("click", () => nmSetMode("perp"));
-  const seg = document.getElementById("nmZoomSeg");
-  if (seg){
-    seg.querySelectorAll("button").forEach(b => {
-      b.classList.toggle("on", b.dataset.nzoom === NM.zoom);
-      b.addEventListener("click", () => nmSetZoom(b.dataset.nzoom));
-    });
-  }
   const adv = NM.settings._adv;
   const presetSel = document.getElementById("nmPresetSel"), gateIn = document.getElementById("nmGateIn"),
     bufferIn = document.getElementById("nmBufferIn"), bandIn = document.getElementById("nmBandIn");
