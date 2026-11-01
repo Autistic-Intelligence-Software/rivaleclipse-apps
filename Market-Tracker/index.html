@@ -850,6 +850,26 @@ function fmtClock(ms){
 function acctGone(){
   try { location.href = "/Market-Tracker/acct/sign-in"; } catch (e) {}
 }
+/* WEB51 (2026-11-01): a DATA-plane 401 is not session death. Only a
+   genuine account check may end the session: when a data read
+   (/api/perp/*, /api/pm/*) answers 401, confirm ONCE against
+   /acct/me (throttled to one probe per 30 s) and bounce only if
+   THAT check also says 401. A transient data-plane failure — the
+   proxy used to 401 entitled users whenever session validation
+   stalled — now just reads as a failed pull and the normal retry
+   passes recover. */
+let acctCheckAt = 0, acctCheckBusy = false;
+function confirmSessionGone(){
+  const now = Date.now();
+  if (acctCheckBusy || now - acctCheckAt < 30000) return;
+  acctCheckBusy = true; acctCheckAt = now;
+  const done = () => { acctCheckBusy = false; };
+  try {
+    fetch(AUTH + "/acct/me", {cache: "no-store"}).then(
+      r => { if (r && r.status === 401) acctGone(); done(); },
+      () => { done(); });
+  } catch (e) { done(); }
+}
 /* Perf fix item 5 (Shane 2026-10-30, wave-test-perf spec): every
    fetchJSON call carries a ~10 s AbortController timeout. A
    stalled request used to hang forever — worst in the wave-test
@@ -873,7 +893,10 @@ async function fetchJSON(url){
       timer = setTimeout(() => { try { ctl.abort(); } catch (e) {} }, FETCH_TIMEOUT_MS);
     }
     const r = await fetch(url, opts);
-    if (r && r.status === 401 && typeof url === "string" && url.indexOf(AUTH) === 0) acctGone();
+    if (r && r.status === 401 && typeof url === "string" && url.indexOf(AUTH) === 0){
+      if (url.indexOf(AUTH + "/acct/") === 0) acctGone();
+      else confirmSessionGone();
+    }
     if (!r.ok) return null;
     return await r.json();
   }
@@ -6231,7 +6254,8 @@ async function smsPost(path, phone){
   try {
     const r = await fetch(AUTH + path, {method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({phone: phone})});
-    if (r && r.status === 401) acctGone();
+    /* WEB51: data-plane POST — a 401 here is a failed action, not
+       session death (see confirmSessionGone); it just returns false. */
     if (!r || !r.ok) return false;
     const j = await r.json().catch(() => null);
     return !!(j && j.ok);
