@@ -219,6 +219,9 @@ canvas.spark{width:100%;height:150px;display:block}
 .modeswitch{display:flex;gap:0;margin-top:10px;border:1px solid var(--line);border-radius:10px;overflow:hidden;max-width:420px}
 .modeswitch button{flex:1;background:rgba(255,255,255,.03);color:var(--mut);border:none;padding:8px 10px;font-size:13px;font-weight:700;letter-spacing:.08em;cursor:pointer}
 .modeswitch button.on{background:linear-gradient(120deg,#f3d27a,#c9a227);color:#14100a}
+.cascline{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;max-width:560px}
+.casctoggle{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:700;cursor:pointer}
+.cascbadge{display:inline-block;margin-left:7px;padding:1px 7px;border-radius:999px;background:linear-gradient(120deg,#7c5cff,#c9a227);color:#fff;font-size:10px;font-weight:800;letter-spacing:.06em;vertical-align:middle;white-space:nowrap}
 .ncard{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:12px;background:rgba(255,255,255,.02)}
 .ncard h3{margin:0;font-size:17px}
 .nstate{display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.05em;border-radius:999px;padding:3px 9px;margin-left:8px;vertical-align:2px}
@@ -580,6 +583,14 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
     <button type="button" id="modeNormalBtn" role="tab">NORMAL</button>
     <button type="button" id="modePerpBtn" role="tab">PERPETUALS</button>
   </div>
+  <!-- WEB54: HARD CASCADE opt-in (Shane approved 2026-11-02) — same
+       settings family as the mode switch above: one persisted
+       toggle, default OFF. OFF = the page exactly as it was. -->
+  <div class="cascline">
+    <label class="casctoggle"><input type="checkbox" id="cascadeToggle"> Cascade 5m calls</label>
+    <span class="note" id="cascadeStat"></span>
+  </div>
+  <div class="note" style="margin-top:2px">Experimental: on covered closes the 5m row leads with the dedicated long-horizon call ending at that close — the native 5m call stays right under it.</div>
 </header>
 <div id="drawerBackdrop" hidden></div>
 <button class="edgetab left" id="oddsTab" type="button" title="Open the odds board">Odds</button>
@@ -955,6 +966,53 @@ const LS_FCADJ = "ph.fcAdj.v1";
    ONLY, like every other ph.* pref (WEB8): it feeds nothing, is
    never posted anywhere, and the prediction itself is a frozen
    server row (see fetchWaveTest / cs.waveTest below). */
+/* WEB54 (Shane approved 2026-11-02): HARD CASCADE display pref —
+   one boolean, default OFF, persisted like every other ph.* pref
+   (WEB8): display only, feeds nothing, is never posted anywhere.
+   The cascade rows themselves are frozen + graded server-side
+   (engine perp_cascade) whether or not anyone opts in here. */
+const LS_CASCADE = "ph.cascade.v1";
+let CASCADE_ON = !!lsGet(LS_CASCADE, false);
+let CASCADE_DATA = null;   // last /api/perp/cascade payload
+function cascadeFor(sym){
+  const c = CASCADE_DATA && CASCADE_DATA.coins && CASCADE_DATA.coins[sym];
+  if (!c || c.shadow || !c.current) return null;
+  return c.current;
+}
+function cascadeStatText(){
+  const r = CASCADE_DATA && CASCADE_DATA.record;
+  if (!r) return "";
+  return r.n > 0
+    ? "Cascade record: " + r.n + " graded · " + Math.round(r.hit_rate * 100) + "% hits"
+    : "Cascade record: no graded calls yet";
+}
+function renderCascadeStat(){
+  const el = document.getElementById("cascadeStat");
+  if (el) el.textContent = cascadeStatText();
+}
+async function loadCascade(){
+  const j = await fetchJSON(AUTH + "/api/perp/cascade");
+  if (!j || !j.ok) return;
+  CASCADE_DATA = j;
+  renderCascadeStat();
+  if (CASCADE_ON) for (const sym of S.selected) renderPadCalls(sym);
+}
+function setCascade(on){
+  CASCADE_ON = !!on;
+  lsSet(LS_CASCADE, CASCADE_ON);
+  const t = document.getElementById("cascadeToggle");
+  if (t) t.checked = CASCADE_ON;
+  if (CASCADE_ON && !CASCADE_DATA) loadCascade();
+  for (const sym of S.selected) renderPadCalls(sym);
+}
+(function cascadeInit(){
+  const t = document.getElementById("cascadeToggle");
+  if (t){
+    t.checked = CASCADE_ON;
+    t.addEventListener("change", () => setCascade(t.checked));
+  }
+  renderCascadeStat();
+})();
 const LS_WAVETEST = "ph.wavetest.v1";
 /* WEB33 (Shane 2026-10-30): per-coin Timing Assist toggle —
    { SYM: bool }. Display preference ONLY, like every other ph.*
@@ -5930,6 +5988,7 @@ setInterval(() => {
     if (tp > 0 && csx.pad._plShown !== tp){ csx.pad._plShown = tp; padRender(sym); }
   }
   if (S.loopN % 900 === 0) loadGlobal();
+  if (S.loopN % 900 === 150) loadCascade();
   if (S.loopN % 900 === 300) loadRecentForm();
   if (S.loopN % 900 === 450) loadAdvisory();
   if (S.loopN % 900 === 600) loadDayForecast();
@@ -7209,14 +7268,32 @@ function renderPadCalls(sym){
         formStripHTML(sym, r.h) +
         "</td><td>—</td></tr>";
       }
+      /* WEB54: HARD CASCADE — with the opt-in ON, a covered 5m row
+         leads with the headline cascade call (the dedicated
+         long-horizon call whose window ends at this close, frozen
+         server-side); the native 5m call stays visible right under
+         it as the secondary line. Toggle OFF, a non-5m row, or no
+         covering cascade row → the cell is exactly the native one. */
+      const nativeCallHtml = (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + " " + pctCap(r.winP) + "</span>" + failOddsSpan(r.winP)
+              : '<span class="note">NO EDGE</span>');
+      let callCellHtml = nativeCallHtml;
+      if (r.h === 5 && CASCADE_ON && lk){
+        const cc = cascadeFor(sym);
+        if (cc && cc.close_at === lk.closeAt){
+          const cCall = cc.call === "over" ? "OVER" : "UNDER";
+          const cWinP = cc.anchor_p == null ? null : (cc.call === "over" ? cc.anchor_p : 1 - cc.anchor_p);
+          callCellHtml = '<span class="' + (cCall === "OVER" ? "up" : "down") + '">' + cCall + " " + pctCap(cWinP) + "</span>" +
+            '<span class="cascbadge">CASCADE · via ' + cc.anchor_horizon + "m</span>" +
+            '<br><span class="note">native 5m call: ' + nativeCallHtml + "</span>";
+        }
+      }
       return "<tr" + (r.h === bestH ? ' class="bestrow"' : "") + "><td>" + (r.h === 60 ? "1 hour" : r.h + " min") +
       ' · <span class="cdft" data-cdh="' + r.h + '">' + fmtClock(r.remaining * 1000) + " left</span>" +
       (r.h === bestH ? '<br><span class="beststar">★ best option</span>' : "") +
       (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + ")</span>" : "") +
       '<br><button class="padrefresh" type="button" data-padcallrefresh="' + r.h + '" aria-label="Refresh prediction for the ' + (r.h === 60 ? "1 hour" : r.h + " min") + ' perpetual"' + busyAttr + '>↻ Refresh prediction</button>' +
       "</td><td>" +
-      (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + " " + pctCap(r.winP) + "</span>" + failOddsSpan(r.winP)
-              : '<span class="note">NO EDGE</span>') +
+      callCellHtml +
       /* WEB21: every locked row says WHEN it locked (local clock);
          an unlocked row (data not ready at the open) shows none. */
       (r.lockedAt ? '<br><span class="note">locked ' + multTimeStr(r.lockedAt) + "</span>" : "") +
@@ -9237,6 +9314,7 @@ buildCoinGrid();
   priceTick();
   whenIdle(() => loadSources(), 1200);
   whenIdle(() => loadRecentForm(), 1800);
+  whenIdle(() => loadCascade(), 3200);
   whenIdle(() => { loadAdvisory(); loadDayForecast(); }, 2500);
   /* WEB35 LOAD-ONCE: a MINIMIZED Snipe Spotter is a collapsed
      section — it does not load at boot; expanding it pulls it
