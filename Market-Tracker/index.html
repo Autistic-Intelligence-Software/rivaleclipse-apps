@@ -1971,10 +1971,25 @@ const PM_VARIANT = {5: "fiveminute", 15: "fifteen", 60: "hourly", 240: "fourhour
 const KX_SERIES = {BTC: "KXBTC15M", ETH: "KXETH15M", SOL: "KXSOL15M",
                    XRP: "KXXRP15M", DOGE: "KXDOGE15M", NEAR: "KXNEAR15M"};
 function marketActive(){ return S.preset === "polymarket" || S.preset === "kalshi"; }
+/* WEB53: in-flight dedupe — simultaneous reads of the SAME
+   (symbol, window start, variant) share one request instead of
+   fanning out duplicates at Polymarket (the 429 mitigation's
+   page half; the Function half caches settled windows). The
+   entry is dropped the moment the read settles, so sequential
+   convergence reads still re-read exactly as before — only
+   truly concurrent duplicates collapse. */
+const PM_INFLIGHT = {};
 async function pmPrice(sym, openAtMs, variant){
-  const j = await fetchJSON(AUTH + "/api/pm/crypto-price?symbol=" + encodeURIComponent(sym) +
-    "&start=" + Math.floor(openAtMs / 1000) + "&variant=" + variant);
-  return j && !j.error ? j : null;
+  const key = sym + "|" + Math.floor(openAtMs / 1000) + "|" + variant;
+  if (PM_INFLIGHT[key]) return PM_INFLIGHT[key];
+  const pr = (async () => {
+    const j = await fetchJSON(AUTH + "/api/pm/crypto-price?symbol=" + encodeURIComponent(sym) +
+      "&start=" + Math.floor(openAtMs / 1000) + "&variant=" + variant);
+    return j && !j.error ? j : null;
+  })();
+  PM_INFLIGHT[key] = pr;
+  try { return await pr; }
+  finally { if (PM_INFLIGHT[key] === pr) delete PM_INFLIGHT[key]; }
 }
 /* WEB51: Polymarket's own published price to beat for a window,
    from the gamma event record (eventMetadata.priceToBeat, full
@@ -2517,8 +2532,12 @@ function mktLineFor(sym, h){
 let PM_CHECK_GAP_MS = 900;
 const PM_CHECK_MAX_READS = 8;
 function pmCheckWait(){
+  /* WEB53: jittered spacing — a fixed 900 ms cadence makes every
+     open tracker page retry in lockstep and burst Polymarket at
+     the same instants; +0–400 ms of jitter spreads the retries.
+     (PM_CHECK_GAP_MS = 0 in tests still resolves immediately.) */
   return PM_CHECK_GAP_MS > 0
-    ? new Promise(r => setTimeout(r, PM_CHECK_GAP_MS))
+    ? new Promise(r => setTimeout(r, PM_CHECK_GAP_MS + Math.floor(Math.random() * 400)))
     : Promise.resolve();
 }
 /* Same tick tolerance refreshMktLines uses to call two reads
@@ -2947,6 +2966,54 @@ function twap60Before(sym, endMs){
   if (covered < 55000) return null;
   return acc / covered;
 }
+/* WEB53: SAMPLE-RECENCY LIVENESS. WEB52's live runs found the
+   per-symbol sockets can die SILENTLY mid-session — socket open,
+   no samples, every later window holds 'nostream' forever —
+   because nothing ever checked whether prints were still
+   arriving. The stream's normal cadence is ~1 print/s (WEB51
+   measurement) and twap60Before already refuses a newest tick
+   older than 10 s, so a symbol whose newest buffered print is
+   more than RTDS_STALE_MS old while its socket claims to be
+   connected is dead in every way that matters: the watchdog
+   force-closes and re-establishes just that symbol's socket
+   through the same open path as a fresh connect. Buffered ticks
+   are NOT touched — a reconnect's snapshot re-covers the recent
+   minute (WEB51 ingestion), and the TWAP math is unchanged. */
+/* RTDS_STALE_MS is a `let` binding the binding stays reassignable for tests/tools, exactly like PM_CHECK_GAP_MS above. */
+let RTDS_STALE_MS = 25000;
+const RTDS_WATCHDOG_MS = 5000;
+const RTDS_WATCHDOG = {timer: null};
+/* Pure staleness predicate (unit-tested): stale iff the newest
+   evidence of life — the latest buffered print, or the socket's
+   own open time while no print has landed yet — is older than
+   the threshold. No evidence at all (never opened) is not stale:
+   there is nothing to resurrect. */
+function rtdsStale(lastMs, openedMs, nowMs){
+  const ref = Math.max(lastMs || 0, openedMs || 0);
+  return ref > 0 && (nowMs - ref) > RTDS_STALE_MS;
+}
+function rtdsLastTickMs(sym){
+  const arr = RTDS_TICKS[sym];
+  return arr && arr.length ? arr[arr.length - 1][0] : 0;
+}
+function rtdsWatchdogTick(nowMs){
+  if (S.preset !== "polymarket") return;
+  const now = nowMs || Date.now();
+  for (const sym of Object.keys(RTDS_ST.socks)){
+    const rec = RTDS_ST.socks[sym];
+    if (!rec || !rec.ws || (rec.ws.readyState !== 0 && rec.ws.readyState !== 1)) continue;
+    if (!rtdsStale(rtdsLastTickMs(sym), rec.openedAt, now)) continue;
+    rtdsCloseSock(sym);
+    if (S.selected.includes(sym)) rtdsOpenSock(sym);
+  }
+}
+function rtdsWatchdogStart(){
+  if (RTDS_WATCHDOG.timer != null || typeof setInterval !== "function") return;
+  RTDS_WATCHDOG.timer = setInterval(() => rtdsWatchdogTick(), RTDS_WATCHDOG_MS);
+}
+function rtdsWatchdogStop(){
+  if (RTDS_WATCHDOG.timer != null){ clearInterval(RTDS_WATCHDOG.timer); RTDS_WATCHDOG.timer = null; }
+}
 function rtdsCloseSock(sym){
   const s = RTDS_ST.socks[sym];
   if (!s) return;
@@ -2955,6 +3022,7 @@ function rtdsCloseSock(sym){
   if (s.ws){ const w = s.ws; try { w.onclose = null; w.close(); } catch (e) {} }
 }
 function rtdsStop(){
+  rtdsWatchdogStop();
   for (const k in RTDS_TICKS) delete RTDS_TICKS[k];
   if (RTDS_ST.timer != null){ clearTimeout(RTDS_ST.timer); RTDS_ST.timer = null; }
   for (const sym of Object.keys(RTDS_ST.socks)) rtdsCloseSock(sym);
@@ -2968,9 +3036,10 @@ function rtdsSchedule(){
 function rtdsOpenSock(sym){
   let ws;
   try { ws = new WebSocket(RTDS_URL); } catch (e) { rtdsSchedule(); return; }
-  const rec = {ws: ws, ping: null};
+  const rec = {ws: ws, ping: null, openedAt: 0};
   RTDS_ST.socks[sym] = rec;
   ws.onopen = () => {
+    rec.openedAt = Date.now();   // WEB53: liveness evidence until the first print lands
     RTDS_ST.backoff = 1000;
     try { ws.send(JSON.stringify({action: "subscribe", subscriptions: [{topic: "crypto_prices_chainlink", type: "update",
       filters: JSON.stringify({symbol: sym.toLowerCase() + "/usd"})}]})); } catch (e) {}
@@ -3017,6 +3086,7 @@ function rtdsEnsure(){
     if (s) rtdsCloseSock(sym);
     rtdsOpenSock(sym);
   }
+  if (Object.keys(RTDS_ST.socks).length) rtdsWatchdogStart();
 }
 
 /* ---------- cards ---------- */
