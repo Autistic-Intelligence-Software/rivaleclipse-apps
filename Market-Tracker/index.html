@@ -9311,10 +9311,10 @@ buildCoinGrid();
      numbers already rode stage 1). Stages 3–4 also pull on
      demand if the user opens their section before idle lands. */
   loadGlobal();
+  loadCascade();
   priceTick();
   whenIdle(() => loadSources(), 1200);
   whenIdle(() => loadRecentForm(), 1800);
-  whenIdle(() => loadCascade(), 3200);
   whenIdle(() => { loadAdvisory(); loadDayForecast(); }, 2500);
   /* WEB35 LOAD-ONCE: a MINIMIZED Snipe Spotter is a collapsed
      section — it does not load at boot; expanding it pulls it
