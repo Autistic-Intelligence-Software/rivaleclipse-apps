@@ -51,7 +51,12 @@ const ME_TTL_MS = 30_000;
 const COOKIE_MAX_AGE_S = 30 * 24 * 3600; // 30 days; the JWT itself is validated per gate check
 
 const meCache = new Map(); // tokenKey -> { at, result }
-export function _resetCaches() { meCache.clear(); }
+export function _resetCaches() {
+  meCache.clear();
+  // WEB53 pm cache maps are declared with the PM route below;
+  // module load completes before any test calls this.
+  try { pmCache.clear(); pmInflight.clear(); } catch (e) { /* not yet initialized */ }
+}
 
 /* Bounded upstream waits (2026-11-01): the auth service stalls
    periodically under engine load (blackouts up to ~80s measured).
@@ -229,6 +234,42 @@ async function proxyApi(context, request, url, rest) {
 
 const PM_VARIANTS = new Set(['fiveminute', 'fifteen', 'hourly', 'fourhour', 'daily']);
 
+/* WEB53 (2026-11-01): per-key response cache + in-flight coalescing
+   for the PM proxy — the 429 mitigation. Polymarket rate-limited
+   279 of 690 crypto-price reads in one verification window because
+   every page pass re-fetched windows whose values cannot change:
+   a COMPLETED window's open/close are the market's settled record
+   (immutable), so a completed response is cached indefinitely; an
+   in-progress window's response is cached only PM_LIVE_TTL_MS so
+   convergence reads stay fresh to a few seconds. Errors and 429s
+   are NEVER cached. Identical requests already in flight share
+   one upstream fetch. This changes only how often upstream is
+   asked — never which value is returned, and no finality rule in
+   the page or engine is touched. State is per-isolate (a Map),
+   matching the meCache pattern above; isolates are recycled by
+   the platform, which only ever shortens a cache entry's life. */
+const PM_LIVE_TTL_MS = 4_000;
+const PM_CACHE_MAX = 512;
+const pmCache = new Map();    // key -> { at, ttlMs, text }
+const pmInflight = new Map(); // key -> Promise<{status, text}>
+export function _resetPmCache() { pmCache.clear(); pmInflight.clear(); }
+
+function pmCacheGet(key) {
+  const hit = pmCache.get(key);
+  if (!hit) return null;
+  if (hit.ttlMs !== Infinity && Date.now() - hit.at >= hit.ttlMs) {
+    pmCache.delete(key);
+    return null;
+  }
+  return hit.text;
+}
+function pmCachePut(key, text) {
+  let completed = false;
+  try { completed = JSON.parse(text).completed === true; } catch (e) { completed = false; }
+  if (pmCache.size >= PM_CACHE_MAX) pmCache.delete(pmCache.keys().next().value);
+  pmCache.set(key, { at: Date.now(), ttlMs: completed ? Infinity : PM_LIVE_TTL_MS, text });
+}
+
 async function requireEntitled(context, request) {
   const token = parseCookies(request)[COOKIE_NAME];
   if (!token) return { kind: 'anon' };
@@ -257,18 +298,38 @@ async function pmPriceRoute(context, request, url) {
   }
   const up = 'https://polymarket.com/api/crypto/crypto-price?symbol=' +
     encodeURIComponent(symbol) + '&eventStartTime=' + start + '&variant=' + encodeURIComponent(variant);
-  let r;
-  try {
-    r = await fetch(up, {
-      headers: { Accept: 'application/json' },
-      signal: timeoutSignal(envTimeoutMs(context, 'PERP_PROXY_TIMEOUT_MS', PROXY_TIMEOUT_MS)),
+  // WEB53: serve a cached copy when one is live for this exact
+  // (symbol, start, variant); coalesce concurrent identical reads.
+  const cacheKey = symbol + '|' + start + '|' + variant;
+  const cached = pmCacheGet(cacheKey);
+  if (cached != null) {
+    return new Response(cached, {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
     });
+  }
+  let flight = pmInflight.get(cacheKey);
+  if (!flight) {
+    flight = (async () => {
+      const r = await fetch(up, {
+        headers: { Accept: 'application/json' },
+        signal: timeoutSignal(envTimeoutMs(context, 'PERP_PROXY_TIMEOUT_MS', PROXY_TIMEOUT_MS)),
+      });
+      return { status: r.status, text: await r.text() };
+    })();
+    pmInflight.set(cacheKey, flight);
+  }
+  let out;
+  try {
+    out = await flight;
   } catch (e) {
     return jsonRes({ error: isTimeoutErr(e) ? 'upstream_slow' : 'upstream_unavailable' }, 502);
+  } finally {
+    if (pmInflight.get(cacheKey) === flight) pmInflight.delete(cacheKey);
   }
-  const text = await r.text();
-  return new Response(text, {
-    status: r.status,
+  if (out.status === 200) pmCachePut(cacheKey, out.text); // errors/429s never cached
+  return new Response(out.text, {
+    status: out.status,
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 }
