@@ -907,7 +907,34 @@ function confirmSessionGone(){
    fetch without one, and there the call stays the old unbounded
    one while the harness's fetches settle instantly anyway. */
 const FETCH_TIMEOUT_MS = 10000;
-async function fetchJSON(url){
+/* WEB56 P2 (Shane 2026-11-04): single-flight dedupe — concurrent
+   calls for the IDENTICAL URL share one in-flight request (the
+   page's parallel passes routinely ask for the same read at the
+   same moment: gamma reads across horizons, a staged load racing
+   a housekeeping pass, the odds drawer warming the same coin the
+   tick is pulling). Keyed by URL; the entry is removed the moment
+   the request settles, so NOTHING is cached — the next call after
+   settle fetches fresh, exactly as before. Errors and timeouts
+   resolve null for every waiter, the same value a solo caller
+   would have gotten. GET reads only: the page's POSTs (nmPost,
+   smsPost) never come through here. */
+const FETCH_INFLIGHT = {};
+function fetchJSON(url){
+  const key = String(url);
+  const hit = FETCH_INFLIGHT[key];
+  if (hit) return hit;
+  /* The entry deletes itself in the wrapper's finally — which
+     runs BEFORE the shared promise resolves to any waiter — so
+     a caller resuming from an await can never be handed a
+     just-settled entry as if it were still in flight. */
+  const pr = (async () => {
+    try { return await fetchJSONOnce(url); }
+    finally { if (FETCH_INFLIGHT[key] === pr) delete FETCH_INFLIGHT[key]; }
+  })();
+  FETCH_INFLIGHT[key] = pr;
+  return pr;
+}
+async function fetchJSONOnce(url){
   let timer = null;
   try {
     const opts = {cache: "no-store"};
@@ -2589,6 +2616,32 @@ function pmEngineTargetFor(sym, h, startMs){
    refreshMktLineH below is that body, horizon by horizon. The
    240m entry is fetched only when the cycle length actually is
    240 (audit §1.1-E: no surface renders it otherwise). */
+/* WEB56 P1 (Shane 2026-11-04): the priority horizon for one
+   coin's target pass — the horizon whose target fetch is issued
+   FIRST and whose row renders the moment its own data lands,
+   without waiting on the other horizons. Priority, in order:
+   (a) a horizon this pass was explicitly FORCED for (a pad target
+   check names its horizon — that check is the user's immediate
+   intent); (b) the odds drawer's chosen horizon (ODDS.tgtH) when
+   the drawer coin is this coin — the drawer selection is a
+   first-class priority key; (c) the setup's chosen window length
+   (S.lenMin) when it is one of the pass's horizons; (d) 5m, the
+   shortest market horizon. Pure ordering: every horizon still
+   runs the identical refreshMktLineH body, entries land in the
+   same cs.mktLines slots, and locks still come only from
+   confirmed targets — reordering can change WHEN a row paints,
+   never WHAT it locks on (pinned by the WEB56 P1 lock-equivalence
+   test). */
+function priorityHorizonFor(sym, hzList, forceH){
+  const list = (hzList && hzList.length) ? hzList : MKT_HZ;
+  if (typeof forceH === "number" && list.indexOf(forceH) >= 0) return forceH;
+  try {
+    if (typeof ODDS !== "undefined" && ODDS && ODDS.coin === sym && list.indexOf(ODDS.tgtH) >= 0)
+      return ODDS.tgtH;
+  } catch (e) { /* ODDS not yet defined on an early call: fall through */ }
+  if (list.indexOf(S.lenMin) >= 0) return S.lenMin;
+  return list.indexOf(5) >= 0 ? 5 : list[0];
+}
 async function refreshMktLines(sym, forceH){
   const cs = coinState(sym);
   if (!marketActive()){ cs.mktLines = null; return; }
@@ -2598,7 +2651,20 @@ async function refreshMktLines(sym, forceH){
   try {
     const now = Date.now();
     const hzList = MKT_HZ.filter(h => h !== 240 || S.lenMin === 240);
-    await Promise.all(hzList.map(h => refreshMktLineH(sym, h, forceH, now).catch(() => {})));
+    /* WEB56 P1: the priority horizon's pass is ISSUED first and
+       the coin's outlook renders the moment THAT horizon lands —
+       the priority row never waits on non-priority horizons. The
+       remaining horizons are issued in the same synchronous burst
+       right behind it (so the WEB56 A3 in-flight coalescing —
+       gamma reads shared across horizons — still collapses them)
+       and are awaited only after the priority render. */
+    const prioH = priorityHorizonFor(sym, hzList, forceH);
+    const rest = hzList.filter(h => h !== prioH);
+    const prioP = refreshMktLineH(sym, prioH, forceH, now).catch(() => {});
+    const restP = rest.map(h => refreshMktLineH(sym, h, forceH, now).catch(() => {}));
+    await prioP;
+    if (padPanelLive(sym)) renderPadCalls(sym);
+    await Promise.all(restP);
   } finally { cs.mktBusy = false; }
 }
 async function refreshMktLineH(sym, h, forceH, now){
@@ -2861,6 +2927,16 @@ async function pmTargetCheck(sym){
      both values. */
   const onHand = mktLineFor(tsym, h);
   let firstPrice = onHand ? onHand.price : null;
+  /* WEB56 P1: the verdict below compares against the lock that
+     existed when this check STARTED. A refresh pass now renders
+     the outlook the moment its priority horizon lands, so a lock
+     can be created by this check's OWN passes — reporting that
+     lock as pre-existing ("matches the locked target") would
+     misstate the check: at press time nothing was locked yet.
+     The lock itself is never touched; this only chooses which
+     snapshot the verdict names. */
+  const lockAtStart = (tcs.padLock && tcs.padLock[h] &&
+    tcs.padLock[h].closeAt === winBoundaryMs(Date.now(), h)) ? tcs.padLock[h] : null;
   /* WEB56 B4: a forced check pulls the engine's targets first —
      if the engine has already confirmed this window, the first
      refresh pass below confirms the entry from it. */
@@ -2889,7 +2965,7 @@ async function pmTargetCheck(sym){
   const ml = mktLineFor(tsym, h);
   if (ml && ml.confirmed){
     const closeAt = winBoundaryMs(Date.now(), h);
-    const lock = tcs.padLock && tcs.padLock[h];
+    const lock = lockAtStart;
     /* WEB51: the confirmed target IS the entry's lock value —
        Polymarket's published price to beat, or the stream TWAP
        when no published value was on hand. Match and revision
@@ -6133,7 +6209,11 @@ async function priceTick(){
       }
       cs.els.price.textContent = fmtPrice(cs.price);
       renderReadouts(sym);
-      renderPadCalls(sym);
+      /* WEB56 P2: the outlook table rebuilds on a tick only while
+         its panel is in the live DOM — a detached/not-rendered
+         panel keeps its last-good table; price/tick state above
+         still updated, so its next render is current. */
+      if (padPanelLive(sym)) renderPadCalls(sym);
       const c = cs.closesH, n = c.length;
       if (n > 24){
         const chg = cs.price / c[n - 25] - 1;
@@ -7471,6 +7551,25 @@ function padCallsRows(sym){
             mkt: fresh.mkt, lockedAt: fresh.lockedAt, checked: true};
   });
 }
+/* WEB56 P2 (Shane 2026-11-04): is this coin's outlook panel in
+   the live DOM right now? Per-tick and per-pass rebuilds of the
+   outlook table are skipped for a panel that isn't — its last-
+   good DOM (wherever it lives) stands, and the coin's DATA state
+   (price, ticks, target entries, records) still updates on the
+   same cadence, so the next real render — panel re-attached,
+   drawer interaction, form landing — is computed from current
+   state exactly as if the skipped rebuilds had run (locks are
+   render-driven everywhere on this page; a skipped rebuild locks
+   nothing early and nothing late that a later render wouldn't).
+   Environments without node connectedness (the test harness's
+   stubs) report live — renders there behave exactly as before. */
+function padPanelLive(sym){
+  const cs = S.coins[sym];
+  const out = cs && cs.els && cs.els.padCalls;
+  if (!out) return false;
+  if (typeof out.isConnected === "boolean") return out.isConnected;
+  return true;
+}
 function renderPadCalls(sym){
   const cs = coinState(sym), out = cs.els && cs.els.padCalls;
   if (!out) return;
@@ -7835,7 +7934,12 @@ async function refreshOdds(){
   sel.addEventListener("change", async () => {
     ODDS.coin = sel.value; ODDS.price = null;
     renderOddsTgt();
-    if (ODDS_LIVE) refreshMktLines(ODDS.coin);
+    /* WEB56 P1: a drawer selection change re-prioritizes at once —
+       the new coin's target pass (its ODDS.tgtH horizon first, via
+       priorityHorizonFor) and its windowed-record load (issued +
+       awaited first inside loadWinRecAll) go before anything else
+       the drawer refreshes. */
+    if (ODDS_LIVE){ refreshMktLines(ODDS.coin); loadWinRecAll(); }
     await oddsSeedPrice(); refreshOdds();
   });
   const sl = $("#oddsSlider");
@@ -8129,18 +8233,37 @@ async function oddsRecheckTargets(){
    fetch timeout and sink every coin at once — each coin here lands
    or fails on its own). Per-coin housekeeping loads keep it fresh. */
 let WINREC_BUSY = false;
+/* One coin's windowed-record load — lands or fails on its own
+   (WEB32 isolation, unchanged). */
+async function loadWinRecOne(sym){
+  const j = await fetchJSON(AUTH + "/api/perp/recent-calls?coins=" + encodeURIComponent(sym));
+  if (!j || !j.ok || !j.windows) return;
+  const cs = S.coins[sym];
+  if (!cs) return;
+  if (j.windows[sym]) cs.winRec = j.windows[sym];
+  if (j.records && j.records[sym] && !cs.records) cs.records = j.records[sym];
+}
 async function loadWinRecAll(){
   if (WINREC_BUSY) return;
   WINREC_BUSY = true;
   try {
-    await Promise.all(keptCoins().map(async (sym) => {
-      const j = await fetchJSON(AUTH + "/api/perp/recent-calls?coins=" + encodeURIComponent(sym));
-      if (!j || !j.ok || !j.windows) return;
-      const cs = S.coins[sym];
-      if (!cs) return;
-      if (j.windows[sym]) cs.winRec = j.windows[sym];
-      if (j.records && j.records[sym] && !cs.records) cs.records = j.records[sym];
-    }));
+    /* WEB56 P1: the odds drawer's coin is the priority key — its
+       record load is issued AND awaited first (and the crown +
+       picks render from it immediately), because that is the
+       coin×horizon the user is actually looking at. The
+       remaining kept coins follow in the same per-coin parallel
+       batch as before — the crown spans all kept coins, so they
+       all still load; they just never block the drawer's coin. */
+    const all = keptCoins();
+    let prio = null;
+    try { if (typeof ODDS !== "undefined" && ODDS && all.indexOf(ODDS.coin) >= 0) prio = ODDS.coin; }
+    catch (e) { /* ODDS not yet defined: no priority coin */ }
+    if (prio){
+      await loadWinRecOne(prio);
+      renderOddsBest4h();
+      renderOddsPicks();
+    }
+    await Promise.all(all.filter(s => s !== prio).map(loadWinRecOne));
     renderOddsBest4h();
     renderOddsPicks();
   } finally { WINREC_BUSY = false; }
@@ -8193,7 +8316,12 @@ function renderOddsTgt(){
   document.querySelectorAll("[data-tkey]").forEach(b =>
     b.addEventListener("click", () => oddsTgtPress(b.getAttribute("data-tkey"))));
   document.querySelectorAll("[data-thz]").forEach(b =>
-    b.addEventListener("click", () => { ODDS.tgtH = +b.getAttribute("data-thz"); renderOddsTgt(); }));
+    b.addEventListener("click", () => { ODDS.tgtH = +b.getAttribute("data-thz"); renderOddsTgt();
+      /* WEB56 P1: the newly chosen horizon becomes the priority
+         horizon of the drawer coin's next target pass — fire that
+         pass now (while the drawer is live) instead of waiting
+         for the next tick to get around to it. */
+      if (ODDS_LIVE) refreshMktLines(ODDS.coin); }));
   const rc = $("#oddsRecheck");
   if (rc) rc.addEventListener("click", oddsRecheckTargets);
   const ap = $("#oddsTgtApply");
