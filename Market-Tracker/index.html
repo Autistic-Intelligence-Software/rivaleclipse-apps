@@ -1236,6 +1236,11 @@ function coinState(sym){
     winRec: null,              // WEB49: windowed graded records {h: {last50, h4}} from the same payload's additive `windows` sibling — the Odds Board's past-4-hours crown and per-horizon most-likely picks read it; null until the first payload lands (or forever on an older server)
     formPm: formCacheRead(LS_FORMPM, sym),   // WEB31: in Polymarket mode, per-window — WEB56: hydrated from the persisted cache like cs.form {open, close} from Polymarket's own posted prices, keyed h:startMs — the strip re-grades its markers on the market's values (see loadFormPm); completed windows are immutable, so entries are cached for the session
     formPmBusy: false,         // WEB31: one Polymarket strip pass in flight per card
+    formBusy: false,           // WEB56 fix1: one recent-form load in flight per coin (see loadRecentFormCoin)
+    formTrailing: false,       // WEB56 fix1: an explicit load arrived mid-attempt — run one trailing attempt when it settles
+    formChain: null,           // WEB56 fix1: the in-flight load chain promise — explicit callers join it instead of being dropped
+    formFails: 0,              // WEB56 fix1: consecutive recent-form load failures — drives the retry backoff ladder
+    formRetryTimer: null,      // WEB56 fix1: pending recent-form retry handle (null = none scheduled)
     waveTest: null,            // WEB23: FROZEN server row {closeAt, horizon, row} — replaced only on toggle-on / horizon change / cycle roll (see fetchWaveTest)
     waveTestOn: waveTestPref(sym).on,          // WEB23: default OFF (pref absent -> off)
     waveTestHorizon: waveTestPref(sym).horizon, // WEB23: 5|15|30|45|60, default = S.lenMin when valid else 15
@@ -5444,32 +5449,119 @@ function renderSources(sym){
    waited for the next 15-minute housekeeping batch. Each coin
    now lands (or fails) on its own and re-renders its own card;
    toggleCoin fires a one-coin load the moment a coin is added. */
+/* WEB56 fix1 (Shane 2026-11-04): the boot pass fires every watched
+   coin's recent-calls read in one parallel burst, and under that
+   burst the Function/engine slow path intermittently answers 503
+   (service_slow) for a random subset of coins — measured live:
+   5 of 6 coins 503'd in a fresh-profile boot while serial reads
+   always succeed. The pre-fix loader treated that miss as final:
+   the coin's form stayed null until the ~15-minute housekeeping
+   slot (loopN % 900 === 300), so its outlook rows rendered with
+   NO history strip for minutes at a time (Shane's XRP shot —
+   every row locked, zero strips) and, with no payload ever
+   landing, WEB56's localStorage persistence had nothing to
+   persist for that coin either. The loader is now per-coin with
+   its own recovery: a failed read schedules a retry on a short
+   escalating ladder (2s/5s/10s/20s/40s, then steady at 40s while
+   the coin stays watched and its form is still missing) instead
+   of waiting for housekeeping; a render that finds the form
+   absent fires an immediate load (ensureRecentForm); and an
+   all-empty payload can never overwrite a last-good strip —
+   settled windows are immutable, so a coin that has settled
+   windows can never legitimately read back empty. */
+const FORM_RETRY_DELAYS = [2000, 5000, 10000, 20000, 40000];
+function formHasWins(f){
+  return !!f && typeof f === "object" &&
+    Object.keys(f).some(h => f[h] && f[h].length);
+}
+function clearFormRetry(sym){
+  const cs = S.coins[sym];
+  if (cs && cs.formRetryTimer != null){
+    try { clearTimeout(cs.formRetryTimer); } catch (e) {}
+    cs.formRetryTimer = null;
+  }
+}
+function scheduleFormRetry(sym){
+  const cs = S.coins[sym]; if (!cs) return;
+  if (cs.formRetryTimer != null) return;
+  const d = FORM_RETRY_DELAYS[Math.min(cs.formFails || 0, FORM_RETRY_DELAYS.length - 1)];
+  cs.formFails = (cs.formFails || 0) + 1;
+  cs.formRetryTimer = setTimeout(() => {
+    cs.formRetryTimer = null;
+    if (S.selected.indexOf(sym) < 0) return;   // unwatched coins are never fetched (WEB26)
+    loadRecentFormCoin(sym);
+  }, d);
+}
+/* A render (outlook table, ENTER readout) that finds this coin's
+   form absent fires ONE immediate load — no load in flight and no
+   retry already pending — and the landing re-renders every host
+   via renderFormHosts, exactly like a boot-stage landing. */
+function ensureRecentForm(sym){
+  const cs = S.coins[sym]; if (!cs) return;
+  if (cs.form || cs.formBusy || cs.formRetryTimer != null) return;
+  loadRecentFormCoin(sym);
+}
 async function loadRecentForm(only){
   const coins = only ? [only] : S.selected.slice();
   if (!coins.length) return;
-  await Promise.all(coins.map(async (sym) => {
-    const j = await fetchJSON(AUTH + "/api/perp/recent-calls?coins=" + encodeURIComponent(sym));
-    if (!j || !j.ok || !j.coins) return;
-    const cs = S.coins[sym]; if (!cs) return;
-    cs.form = j.coins[sym] || {};
-    /* WEB47: the same response carries the per-(coin, horizon)
-       graded records (additive `records` sibling) — the BEST
-       OPTION highlight's record source. Absent on an older server:
-       cs.records stays null and the highlight stays silent. */
-    cs.records = (j.records && j.records[sym]) || null;
-    /* WEB49: the same response also carries the windowed records
-       (additive `windows` sibling: last-50 + trailing-4h per
-       horizon) — the Odds Board crown and picks read them. */
-    cs.winRec = (j.windows && j.windows[sym]) || null;
-    if (typeof renderOddsBest4h === "function") renderOddsBest4h();
-    if (typeof renderOddsPicks === "function") renderOddsPicks();
-    renderBestOpt(sym);
-    /* WEB56 A2: persist the settled history the moment it lands,
-       and re-render EVERY surface showing this coin's strips. */
-    persistForm(sym);
-    renderFormHosts(sym);
-    if (S.preset === "polymarket") loadFormPm(sym);
-  }));
+  await Promise.all(coins.map((sym) => loadRecentFormCoin(sym, true)));
+}
+/* `explicit` marks a caller-driven load (boot stage, watchlist
+   add, housekeeping): when one arrives while an opportunistic
+   render-time attempt is still in flight, it is not dropped —
+   it queues ONE trailing attempt behind the in-flight one, and
+   the caller's promise (cs.formChain) settles only after that
+   trailing attempt has landed (or failed into the retry ladder),
+   so the caller's read is the one that lands. */
+function loadRecentFormCoin(sym, explicit){
+  const cs = S.coins[sym]; if (!cs) return Promise.resolve(false);
+  if (cs.formBusy){
+    if (explicit) cs.formTrailing = true;
+    return cs.formChain || Promise.resolve(false);
+  }
+  cs.formBusy = true;
+  const chain = (async () => {
+    let ok = false;
+    try { ok = await loadRecentFormAttempt(sym); } catch (e) { ok = false; }
+    cs.formBusy = false;
+    if (cs.formTrailing){
+      cs.formTrailing = false;
+      if (S.selected.indexOf(sym) >= 0) return loadRecentFormCoin(sym, true);
+    }
+    return ok;
+  })();
+  cs.formChain = chain;
+  return chain;
+}
+async function loadRecentFormAttempt(sym){
+  const cs = S.coins[sym]; if (!cs) return false;
+  const j = await fetchJSON(AUTH + "/api/perp/recent-calls?coins=" + encodeURIComponent(sym));
+  if (!j || !j.ok || !j.coins){ scheduleFormRetry(sym); return false; }
+  const incoming = (j.coins[sym] && typeof j.coins[sym] === "object" && !Array.isArray(j.coins[sym])) ? j.coins[sym] : {};
+  /* WEB56 fix1: never let an all-empty payload erase a last-good
+     strip (see the header note — it cannot be a true read). */
+  if (formHasWins(incoming) || !formHasWins(cs.form)) cs.form = incoming;
+  /* WEB47: the same response carries the per-(coin, horizon)
+     graded records (additive `records` sibling) — the BEST
+     OPTION highlight's record source. Absent on an older server:
+     cs.records stays null and the highlight stays silent. */
+  cs.records = (j.records && j.records[sym]) || null;
+  /* WEB49: the same response also carries the windowed records
+     (additive `windows` sibling: last-50 + trailing-4h per
+     horizon) — the Odds Board crown and picks read them. */
+  cs.winRec = (j.windows && j.windows[sym]) || null;
+  if (typeof renderOddsBest4h === "function") renderOddsBest4h();
+  if (typeof renderOddsPicks === "function") renderOddsPicks();
+  renderBestOpt(sym);
+  /* WEB56 A2: persist the settled history the moment it lands,
+     and re-render EVERY surface showing this coin's strips. */
+  persistForm(sym);
+  renderFormHosts(sym);
+  if (S.preset === "polymarket") loadFormPm(sym);
+  /* WEB56 fix1: a landed payload ends the retry ladder. */
+  cs.formFails = 0;
+  clearFormRetry(sym);
+  return true;
 }
 /* WEB31 (Shane 2026-10-30, market data-plane rule — CLOSING VALUE):
    in Polymarket mode the recent-form markers re-grade on
@@ -7184,6 +7276,11 @@ function padNowBusyUI(sym, busy){
 function renderPadNow(sym){
   const cs = coinState(sym), out = cs.els && cs.els.padOut;
   if (!out || !cs.padNow) return;
+  /* WEB56 fix1: the readout's strips belong to its TARGET coin —
+     same render-time pull as the outlook (see renderPadCalls);
+     watched coins only, per WEB26. */
+  const pnTsym = cs.padNow.tsym;
+  if ((pnTsym === sym || S.selected.indexOf(pnTsym) >= 0) && !coinState(pnTsym).form) ensureRecentForm(pnTsym);
   out.innerHTML = padNowHTML(sym);
   wirePadNow(sym);
 }
@@ -7573,6 +7670,9 @@ function padPanelLive(sym){
 function renderPadCalls(sym){
   const cs = coinState(sym), out = cs.els && cs.els.padCalls;
   if (!out) return;
+  /* WEB56 fix1: a strip-less outlook render pulls its own form
+     data — the row never just waits for the next scheduled pass. */
+  if (!cs.form) ensureRecentForm(sym);
   const rows = padCallsRows(sym);
   if (!rows){ if (out.innerHTML) out.innerHTML = ""; renderBestOpt(sym); return; }
   /* WEB47: this coin's BEST OPTION (record × confidence over its
