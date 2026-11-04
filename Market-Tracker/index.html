@@ -5470,6 +5470,17 @@ function renderSources(sym){
    settled windows are immutable, so a coin that has settled
    windows can never legitimately read back empty. */
 const FORM_RETRY_DELAYS = [2000, 5000, 10000, 20000, 40000];
+/* WEB56 fix1 (cont.): the burst is the disease, so recovery must
+   not burst either. Verified live 2026-11-04: six PARALLEL
+   recent-calls reads through the Function/engine path contend —
+   most hang past the 12 s fetch timeout or 503 — while serial
+   reads answer in ~1-2 s. Multi-coin loads therefore stagger
+   their STARTS, and each coin's retry ladder carries a per-coin
+   offset, so a six-coin failure wave never retries as a wave. */
+const FORM_STAGGER_MS = 900;
+function formDelay(ms){
+  return new Promise((res) => { const t = setTimeout(res, ms); if (!t) res(); });
+}
 function formHasWins(f){
   return !!f && typeof f === "object" &&
     Object.keys(f).some(h => f[h] && f[h].length);
@@ -5484,7 +5495,8 @@ function clearFormRetry(sym){
 function scheduleFormRetry(sym){
   const cs = S.coins[sym]; if (!cs) return;
   if (cs.formRetryTimer != null) return;
-  const d = FORM_RETRY_DELAYS[Math.min(cs.formFails || 0, FORM_RETRY_DELAYS.length - 1)];
+  const base = FORM_RETRY_DELAYS[Math.min(cs.formFails || 0, FORM_RETRY_DELAYS.length - 1)];
+  const d = base + Math.max(0, S.selected.indexOf(sym)) * 1200;
   cs.formFails = (cs.formFails || 0) + 1;
   cs.formRetryTimer = setTimeout(() => {
     cs.formRetryTimer = null;
@@ -5504,7 +5516,15 @@ function ensureRecentForm(sym){
 async function loadRecentForm(only){
   const coins = only ? [only] : S.selected.slice();
   if (!coins.length) return;
-  await Promise.all(coins.map((sym) => loadRecentFormCoin(sym, true)));
+  /* Staggered starts (see the note at FORM_STAGGER_MS): the loads
+     still overlap, but peak concurrency drops from N-at-once to
+     ~2-3, which is what the endpoint path actually sustains. */
+  const jobs = [];
+  for (let i = 0; i < coins.length; i++){
+    if (i > 0) await formDelay(FORM_STAGGER_MS);
+    jobs.push(loadRecentFormCoin(coins[i], true));
+  }
+  await Promise.all(jobs);
 }
 /* `explicit` marks a caller-driven load (boot stage, watchlist
    add, housekeeping): when one arrives while an opportunistic
