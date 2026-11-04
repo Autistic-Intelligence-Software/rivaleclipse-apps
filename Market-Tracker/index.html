@@ -31,6 +31,12 @@ header{max-width:none;margin:0 auto;padding:12px 18px 10px;position:sticky;top:0
 h1{margin:0;font-size:24px;line-height:1.1;background:linear-gradient(90deg,var(--gold2),var(--gold) 55%,var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
 .sub{color:var(--mut);max-width:760px;font-size:13.5px;line-height:1.45;margin:5px 0 0}
 .hdrnav{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-left:auto}
+/* WEB56 A1: collapsible header — the slim bar replaces the full
+   header body while collapsed (expand control + page title only). */
+#hdrSlim{display:flex;align-items:center;justify-content:space-between;gap:10px}
+#hdrSlim[hidden]{display:none}
+#hdrBody[hidden]{display:none}
+.hdrslim-title{font-size:20px;font-weight:700;line-height:1.1;background:linear-gradient(90deg,var(--gold2),var(--gold) 55%,var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
 .ctxbtn{background:none;border:1px solid var(--line);border-radius:999px;color:var(--gold2);
   cursor:pointer;font-size:12px;font-weight:700;letter-spacing:.05em;padding:4px 12px;text-transform:uppercase}
 .ctxbtn:hover{border-color:var(--gold)}
@@ -562,7 +568,12 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
 </style>
 </head>
 <body>
-<header>
+<header id="pageHeader">
+  <div id="hdrSlim" hidden>
+    <span class="hdrslim-title">Perpetual Helper</span>
+    <button type="button" class="ctxbtn" id="hdrExpandBtn" aria-expanded="false" title="Expand the header">Expand ▾</button>
+  </div>
+  <div id="hdrBody">
   <div class="wordmark"><b>Rıval</b> <i>Eclıpse</i></div>
   <div class="hrow">
     <h1>Perpetual Helper</h1>
@@ -570,6 +581,7 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
       <button type="button" class="ctxbtn ctxkeep" id="hdrScoreBtn">Scoreboard</button>
       <button type="button" class="ctxbtn ctxkeep" id="hdrFcBtn">Day forecast</button>
       <button type="button" class="ctxbtn" data-ctxtext="how">How it works</button>
+      <button type="button" class="ctxbtn" id="hdrCollapseBtn" aria-expanded="true" title="Collapse the header">Collapse ▴</button>
     </nav>
   </div>
   <!-- WEB25 declutter: the header tagline + Learn description moved
@@ -591,6 +603,7 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
     <span class="note" id="cascadeStat"></span>
   </div>
   <div class="note" style="margin-top:2px">Experimental: on covered closes the 5m row leads with the dedicated long-horizon call ending at that close — the native 5m call stays right under it.</div>
+  </div>
 </header>
 <div id="drawerBackdrop" hidden></div>
 <button class="edgetab left" id="oddsTab" type="button" title="Open the odds board">Odds</button>
@@ -1013,6 +1026,40 @@ function setCascade(on){
   }
   renderCascadeStat();
 })();
+/* ---------- WEB56 A1: collapsible header -------------------------
+   The whole header body (brand/title, SCOREBOARD + forecast +
+   How-it-works nav, tutorial link, NORMAL/PERPETUALS switch,
+   Cascade toggle + description) collapses to a slim bar carrying
+   only the page title and an Expand control. Display preference
+   only (WEB8 discipline): persisted as ph.hdr.v1, default
+   EXPANDED, feeds nothing. The controls inside the body are
+   untouched — collapsing only hides the container, so the mode
+   switch and the Cascade toggle keep their state and keep
+   working the moment the header is expanded again. */
+const LS_HDR = "ph.hdr.v1";
+let HDR_COLLAPSED = !!lsGet(LS_HDR, false);
+function applyHdrCollapsed(){
+  const body = document.getElementById("hdrBody");
+  const slim = document.getElementById("hdrSlim");
+  if (body) body.hidden = HDR_COLLAPSED;
+  if (slim) slim.hidden = !HDR_COLLAPSED;
+  const cb = document.getElementById("hdrCollapseBtn");
+  if (cb) cb.setAttribute("aria-expanded", HDR_COLLAPSED ? "false" : "true");
+  const eb = document.getElementById("hdrExpandBtn");
+  if (eb) eb.setAttribute("aria-expanded", HDR_COLLAPSED ? "false" : "true");
+}
+function setHdrCollapsed(c){
+  HDR_COLLAPSED = !!c;
+  lsSet(LS_HDR, HDR_COLLAPSED);
+  applyHdrCollapsed();
+}
+(function hdrInit(){
+  applyHdrCollapsed();
+  const cb = document.getElementById("hdrCollapseBtn");
+  if (cb) cb.addEventListener("click", () => setHdrCollapsed(true));
+  const eb = document.getElementById("hdrExpandBtn");
+  if (eb) eb.addEventListener("click", () => setHdrCollapsed(false));
+})();
 const LS_WAVETEST = "ph.wavetest.v1";
 /* WEB33 (Shane 2026-10-30): per-coin Timing Assist toggle —
    { SYM: bool }. Display preference ONLY, like every other ph.*
@@ -1077,6 +1124,59 @@ function setFCAdjShow(which, on){
    minute windows only — 5 / 10 / 15 / 30 minutes over the snapshot's
    opening minutes. Any stored WEB5 value (24H/7D/30D) falls back. */
 const FCZ_MIN = {"5": 5, "10": 10, "15": 15, "30": 30};
+/* ---------- WEB56 A2: recent-form persistence --------------------
+   Settled windows are immutable, so a cached form strip can only
+   ever be INCOMPLETE (missing the newest window), never wrong.
+   cs.form (and cs.formPm, the Polymarket re-grade values for those
+   same settled windows) persist to localStorage whenever fresh
+   data lands, and coinState hydrates from the cache at creation —
+   the strips therefore render from first paint instead of waiting
+   for the boot-stage fetch, and survive any call-generation state.
+   Display state only (WEB8): the cached strips feed nothing, are
+   never posted anywhere, and are replaced wholesale per coin when
+   the next payload lands. */
+const LS_FORM = "ph.form.v1", LS_FORMPM = "ph.formpm.v1";
+function formCacheRead(key, sym){
+  const m = lsGet(key, null);
+  const f = (m && typeof m === "object" && !Array.isArray(m)) ? m[sym] : null;
+  return (f && typeof f === "object" && !Array.isArray(f)) ? f : null;
+}
+function persistForm(sym){
+  const cs = S.coins[sym];
+  if (!cs) return;
+  try {
+    if (cs.form){
+      const m = lsGet(LS_FORM, {});
+      const mm = (m && typeof m === "object" && !Array.isArray(m)) ? m : {};
+      mm[sym] = cs.form;
+      lsSet(LS_FORM, mm);
+    }
+    if (cs.formPm){
+      const m = lsGet(LS_FORMPM, {});
+      const mm = (m && typeof m === "object" && !Array.isArray(m)) ? m : {};
+      mm[sym] = cs.formPm;
+      lsSet(LS_FORMPM, mm);
+    }
+  } catch (e) { /* quota / private mode: the in-memory strip still stands */ }
+}
+/* WEB56 A2: when form data for tsym lands — from ANY load path
+   (boot stage, watchlist add, housekeeping slot, Polymarket
+   re-grade) — every surface showing tsym's strips re-renders: the
+   coin's own outlook, its own ENTER readout when it hosts one, and
+   every OTHER card whose ENTER readout targets tsym. (Pre-WEB56
+   only the hosting coin's own padNow re-rendered, and only on the
+   two landing paths that remembered to do it — a readout opened
+   before the data arrived could keep its strip-less snapshot
+   indefinitely while the outlook below it already showed strips.) */
+function renderFormHosts(tsym){
+  const cs = S.coins[tsym];
+  if (!cs) return;
+  renderPadCalls(tsym);
+  for (const host of S.selected){
+    const hcs = S.coins[host];
+    if (hcs && hcs.padNow && (host === tsym || hcs.padNow.tsym === tsym)) renderPadNow(host);
+  }
+}
 function coinState(sym){
   if (!S.coins[sym]) S.coins[sym] = {
     price: null, closesH: [], volsH: [], closes15: [], closes1: [], ticks: [],
@@ -1095,6 +1195,8 @@ function coinState(sym){
     mktSrc: null,              // WEB17: "rtds" (live Chainlink stream) or "poll" (hourly-variant poll)
     mktLines: null,            // WEB17: per-horizon market targets {5:{price,src,start,at}, 15:…, 60:…, 240:…}
     mktLinesAt: 0,             // WEB17: last mktLines refresh pass (throttle)
+    mktBusy: false,            // WEB56 A3: one refreshMktLines pass in flight per coin — a new pass while one runs is skipped (overlapping passes used to interleave entry writes)
+    pmTarget: null,            // WEB56 B4: this coin's engine-served pm-targets entries {"5": {start, target, confirmed, src}, "15": ..., "60": ...} from GET /api/perp/pm-targets — the engine's always-on Chainlink witness; null until the first payload lands
     nextTarget: null,          // WEB12: the market target for the NEXT window, fetched while scoring this one
     strikePass: 0,             // WEB19: token of this coin's live applyMarketStrike convergence pass (only the newest pass may apply values)
     padLock: {},               // WEB21: per-horizon FROZEN outlook rows {h: {closeAt, p, call, winP, est, line, mkt, lockedAt}} — see padCallsRows
@@ -1102,10 +1204,10 @@ function coinState(sym){
     padNowBusy: false,         // WEB27: one manual now-view refresh in flight per card
     padLiveEst: {},            // WEB28: per-horizon DISPLAY-ONLY live estimates shown under the LOCKED outlook rows {h: {closeAt, p, call, winP, est, stampMs}} — written only by a manual outlook refresh tap (padRefreshCalls), keyed to the window's closeAt so a rolled window never shows the old estimate; never scored, never feeds padLock
     padCallsBusy: false,       // WEB28: one manual outlook refresh in flight per card
-    form: null,                // WEB29: recent-form strip data {h: [{close_at, dir, call, hit}]} from GET /api/perp/recent-calls — SETTLED canonical history only, display only; null until the first payload lands, and the strip renders nothing while null/empty
+    form: formCacheRead(LS_FORM, sym),   // WEB29: recent-form strip data — WEB56: hydrated from the persisted cache (settled windows are immutable; see persistForm) {h: [{close_at, dir, call, hit}]} from GET /api/perp/recent-calls — SETTLED canonical history only, display only; null until the first payload lands, and the strip renders nothing while null/empty
     records: null,             // WEB47: per-horizon graded records {h: {calls, hits, hitRate, pm}} from the same recent-calls payload (perp_horizon_stats counters) — the BEST OPTION highlight's record source; null until the first payload lands (or forever on an older server), and the highlight stays silent while null
     winRec: null,              // WEB49: windowed graded records {h: {last50, h4}} from the same payload's additive `windows` sibling — the Odds Board's past-4-hours crown and per-horizon most-likely picks read it; null until the first payload lands (or forever on an older server)
-    formPm: null,              // WEB31: in Polymarket mode, per-window {open, close} from Polymarket's own posted prices, keyed h:startMs — the strip re-grades its markers on the market's values (see loadFormPm); completed windows are immutable, so entries are cached for the session
+    formPm: formCacheRead(LS_FORMPM, sym),   // WEB31: in Polymarket mode, per-window — WEB56: hydrated from the persisted cache like cs.form {open, close} from Polymarket's own posted prices, keyed h:startMs — the strip re-grades its markers on the market's values (see loadFormPm); completed windows are immutable, so entries are cached for the session
     formPmBusy: false,         // WEB31: one Polymarket strip pass in flight per card
     waveTest: null,            // WEB23: FROZEN server row {closeAt, horizon, row} — replaced only on toggle-on / horizon change / cycle roll (see fetchWaveTest)
     waveTestOn: waveTestPref(sym).on,          // WEB23: default OFF (pref absent -> off)
@@ -2064,20 +2166,38 @@ async function pmPrice(sym, openAtMs, variant){
    and individual events are occasionally missing it). Returns
    a number, or null when no published value is on hand. */
 const PM_GAMMA = "https://gamma-api.polymarket.com/events?slug=";
+/* WEB56 A3: in-flight coalescing for gamma reads, PM_INFLIGHT-style,
+   keyed (sym, window start) — NOT by variant: at an aligned start the
+   5m and 15m horizons read the SAME underlying published value (a 15m
+   window's price to beat equals the 5m window's at the same start),
+   so within one refresh pass they share a single read instead of
+   fetching it twice (plus the other variant's slug each). The entry
+   is dropped the moment the read settles, so successive passes still
+   re-read exactly as before — only truly concurrent duplicates
+   collapse, and a published value for a started window is a posted
+   fact, so sharing it cannot change its value. */
+const GAMMA_INFLIGHT = {};
 async function pmGammaTarget(sym, startMs, variant){
-  const own = variant === "fifteen" ? "15m" : "5m";
-  const tries = [own];
-  if (own === "15m") tries.push("5m");
-  else if ((startMs / 1000) % 900 === 0) tries.push("15m");
-  for (const z of tries){
-    try {
-      const j = await fetchJSON(PM_GAMMA + encodeURIComponent(
-        sym.toLowerCase() + "-updown-" + z + "-" + Math.floor(startMs / 1000)));
-      const v = (j && j[0] && j[0].eventMetadata) ? +j[0].eventMetadata.priceToBeat : null;
-      if (v != null && isFinite(v) && v > 0) return v;
-    } catch (e) { /* gamma unreachable: no published value this pass */ }
-  }
-  return null;
+  const key = sym + "|" + Math.floor(startMs / 1000);
+  if (GAMMA_INFLIGHT[key]) return GAMMA_INFLIGHT[key];
+  const pr = (async () => {
+    const own = variant === "fifteen" ? "15m" : "5m";
+    const tries = [own];
+    if (own === "15m") tries.push("5m");
+    else if ((startMs / 1000) % 900 === 0) tries.push("15m");
+    for (const z of tries){
+      try {
+        const j = await fetchJSON(PM_GAMMA + encodeURIComponent(
+          sym.toLowerCase() + "-updown-" + z + "-" + Math.floor(startMs / 1000)));
+        const v = (j && j[0] && j[0].eventMetadata) ? +j[0].eventMetadata.priceToBeat : null;
+        if (v != null && isFinite(v) && v > 0) return v;
+      } catch (e) { /* gamma unreachable: no published value this pass */ }
+    }
+    return null;
+  })();
+  GAMMA_INFLIGHT[key] = pr;
+  try { return await pr; }
+  finally { if (GAMMA_INFLIGHT[key] === pr) delete GAMMA_INFLIGHT[key]; }
 }
 async function kalshiMarkets(sym){
   const series = KX_SERIES[sym];
@@ -2397,159 +2517,272 @@ const PM_STREAM_TOL = 0.0001;
    disagree about which market this is, not about the price:
    hold, never lock. */
 const PM_STREAM_GUARD = 0.001;
+/* ---------- WEB56 B4: engine-witnessed Polymarket targets --------
+   The page's local stream gate (WEB51/52) can only confirm a target
+   when THIS tab personally witnessed the minute before the window
+   opened over its own WebSocket — a phone that was backgrounded or
+   opened mid-window can never confirm that window, however final
+   the value is. The engine is always on and witnesses the same
+   Chainlink stream server-side; it serves its confirmed targets as
+   data at GET /api/perp/pm-targets (through the standard
+   /api/perp/* Pages proxy, which forwards arbitrary /api/perp/*
+   paths). One call covers every selected Polymarket coin, on the
+   same ~5s cadence as the mkt-lines passes (and forced on return
+   to the foreground). Entry contract per coin/horizon:
+   {start: <window open, ms epoch>, target: <number|null>,
+    confirmed: <bool>, src: "twap-stream" | "stream-gate" |
+    "endpoint" | null} — "twap-stream" confirmed means the engine
+   witnessed the Chainlink TWAP tick stamped exactly at the window
+   open (the settlement value itself); "stream-gate" confirmed
+   means the endpoint value agreed with the engine's spot-stream
+   TWAP within 1bp; "endpoint" is an UNCONFIRMED endpoint read and
+   is never consumed as a confirmation. Consumption lives in
+   refreshMktLineH (5m/15m only): a confirmed engine entry whose
+   start matches the horizon's current window confirms the entry
+   with lockPrice = the engine target, taking precedence over the
+   local stream gate; the local witness remains the fallback when
+   the engine has nothing confirmed. 60m is NOT consumed — the 1h
+   variant settles on the Binance candle open, not this stream, so
+   its engine entry is informational only and 60m logic is
+   untouched. Nothing here re-bases a locked call: padLock rows are
+   frozen at lock time exactly as before; this only decides which
+   value a not-yet-locked entry confirms on. */
+let PM_TARGETS = null;        // last /api/perp/pm-targets payload
+let PM_TARGETS_AT = 0;        // when the last fetch was fired (throttle)
+let PM_TARGETS_BUSY = false;  // one fetch in flight at a time
+async function loadPmTargets(force){
+  if (S.preset !== "polymarket") return null;
+  const coins = S.selected.filter(s => PM_TWAP_COINS.includes(s));
+  if (!coins.length) return null;
+  if (!force && Date.now() - PM_TARGETS_AT < 5000) return PM_TARGETS;
+  if (PM_TARGETS_BUSY) return PM_TARGETS;
+  PM_TARGETS_BUSY = true;
+  PM_TARGETS_AT = Date.now();
+  try {
+    const j = await fetchJSON(AUTH + "/api/perp/pm-targets?coins=" + coins.join(","));
+    if (!j || !j.ok || !j.targets) return PM_TARGETS;
+    PM_TARGETS = j;
+    for (const sym of Object.keys(j.targets)){
+      const cs = S.coins[sym];
+      if (cs) cs.pmTarget = j.targets[sym];
+    }
+    return PM_TARGETS;
+  } finally { PM_TARGETS_BUSY = false; }
+}
+/* The engine's entry for (sym, h) when it belongs to the window
+   opening at startMs — null otherwise (a stale-window engine entry
+   never leaks into a new window, same rule as mktLineFor). */
+function pmEngineTargetFor(sym, h, startMs){
+  if (S.preset !== "polymarket") return null;
+  const cs = S.coins[sym];
+  const per = cs && cs.pmTarget;
+  const e = per && per[String(h)];
+  if (!e || e.start !== startMs) return null;
+  return e;
+}
+/* WEB56 A3: refreshMktLines is now a thin per-coin wrapper —
+   an in-flight guard (one pass per coin at a time; overlapping
+   passes used to interleave entry writes, audit §1.1-D) plus a
+   Promise.all over the horizons (they are independent reads; the
+   sequential loop made one pass cost up to ~8 serial HTTP reads).
+   Per-horizon entry semantics are EXACTLY the old loop body's —
+   refreshMktLineH below is that body, horizon by horizon. The
+   240m entry is fetched only when the cycle length actually is
+   240 (audit §1.1-E: no surface renders it otherwise). */
 async function refreshMktLines(sym, forceH){
   const cs = coinState(sym);
   if (!marketActive()){ cs.mktLines = null; return; }
   if (!cs.mktLines) cs.mktLines = {};
-  const now = Date.now();
-  for (const h of MKT_HZ){
-    const start = winStartMs(now, h);
-    const cur = cs.mktLines[h];
-    const forced = forceH === true || forceH === h;
-    const variant = S.preset === "polymarket" ? PM_VARIANT[h] : null;
-    /* WEB48: confirmed PM TWAP entries re-verify on a slower 45s
-       latch so a late revision can still revoke them; everything
-       else keeps the 20s latch. Unconfirmed entries (confirmed
-       === false) always refetch. */
-    const latchMs = (variant && variant !== "hourly") ? 45000 : 20000;
-    if (cur && cur.start === start && cur.confirmed !== false && !forced && now - cur.at < latchMs) continue;
-    let got = null;
-    /* WEB51: Polymarket's published price to beat for this
-       window, read on the same pass as the endpoint read. */
-    let gammaV = null;
-    if (S.preset === "polymarket" && (variant === "fiveminute" || variant === "fifteen") && PM_TWAP_COINS.includes(sym))
-      gammaV = await pmGammaTarget(sym, start, variant);
-    if (S.preset === "polymarket"){
-      if (variant && (variant === "hourly" || PM_TWAP_COINS.includes(sym))){
-        const j = await pmPrice(sym, start, variant);
-        if (j && isFinite(+j.openPrice) && +j.openPrice > 0)
-          got = {price: +j.openPrice, src: "Polymarket", start: start, at: Date.now()};
-      }
-      /* The published value alone seeds the entry when the
-         endpoint read misses (it flickers at boundaries) —
-         the entry then tracks the published value's own
-         stability until an endpoint read lands. */
-      if (!got && gammaV != null)
-        got = {price: gammaV, src: "Polymarket", start: start, at: Date.now()};
-    } else if (S.preset === "kalshi" && h === 15){
-      const ms = await kalshiMarkets(sym);
-      if (ms){
-        const want = new Date(start).toISOString();
-        const m = ms.find(x => x.open_time === want);
-        if (m && isFinite(+m.floor_strike) && +m.floor_strike > 0)
-          got = {price: +m.floor_strike, src: "Kalshi", start: start, at: Date.now(), final: true};
-      }
+  if (cs.mktBusy) return;
+  cs.mktBusy = true;
+  try {
+    const now = Date.now();
+    const hzList = MKT_HZ.filter(h => h !== 240 || S.lenMin === 240);
+    await Promise.all(hzList.map(h => refreshMktLineH(sym, h, forceH, now).catch(() => {})));
+  } finally { cs.mktBusy = false; }
+}
+async function refreshMktLineH(sym, h, forceH, now){
+  const cs = coinState(sym);
+  const start = winStartMs(now, h);
+  const cur = cs.mktLines[h];
+  const forced = forceH === true || forceH === h;
+  const variant = S.preset === "polymarket" ? PM_VARIANT[h] : null;
+  /* WEB48: confirmed PM TWAP entries re-verify on a slower 45s
+     latch so a late revision can still revoke them; everything
+     else keeps the 20s latch. Unconfirmed entries (confirmed
+     === false) always refetch. */
+  const latchMs = (variant && variant !== "hourly") ? 45000 : 20000;
+  if (cur && cur.start === start && cur.confirmed !== false && !forced && now - cur.at < latchMs) return;
+  let got = null;
+  /* WEB51: Polymarket's published price to beat for this
+     window, read on the same pass as the endpoint read. */
+  let gammaV = null;
+  if (S.preset === "polymarket" && (variant === "fiveminute" || variant === "fifteen") && PM_TWAP_COINS.includes(sym))
+    gammaV = await pmGammaTarget(sym, start, variant);
+  if (S.preset === "polymarket"){
+    if (variant && (variant === "hourly" || PM_TWAP_COINS.includes(sym))){
+      const j = await pmPrice(sym, start, variant);
+      if (j && isFinite(+j.openPrice) && +j.openPrice > 0)
+        got = {price: +j.openPrice, src: "Polymarket", start: start, at: Date.now()};
     }
-    if (got){
-      const prev = (cur && cur.start === start) ? cur : null;
-      const agree = !!prev && Math.abs(prev.price - got.price) <= Math.max(1e-9, got.price * 1e-9);
-      got.reads = agree ? (prev.reads || 1) + 1 : 1;
-      /* WEB48: firstAt/lastChgAt track the standing value's
-         stability span for THIS window — a changed value restarts
-         the clock at the read that first showed it. */
-      got.firstAt = agree ? (prev.firstAt || prev.at || got.at) : got.at;
-      got.lastChgAt = agree ? (prev.lastChgAt || prev.firstAt || prev.at || got.at) : got.at;
-      /* The first price this window ever printed (kept across
-         revisions) — the check button reports a revision against
-         it even when the revision predates the check. */
-      got.firstPrice = agree ? (prev.firstPrice != null ? prev.firstPrice : prev.price)
-                             : (prev && prev.firstPrice != null ? prev.firstPrice : got.price);
-      if (got.final === true) got.confirmed = true;   // Kalshi: final on publication
-      else if (variant && variant !== "hourly"){
-        /* WEB48 finality (PM TWAP variants): the window is >=65s
-           old AND the standing value has been unchanged for >=15s
-           across >=2 reads. Two quick agreeing reads inside the
-           revision window no longer confirm anything. */
-        const finOk = (now - start >= 65000) && (got.at - got.lastChgAt >= 15000) && got.reads >= 2;
-        /* WEB51 STREAM ESTIMATE: the Chainlink TWAP-60 over the
-           window's opening minute, from the page's buffered
-           RTDS prints. The TWAP ends 2s BEFORE the boundary:
-           measured 2026-11-01 against Polymarket's published
-           priceToBeat over 16 live windows, the [start-62s,
-           start-2s] window reproduced the published value to
-           the displayed cent in 15 (the 16th was 0.003 bp out)
-           where the unshifted window managed 8 — the stream's
-           prints trail the official TWAP by ~2s. The estimate
-           is recomputed whenever the tick buffer still covers
-           that minute and frozen on the entry otherwise (the
-           buffer prunes to ~200s; the frozen value is a fact
-           about a completed minute and never changes). It
-           counts only with a real print in the opening minute's
-           last 15s — a stale entering price held across a tick
-           gap (socket drop mid-minute) is not evidence about
-           the stream's TWAP. */
-        let sEst = (prev && prev.streamEst != null) ? prev.streamEst : null;
-        try {
-          const f = (typeof twap60Before === "function") ? twap60Before(sym, start - 2000) : null;
-          if (f != null && isFinite(f) &&
-              (RTDS_TICKS[sym] || []).some(([t]) => t >= start - 15000 && t <= start)) sEst = f;
-        } catch (e) { /* no buffer: the frozen estimate (or none) stands */ }
-        got.streamEst = sEst;
-        /* WEB51 PUBLISHED VALUE: tracked with the same stability
-           discipline as the endpoint series — a published value
-           that changes between reads restarts its clock. A pass
-           where gamma does not answer keeps the last published
-           value on the entry rather than dropping it. */
-        if (gammaV != null){
-          const gSame = !!prev && prev.gammaVal != null && pmTickEq(prev.gammaVal, gammaV);
-          got.gammaVal = gammaV;
-          got.gammaFirst = gSame ? (prev.gammaFirst != null ? prev.gammaFirst : prev.gammaVal) : gammaV;
-          got.gammaFirstAt = gSame ? (prev.gammaFirstAt || prev.gammaAt || got.at) : got.at;
-          got.gammaAt = got.at;
-          got.gammaReads = gSame ? (prev.gammaReads || 1) + 1 : 1;
-        } else if (prev && prev.gammaVal != null){
-          got.gammaVal = prev.gammaVal;
-          got.gammaFirst = prev.gammaFirst != null ? prev.gammaFirst : prev.gammaVal;
-          got.gammaFirstAt = prev.gammaFirstAt || prev.gammaAt || got.at;
-          got.gammaAt = prev.gammaAt || got.at;
-          got.gammaReads = prev.gammaReads || 1;
-        }
-        const gammaStable = got.gammaVal != null && (got.gammaReads || 0) >= 2 &&
-          (got.gammaAt - (got.gammaFirstAt || got.gammaAt)) >= 15000;
-        /* The stream estimate is judged against the published
-           value when there is one (that is the number the
-           market settles on), otherwise against the endpoint's
-           standing value. Judged fresh every pass, so a value
-           that revises TOWARD the stream can still confirm
-           once it re-earns its stability. */
-        const basis = got.gammaVal != null ? got.gammaVal : got.price;
-        got.streamState = sEst == null ? "nostream"
-          : (Math.abs(basis - sEst) <= Math.max(basis * PM_STREAM_TOL, 1e-9) ? "agree" : "disagree");
-        /* WEB51 CONFIRMATION — two paths, both stream-gated
-           (see the design note above): A) the published price
-           to beat locks at full precision; B) with no published
-           value, the stream TWAP locks when the endpoint's
-           final value agrees with it. A final-but-refused
-           target is HELD with the reason carried on the entry.
-           WEB52: at the 5m horizon path B locks on the
-           stream's own finality — the endpoint is only the
-           catastrophe guard (see the design note). */
-        const solo5 = h === 5 && got.gammaVal == null && finOk && sEst != null;
-        const guardHold = solo5 &&
-          Math.abs(got.price - sEst) > Math.max(sEst * PM_STREAM_GUARD, 1e-9);
-        if (gammaStable && got.streamState === "agree"){
-          got.confirmed = true; got.lockPrice = got.gammaVal; got.lockSrc = "posted";
-          got.streamBlock = null;
-        } else if (solo5 && !guardHold){
-          got.confirmed = true; got.lockPrice = sEst; got.lockSrc = "stream";
-          got.streamBlock = null;
-        } else if (got.gammaVal == null && finOk && got.streamState === "agree"){
-          got.confirmed = true; got.lockPrice = sEst; got.lockSrc = "stream";
-          got.streamBlock = null;
-        } else {
-          got.confirmed = false; delete got.lockPrice; delete got.lockSrc;
-          got.streamBlock = guardHold ? "guard"
-            : (((gammaStable || (finOk && got.gammaVal == null)) &&
-                got.streamState !== "agree") ? got.streamState : null);
-        }
-      }
-      else
-        got.confirmed = agree || (now - start >= 120000);
-      delete got.final;
-      cs.mktLines[h] = got;
+    /* The published value alone seeds the entry when the
+       endpoint read misses (it flickers at boundaries) —
+       the entry then tracks the published value's own
+       stability until an endpoint read lands. */
+    if (!got && gammaV != null)
+      got = {price: gammaV, src: "Polymarket", start: start, at: Date.now()};
+  } else if (S.preset === "kalshi" && h === 15){
+    const ms = await kalshiMarkets(sym);
+    if (ms){
+      const want = new Date(start).toISOString();
+      const m = ms.find(x => x.open_time === want);
+      if (m && isFinite(+m.floor_strike) && +m.floor_strike > 0)
+        got = {price: +m.floor_strike, src: "Kalshi", start: start, at: Date.now(), final: true};
     }
-    else if (cur && cur.start !== start) delete cs.mktLines[h];
   }
+  /* WEB56 B4: no local read landed at all, but the engine has a
+     CONFIRMED target for this exact window — seed the entry from
+     it so the confirmation below can stand on the server's
+     witness alone (the endpoint flickering at a boundary no
+     longer starves the row when the engine already confirmed). */
+  if (!got && (h === 5 || h === 15)){
+    const engSeed = pmEngineTargetFor(sym, h, start);
+    if (engSeed && engSeed.confirmed === true && engSeed.target != null && isFinite(engSeed.target) && engSeed.target > 0)
+      got = {price: engSeed.target, src: "Polymarket", start: start, at: Date.now()};
+  }
+  if (got){
+    const prev = (cur && cur.start === start) ? cur : null;
+    const agree = !!prev && Math.abs(prev.price - got.price) <= Math.max(1e-9, got.price * 1e-9);
+    got.reads = agree ? (prev.reads || 1) + 1 : 1;
+    /* WEB48: firstAt/lastChgAt track the standing value's
+       stability span for THIS window — a changed value restarts
+       the clock at the read that first showed it. */
+    got.firstAt = agree ? (prev.firstAt || prev.at || got.at) : got.at;
+    got.lastChgAt = agree ? (prev.lastChgAt || prev.firstAt || prev.at || got.at) : got.at;
+    /* The first price this window ever printed (kept across
+       revisions) — the check button reports a revision against
+       it even when the revision predates the check. */
+    got.firstPrice = agree ? (prev.firstPrice != null ? prev.firstPrice : prev.price)
+                           : (prev && prev.firstPrice != null ? prev.firstPrice : got.price);
+    if (got.final === true) got.confirmed = true;   // Kalshi: final on publication
+    else if (variant && variant !== "hourly"){
+      /* WEB48 finality (PM TWAP variants): the window is >=65s
+         old AND the standing value has been unchanged for >=15s
+         across >=2 reads. Two quick agreeing reads inside the
+         revision window no longer confirm anything. */
+      const finOk = (now - start >= 65000) && (got.at - got.lastChgAt >= 15000) && got.reads >= 2;
+      /* WEB51 STREAM ESTIMATE: the Chainlink TWAP-60 over the
+         window's opening minute, from the page's buffered
+         RTDS prints. The TWAP ends 2s BEFORE the boundary:
+         measured 2026-11-01 against Polymarket's published
+         priceToBeat over 16 live windows, the [start-62s,
+         start-2s] window reproduced the published value to
+         the displayed cent in 15 (the 16th was 0.003 bp out)
+         where the unshifted window managed 8 — the stream's
+         prints trail the official TWAP by ~2s. The estimate
+         is recomputed whenever the tick buffer still covers
+         that minute and frozen on the entry otherwise (the
+         buffer prunes to ~200s; the frozen value is a fact
+         about a completed minute and never changes). It
+         counts only with a real print in the opening minute's
+         last 15s — a stale entering price held across a tick
+         gap (socket drop mid-minute) is not evidence about
+         the stream's TWAP. */
+      let sEst = (prev && prev.streamEst != null) ? prev.streamEst : null;
+      try {
+        const f = (typeof twap60Before === "function") ? twap60Before(sym, start - 2000) : null;
+        if (f != null && isFinite(f) &&
+            (RTDS_TICKS[sym] || []).some(([t]) => t >= start - 15000 && t <= start)) sEst = f;
+      } catch (e) { /* no buffer: the frozen estimate (or none) stands */ }
+      got.streamEst = sEst;
+      /* WEB51 PUBLISHED VALUE: tracked with the same stability
+         discipline as the endpoint series — a published value
+         that changes between reads restarts its clock. A pass
+         where gamma does not answer keeps the last published
+         value on the entry rather than dropping it. */
+      if (gammaV != null){
+        const gSame = !!prev && prev.gammaVal != null && pmTickEq(prev.gammaVal, gammaV);
+        got.gammaVal = gammaV;
+        got.gammaFirst = gSame ? (prev.gammaFirst != null ? prev.gammaFirst : prev.gammaVal) : gammaV;
+        got.gammaFirstAt = gSame ? (prev.gammaFirstAt || prev.gammaAt || got.at) : got.at;
+        got.gammaAt = got.at;
+        got.gammaReads = gSame ? (prev.gammaReads || 1) + 1 : 1;
+      } else if (prev && prev.gammaVal != null){
+        got.gammaVal = prev.gammaVal;
+        got.gammaFirst = prev.gammaFirst != null ? prev.gammaFirst : prev.gammaVal;
+        got.gammaFirstAt = prev.gammaFirstAt || prev.gammaAt || got.at;
+        got.gammaAt = prev.gammaAt || got.at;
+        got.gammaReads = prev.gammaReads || 1;
+      }
+      /* WEB56 B4: the engine's entry for this window, if any —
+         consumed only at 5m/15m (60m settles on the Binance open;
+         240m is not an engine-consumed horizon either). */
+      const engE = (h === 5 || h === 15) ? pmEngineTargetFor(sym, h, start) : null;
+      const engOk = !!(engE && engE.confirmed === true && engE.target != null && isFinite(engE.target) && engE.target > 0);
+      const gammaStable = got.gammaVal != null && (got.gammaReads || 0) >= 2 &&
+        (got.gammaAt - (got.gammaFirstAt || got.gammaAt)) >= 15000;
+      /* The stream estimate is judged against the published
+         value when there is one (that is the number the
+         market settles on), otherwise against the endpoint's
+         standing value. Judged fresh every pass, so a value
+         that revises TOWARD the stream can still confirm
+         once it re-earns its stability. */
+      const basis = got.gammaVal != null ? got.gammaVal : got.price;
+      got.streamState = sEst == null ? "nostream"
+        : (Math.abs(basis - sEst) <= Math.max(basis * PM_STREAM_TOL, 1e-9) ? "agree" : "disagree");
+      /* WEB51 CONFIRMATION — two paths, both stream-gated
+         (see the design note above): A) the published price
+         to beat locks at full precision; B) with no published
+         value, the stream TWAP locks when the endpoint's
+         final value agrees with it. A final-but-refused
+         target is HELD with the reason carried on the entry.
+         WEB52: at the 5m horizon path B locks on the
+         stream's own finality — the endpoint is only the
+         catastrophe guard (see the design note). */
+      const solo5 = h === 5 && got.gammaVal == null && finOk && sEst != null;
+      const guardHold = solo5 &&
+        Math.abs(got.price - sEst) > Math.max(sEst * PM_STREAM_GUARD, 1e-9);
+      if (engOk){
+        /* WEB56 B4: a confirmed engine target for this exact
+           window takes precedence over the local stream gate —
+           the engine witnessed the Chainlink stream server-side,
+           so the row no longer depends on this tab having been
+           open across the window's open. lockSrc names the
+           engine's own basis honestly: "twap-stream" (the engine
+           witnessed the TWAP tick stamped at the window open —
+           the settlement value itself) or "stream-gate" (the
+           endpoint value agreed with the engine's stream TWAP
+           within 1bp). An UNCONFIRMED engine entry (an endpoint
+           read) never reaches this branch — engOk requires
+           confirmed === true — so nothing unconfirmed is ever
+           dressed as confirmed. */
+        got.confirmed = true; got.lockPrice = engE.target;
+        got.lockSrc = engE.src === "stream-gate" ? "stream-gate" : "twap-stream";
+        got.engineSrc = engE.src || null;
+        got.streamBlock = null;
+      } else if (gammaStable && got.streamState === "agree"){
+        got.confirmed = true; got.lockPrice = got.gammaVal; got.lockSrc = "posted";
+        got.streamBlock = null;
+      } else if (solo5 && !guardHold){
+        got.confirmed = true; got.lockPrice = sEst; got.lockSrc = "stream";
+        got.streamBlock = null;
+      } else if (got.gammaVal == null && finOk && got.streamState === "agree"){
+        got.confirmed = true; got.lockPrice = sEst; got.lockSrc = "stream";
+        got.streamBlock = null;
+      } else {
+        got.confirmed = false; delete got.lockPrice; delete got.lockSrc;
+        got.streamBlock = guardHold ? "guard"
+          : (((gammaStable || (finOk && got.gammaVal == null)) &&
+              got.streamState !== "agree") ? got.streamState : null);
+      }
+    }
+    else
+      got.confirmed = agree || (now - start >= 120000);
+    delete got.final;
+    cs.mktLines[h] = got;
+  }
+  else if (cur && cur.start !== start) delete cs.mktLines[h];
+
 }
 /* The market target for horizon h RIGHT NOW, or null when the
    mimicked market has none for this coin/window (stale-window
@@ -2628,6 +2861,10 @@ async function pmTargetCheck(sym){
      both values. */
   const onHand = mktLineFor(tsym, h);
   let firstPrice = onHand ? onHand.price : null;
+  /* WEB56 B4: a forced check pulls the engine's targets first —
+     if the engine has already confirmed this window, the first
+     refresh pass below confirms the entry from it. */
+  await loadPmTargets(true);
   try {
     for (let i = 0; i < PM_CHECK_MAX_READS; i++){
       if (winStartMs(Date.now(), h) !== start0) break;   // window rolled mid-check
@@ -2824,6 +3061,13 @@ function renderPmCheck(sym){
         (st.h === 5 && st.streamState === "disagree"
           ? "5-minute targets lock on the stream's own finality: the endpoint's final read sat outside the 1 bp agreement band but inside the 10 bp catastrophe guard, so it does not veto the stream."
           : "Polymarket's posted value was unavailable for this window, and the endpoint's final read agreed with the stream.");
+    else if (st.lockSrc === "twap-stream")
+      /* WEB56 B4: the value is the Chainlink TWAP the engine
+         witnessed server-side, stamped at the window open — the
+         settlement value itself, not this page's reconstruction. */
+      html += "<br>Locked on the Chainlink TWAP stream, witnessed server-side by the engine — the TWAP tick stamped at the window open, which is the settlement value itself.";
+    else if (st.lockSrc === "stream-gate")
+      html += "<br>Confirmed by the engine's stream gate — the endpoint value agreed with the server-witnessed Chainlink stream TWAP within 1 bp.";
     if (st.revised)
       html += "<br>first read " + fmtPrice(st.revised.from) + " → revised to " + fmtPrice(st.revised.to) +
         " — locks wait for the settled value, never the first read";
@@ -5144,8 +5388,10 @@ async function loadRecentForm(only){
     if (typeof renderOddsBest4h === "function") renderOddsBest4h();
     if (typeof renderOddsPicks === "function") renderOddsPicks();
     renderBestOpt(sym);
-    if (cs.padNow) renderPadNow(sym);
-    renderPadCalls(sym);
+    /* WEB56 A2: persist the settled history the moment it lands,
+       and re-render EVERY surface showing this coin's strips. */
+    persistForm(sym);
+    renderFormHosts(sym);
     if (S.preset === "polymarket") loadFormPm(sym);
   }));
 }
@@ -5172,36 +5418,53 @@ async function loadFormPm(sym){
   cs.formPmBusy = true;
   try {
     if (!cs.formPm) cs.formPm = {};
-    let changed = false;
+    /* WEB56 A3: the per-window reads are independent completed-window
+       reads (the Function caches them indefinitely) — run them
+       bound-parallel (max 4 in flight) instead of one serial chain
+       of up to 30 proxied reads per coin. Same values, same keys,
+       same cache-for-session discipline. */
+    const jobs = [];
     for (const h of [5, 15, 60]){
       if (!PM_VARIANT[h] || (h !== 60 && !PM_TWAP_COINS.includes(sym))) continue;
       for (const w of (cs.form[h] || [])){
         const startMs = w.close_at - h * 60000, key = h + ":" + startMs;
         if (cs.formPm[key]) continue;
-        const j = await pmPrice(sym, startMs, PM_VARIANT[h]);
+        jobs.push({h: h, startMs: startMs, key: key});
+      }
+    }
+    let changed = false;
+    let ji = 0;
+    const workers = [];
+    for (let k = 0; k < Math.min(4, jobs.length); k++) workers.push((async () => {
+      while (ji < jobs.length){
+        const job = jobs[ji++];
+        const j = await pmPrice(sym, job.startMs, PM_VARIANT[job.h]);
         if (j && j.completed && isFinite(+j.openPrice) && +j.openPrice > 0 && isFinite(+j.closePrice) && +j.closePrice > 0){
-          cs.formPm[key] = {open: +j.openPrice, close: +j.closePrice};
+          cs.formPm[job.key] = {open: +j.openPrice, close: +j.closePrice};
           changed = true;
         }
       }
-    }
+    })());
+    await Promise.all(workers);
     if (changed){
-      if (cs.padNow) renderPadNow(sym);
-      renderPadCalls(sym);
+      /* WEB56 A2: persist the re-grade values with the strip, and
+         re-render every surface showing this coin's strips. */
+      persistForm(sym);
+      renderFormHosts(sym);
     }
   } finally { cs.formPmBusy = false; }
 }
 /* The strip for ONE horizon row of ONE coin's panel — nothing at
    all when that (coin, horizon) has no settled windows yet. Capped
-   at the last 10 entries (the server caps too; this keeps the row
-   phone-width even if a payload ever runs long). Per-panel and
+   at the last 15 entries (WEB56 A2, Shane's "last 10–15" note; this
+   keeps the row phone-width even if a payload ever runs long). Per-panel and
    per-horizon independent: it reads only this coin's stored form
    data for this row's horizon. */
 function formStripHTML(sym, h){
   const cs = coinState(sym);
   const arr = cs.form && cs.form[h];
   if (!arr || !arr.length) return "";
-  const wins = arr.slice(-10);
+  const wins = arr.slice(-15);
   /* WEB31: in Polymarket mode a window with a Polymarket posted
      target + close on file grades on THOSE values (see
      loadFormPm); any other window keeps the server grading. */
@@ -5798,7 +6061,16 @@ $("#stopBtn").addEventListener("click", stopCycle);
 /* ---------- main loop ---------- */
 async function priceTick(){
   rtdsEnsure();   // WEB17: keeps the RTDS socket matched to preset + watchlist (stops it off-preset)
-  for (const sym of S.selected.slice()){
+  /* WEB56 B4: engine targets ride this same ~5s cadence — one call
+     for every selected Polymarket coin (loadPmTargets throttles
+     and coalesces itself; the mkt-lines passes below consume what
+     it stored). */
+  if (S.preset === "polymarket") loadPmTargets();
+  /* WEB56 A3: the per-coin work is independent (each coin's price
+     source, target pass and renders touch only its own state), so
+     the coins run in PARALLEL — the old serial loop made one slow
+     hourly-poll fallback for BTC delay every later coin's paint. */
+  await Promise.all(S.selected.slice().map(async (sym) => {
     const cs = coinState(sym);
     // WEB12: under the Polymarket preset the live price comes from
     // Polymarket's own feed instead of Coinbase — the same feed the
@@ -5886,7 +6158,7 @@ async function priceTick(){
       renderCardAdvice(sym);
       recordPredSnap(sym);
     }
-  }
+  }));
   // WEB17: the big-multiplier board's trend candidates refresh on
   // a ≤10s pass here (its snipe/forecast candidates re-render when
   // those payloads land — see loadSnipe/loadDayForecast).
@@ -6689,10 +6961,19 @@ function padNowRows(tsym, price, line){
   return padHzFor(tsym).map(h => {
     const remaining = Math.max(1, (winBoundaryMs(nowE, h) - nowE) / 1000);
     const ml = mktLineFor(tsym, h);
-    const r = probOverAt(tsym, price, ml ? ml.price : line, remaining);
+    /* WEB56 A4 (crossed-wire fix, audit §1.1-A): the now-view runs
+       on the SAME basis as the outlook — the entry's LOCK value
+       (ml.lockPrice: the published price to beat / stream TWAP /
+       engine TWAP) when a lock value exists, falling back to the
+       raw endpoint read (ml.price) only when no lock exists. This
+       changes only which EXISTING value the ENTER now-view
+       displays/runs on; it never re-bases a locked call (padLock
+       is untouched, exactly as before). */
+    const mlLine = ml ? (ml.lockPrice != null ? ml.lockPrice : ml.price) : line;
+    const r = probOverAt(tsym, price, mlLine, remaining);
     const call = Math.abs(r.p - 0.5) >= band ? (r.p > 0.5 ? "OVER" : "UNDER") : null;
     return {h: h, p: r.p, call: call, winP: call ? (call === "OVER" ? r.p : 1 - r.p) : null,
-            remaining: remaining, line: ml ? ml.price : line, mkt: ml ? ml.src : null,
+            remaining: remaining, line: mlLine, mkt: ml ? ml.src : null,
             /* WEB46: the now-view is a live estimate, so it may run
                against an unconfirmed read — but it must SAY so, and
                a covered horizon with no read at all must say the
@@ -7312,7 +7593,15 @@ function renderPadCalls(sym){
     "</tbody></table>" +
     '<div class="note" style="margin-top:4px">' + footShown +
     ' <button type="button" class="whybtn" data-padexplain="1">How the outlook works ▸</button></div>';
-  if (out.innerHTML !== html) out.innerHTML = html;
+  /* WEB56 A3: countdown text alone never rebuilds the table — the
+     1s housekeeping loop owns the .cdft text nodes between renders.
+     The render signature is the built HTML with countdown text
+     stripped; when only the countdowns moved, the DOM (and its
+     live countdown text) is left exactly as it stands. Any state
+     change — price, lock, form strip, confirmation, busy flag,
+     live estimate — changes the signature and rebuilds as before. */
+  const sig = html.replace(/(<span class="cdft"[^>]*>)[^<]*(<\/span>)/g, "$1$2");
+  if (out._padSig !== sig){ out.innerHTML = html; out._padSig = sig; }
   renderBestOpt(sym);
 }
 /* WEB35: the outlook's full explanation — the text that used to
@@ -7743,19 +8032,26 @@ function targetStripHtml(coin, h){
          hand: that is the target being refused, named exactly. */
       const eVal = e ? (e.lockPrice != null ? e.lockPrice
         : (e.gammaVal != null && e.streamBlock ? e.gammaVal : e.price)) : null;
-      if (e && e.confirmed)
+      if (e && e.confirmed){
+        /* WEB52: a 5m stream lock stands on the stream's own
+           finality; the endpoint is only guaranteed to be inside
+           the catastrophe guard, not in 1 bp agreement — the label
+           says exactly that. WEB56 B4: engine-confirmed locks name
+           the server witness — "twap-stream" is the engine's own
+           witnessed Chainlink TWAP tick at the window open (the
+           settlement value itself); "stream-gate" is the endpoint
+           value the engine's stream TWAP agreed with within 1bp. */
+        const confLbl = e.lockSrc === "posted" ? "CONFIRMED — Polymarket's posted price to beat · Chainlink stream agrees"
+          : e.lockSrc === "twap-stream" ? "CONFIRMED — Chainlink TWAP stream (server-witnessed)"
+          : e.lockSrc === "stream-gate" ? "CONFIRMED — stream-gated target (server: endpoint agreed with the Chainlink stream TWAP)"
+          : e.lockSrc === "stream" ? (h === 5 ? "CONFIRMED — Chainlink stream TWAP · stream-final lock (endpoint inside the 10 bp guard)"
+                                              : "CONFIRMED — Chainlink stream TWAP · endpoint final agrees")
+          : "CONFIRMED — posted target final" +
+            (S.preset === "polymarket" && h !== 60 && e.streamEst != null ? " · Chainlink stream agrees" : "");
         parts.push("Target <b>" + fmtPrice(eVal) + "</b> · " + M +
-          ' <span class="otgtok">' +
-          (e.lockSrc === "posted" ? "CONFIRMED — Polymarket's posted price to beat · Chainlink stream agrees"
-            /* WEB52: a 5m stream lock stands on the stream's
-               own finality; the endpoint is only guaranteed to
-               be inside the catastrophe guard, not in 1 bp
-               agreement — the label says exactly that. */
-            : e.lockSrc === "stream" ? (h === 5 ? "CONFIRMED — Chainlink stream TWAP · stream-final lock (endpoint inside the 10 bp guard)"
-                                                : "CONFIRMED — Chainlink stream TWAP · endpoint final agrees")
-            : "CONFIRMED — posted target final" +
-              (S.preset === "polymarket" && h !== 60 && e.streamEst != null ? " · Chainlink stream agrees" : "")) + '</span>' +
+          ' <span class="otgtok">' + confLbl + '</span>' +
           '<button type="button" class="tgtuse" data-usetgt="' + eVal + '">Use</button>');
+      }
       else if (e && e.streamBlock === "guard")
         parts.push("Target <b>" + fmtPrice(eVal) + "</b> · " + M +
           ' <span class="otgtbad">HELD — endpoint final read more than 10 bp from the Chainlink stream (catastrophe guard)</span>');
@@ -8105,8 +8401,13 @@ async function nmLoadCoin(sym){
      and a stale response for the same coin can't overwrite a newer
      one. Each coin's loads are sequenced independently. */
   const seq = (c.loadSeq = (c.loadSeq || 0) + 1);
-  const d = await fetchJSON(AUTH + "/api/perp/normal?coin=" + encodeURIComponent(sym));
-  const w = await fetchJSON(AUTH + "/api/perp/normal-week?coin=" + encodeURIComponent(sym));
+  /* WEB56 A3: the two reads are independent — fetch them in
+     parallel (the old serial pair doubled this coin's load time).
+     The WEB42 adoption rules below are unchanged: coin match +
+     latest loadSeq only. */
+  const [d, w] = await Promise.all([
+    fetchJSON(AUTH + "/api/perp/normal?coin=" + encodeURIComponent(sym)),
+    fetchJSON(AUTH + "/api/perp/normal-week?coin=" + encodeURIComponent(sym))]);
   if (c.loadSeq !== seq) return;
   if (d && d.coin === sym) c.data = d;
   if (w && w.coin === sym) c.week = w;
@@ -9290,6 +9591,26 @@ function nmSetZoom(sym, z){
   if (rall) rall.addEventListener("click", () => { for (const sym of NM_COINS) nmLoadCoin(sym); });
   nmApplyMode();
 })();
+
+/* ---------- WEB56 A3/B4: return-to-foreground --------------------
+   Backgrounding a phone tab freezes its timers and starves its
+   WebSockets (audit §2.3-2): on return, re-ensure the RTDS sockets
+   and pull fresh targets IMMEDIATELY instead of waiting for the
+   throttled cadences to notice — one forced engine-target pull
+   (B4) plus a refreshMktLines pass per selected coin (the 5s
+   priceTick throttle is bypassed this once; the passes' own entry
+   latches still apply, and the per-coin in-flight guard keeps a
+   still-running pass from being doubled). */
+function onVisibilityReturn(){
+  if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+  try { rtdsEnsure(); } catch (e) {}
+  if (S.preset === "polymarket") loadPmTargets(true);
+  if (marketActive()) for (const sym of S.selected.slice()){
+    coinState(sym).mktLinesAt = Date.now();
+    refreshMktLines(sym);
+  }
+}
+document.addEventListener("visibilitychange", onVisibilityReturn);
 
 buildCoinGrid();
 (function init(){
