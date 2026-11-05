@@ -74,6 +74,33 @@ input[type=number]{background:#0c0c18;border:1px solid var(--line);color:var(--t
 .btn.ghost{border-color:var(--line);background:#0c0c18;color:var(--txt)}
 .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:14px}
 .note{color:var(--mut);font-size:13px}
+/* WEB57: Risk Profile + Trade Goal Assistant panel */
+.riskexp{font-size:11px;font-weight:700;letter-spacing:.14em;color:#14100a;background:linear-gradient(90deg,var(--gold2),var(--gold));border-radius:999px;padding:3px 10px}
+.riskutf{border:1px solid var(--gold);border-radius:14px;padding:14px;background:linear-gradient(180deg,#1c1808,#12101e);margin-top:12px}
+.riskutfbtn{width:100%;font-size:17px;padding:14px 18px}
+.riskutfout{margin-top:12px;font-size:17px;font-weight:700;line-height:1.35}
+.riskutfsub{margin-top:6px;font-size:14px;color:var(--gold2);font-weight:600}
+.riskutfref{margin-top:12px;font-size:15px;font-weight:600;color:var(--txt);line-height:1.45}
+.riskdisc{margin-top:10px;font-size:12px;color:var(--mut);line-height:1.5;border-left:3px solid var(--gold);padding-left:10px}
+.riskgrid{display:flex;flex-wrap:wrap;gap:14px;margin-top:14px}
+.riskgrid label{display:flex;flex-direction:column;gap:5px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
+.riskcall{margin-top:14px;border:1px solid var(--line);border-radius:14px;padding:16px;background:#0c0c18}
+.riskcall .rc-head{font-size:19px;font-weight:700;line-height:1.35}
+.riskcall .rc-sub{margin-top:7px;font-size:13.5px;color:var(--mut);line-height:1.5}
+.riskcall.stake,.riskcall.ride{border-color:var(--gold)}
+.riskcall.stake .rc-head,.riskcall.ride .rc-head{color:var(--gold2)}
+.riskcall.wait{border-color:var(--violet)}
+.riskcall.stop{border-color:#e5484d}
+.riskcall.stop .rc-head{color:#ff8589}
+.riskcall.reduce{border-color:#b08a2e}
+.riskcall.switch{border-color:var(--violet)}
+.riskcall.switch .rc-head{color:#b7a6ff}
+.riskcall.takewin .rc-head,.riskcall.goal .rc-head{color:#7ee2a0}
+.riskcall.noedge .rc-head{color:var(--mut)}
+.riskstats{margin-top:12px;font-size:13.5px;line-height:1.65;color:var(--txt)}
+.riskstats b{color:var(--gold2)}
+.riskprof{margin-top:10px;font-size:13.5px;line-height:1.65;color:var(--mut)}
+.riskprof b{color:var(--txt)}
 #watchHead{display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;justify-content:space-between}
 #countdown{font-size:26px;font-weight:700;color:var(--gold2);font-variant-numeric:tabular-nums}
 #watchHeadRight{display:flex;align-items:baseline;gap:10px}
@@ -772,6 +799,35 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
     </div>
   </section>
   </div>
+  <section class="card" id="riskCard">
+    <div class="secthead"><h2 style="margin:0">🎲 Trade goal assistant — risk profile</h2><span class="riskexp">EXPERIMENTAL</span><button type="button" class="ctxbtn" id="rpRefreshBtn" title="Reload the assistant's measurements">↻ Refresh</button></div>
+    <!-- WEB57 (Shane 2026-11-05 01:27): UNLIKELY TO FAIL — pinned to
+         the top of the panel, fired ONLY by this button, never on a
+         timer. The strictest gates in the feature; it refuses when
+         nothing clears them. The disclaimer sits directly beneath
+         the call it produces: strongest claim, closest disclaimer. -->
+    <div class="riskutf">
+      <button type="button" class="btn primary riskutfbtn" id="rpUtfBtn">★ UNLIKELY TO FAIL — evaluate now</button>
+      <div id="rpUtfOut"><div class="note">The strictest check in this panel — deep record, best side, favorable regime, every stability check passing, small expected worst streak. It never fires on its own; press when you want it judged.</div></div>
+      <div class="riskdisc" id="rpUtfDisc">Experimental — this assistant only advises; it never places trades. Every number is historical statistics from the system's own graded record. Accuracy can never be guaranteed, losing streaks can exceed anything in the record, and a doubling ladder risks your whole bankroll. Never stake money you cannot afford to lose.</div>
+    </div>
+    <div class="riskdisc" id="rpDisc">Experimental — this assistant only advises; it never places trades. Every number is historical statistics from the system's own graded record. Accuracy can never be guaranteed, losing streaks can exceed anything in the record, and a doubling ladder risks your whole bankroll. Never stake money you cannot afford to lose.</div>
+    <div class="riskgrid">
+      <label>Your bankroll $<input id="rpBankroll" type="number" min="0" step="1" placeholder="e.g. 2550"></label>
+      <label>Base stake $<input id="rpBase" type="number" min="0" step="1" value="10"></label>
+      <label>Trade goal $ (optional)<input id="rpGoal" type="number" min="0" step="1" placeholder="no goal"></label>
+    </div>
+    <div class="note" id="rpSuggest" style="margin-top:10px">Loading the assistant's measurements…</div>
+    <div class="riskcall noedge" id="rpCall"><div class="rc-head">Loading…</div><div class="rc-sub">Pulling the system's current measurements.</div></div>
+    <div class="row">
+      <button type="button" class="btn" id="rpWonBtn" disabled>It won ✓</button>
+      <button type="button" class="btn ghost" id="rpLostBtn" disabled>It lost ✗</button>
+      <button type="button" class="linkbtn" id="rpFreshBtn" hidden>Fresh evaluation ▸</button>
+      <button type="button" class="linkbtn" id="rpResetBtn">Reset session</button>
+    </div>
+    <div class="riskstats" id="rpStats"></div>
+    <div class="riskprof" id="rpProfile"></div>
+  </section>
   <section class="card" id="alertsCard">
     <div class="secthead"><h2>Wave alerts</h2><button type="button" class="ctxbtn" data-ctxtext="alerts">How alerts work</button></div>
     <div id="alertsList"><div class="note">Loading alerts…</div></div>
@@ -6501,6 +6557,311 @@ async function loadDayForecast(){
   renderDayForecast();
   renderMultBoard();
 }
+
+/* ---------- WEB57 (Shane 2026-11-05 01:21): Risk Profile + Trade
+   Goal Assistant — the panel's half of the feature. The engine
+   serves MEASUREMENTS ONLY (GET /api/perp/risk-assistant: per-
+   series window records, streak expectations, stability state);
+   every decision below is computed HERE from those measurements
+   and the user's own session state, which lives entirely in
+   localStorage on this device — bankroll, base stake, goal,
+   session P/L, and the live doubling ladder. The assistant ADVISES
+   ONLY: nothing in this block places, sends, or signs anything.
+   Ladder accounting (engine's suggestedBankroll formula): stakes
+   double after each loss from the ladder's base; a win at any rung
+   nets +base at even money and closes the ladder; a loss costs the
+   stake placed. The next stake exceeding the available bankroll
+   (bankroll + session P/L) is a hard STOP — no exceptions. */
+const LS_RP = "ph.risk.v1";
+const RP_HARD_EXTRA = 2;   // hard cap: expected worst streak + 2 rungs, then STOP
+let RISK = null;           // last /api/perp/risk-assistant payload
+let RP_CALL = null;        // the call currently on screen (won/lost act on it)
+let RP = (() => {
+  const d = { bankroll: 0, base: 10, goal: 0, pl: 0, trades: 0, ladder: null, pending: null };
+  const s = lsGet(LS_RP, null);
+  if (s && typeof s === "object"){
+    for (const k of Object.keys(d)) if (s[k] !== undefined) d[k] = s[k];
+  }
+  return d;
+})();
+function rpSave(){ lsSet(LS_RP, RP); }
+function rpMoney(x){
+  const v = Math.round((+x || 0) * 100) / 100;
+  return "$" + v.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 });
+}
+function rpPct(x){ return x == null || !isFinite(x) ? "—" : Math.round(x * 1000) / 10 + "%"; }
+function rpHM(min){
+  const m = Math.max(0, Math.round(min || 0));
+  return Math.floor(m / 60) + ":" + String(m % 60).padStart(2, "0");
+}
+function rpDurWords(min){
+  const m = Math.round(min || 0);
+  if (m >= 90) return "about " + Math.round(m / 60) + " hours";
+  if (m >= 55) return "about 1 hour";
+  return "about " + m + " minutes";
+}
+function rpFundedRungs(bankroll, base){
+  if (!(base > 0) || !(bankroll >= base)) return 0;
+  return Math.floor(Math.log2(bankroll / base + 1));
+}
+function rpLadderBankroll(base, e){ return base * (Math.pow(2, e + 1) - 1); }
+function rpSeriesOf(data, coin, horizon, side){
+  if (!data || !Array.isArray(data.series)) return null;
+  return data.series.find(s => s.coin === coin && s.horizon === horizon && s.side === side) || null;
+}
+function rpAvail(st){ return (st.bankroll || 0) + (st.pl || 0); }
+function rpBaseOf(st, data){
+  return st.base > 0 ? st.base : ((data && data.base_stake_default) || 10);
+}
+/* The one primary call. Priority: STOP (bankroll) -> STOP (hard
+   cap) -> recovery banner -> SWITCH / WAIT (degraded ladder) ->
+   LET IT RIDE -> GOAL -> STAKE -> REDUCE -> WAIT -> NO EDGE. */
+function rpDecide(st, data, now){
+  now = now || Date.now();
+  if (!data) return { type: "nodata", head: "Loading…", sub: "Pulling the system's current measurements." };
+  const base = rpBaseOf(st, data);
+  const avail = rpAvail(st);
+  const L = st.ladder;
+  if (L){
+    const nextStake = L.base * Math.pow(2, L.rung);
+    const spent = L.base * (Math.pow(2, L.rung) - 1);
+    if (spent + nextStake > avail){
+      return { type: "stop", head: "Stop here — the next stake exceeds your bankroll.",
+        sub: "Next stake would be " + rpMoney(nextStake) + " with " + rpMoney(spent) + " already down on this ladder, against " + rpMoney(avail) + " available. Remaining risk if you continued: " + rpMoney(nextStake) + ".",
+        stake: nextStake };
+    }
+    const sL = rpSeriesOf(data, L.coin, L.horizon, L.side);
+    const E = sL ? sL.expectedMaxStreak : null;
+    if (E != null && L.rung >= E + RP_HARD_EXTRA){
+      return { type: "stop", head: "Stop here — this streak is past the hard cap.",
+        sub: "Loss " + L.rung + " on " + L.coin + " " + L.horizon + "m exceeds the expected worst (" + E + ") by more than the " + RP_HARD_EXTRA + "-rung hard cap. Remaining risk if you continued: " + rpMoney(nextStake) + ".",
+        stake: nextStake };
+    }
+    if (st.pending && st.pending.type === "takewin" && now - st.pending.at < 30 * 60000){
+      return { type: "takewin", head: st.pending.head, sub: st.pending.sub };
+    }
+    const coinState = data.coins ? data.coins[L.coin] : null;
+    const marginalBar = data.bars ? data.bars.marginal : 0.56;
+    const degraded = !sL || sL.cooldown ||
+      (coinState && coinState.regime === "downtrend") ||
+      (sL.adjustedRate != null && sL.adjustedRate < marginalBar);
+    if (degraded){
+      const alt = data.recommendation;
+      if (alt && (alt.coin !== L.coin || alt.horizon !== L.horizon || alt.side !== L.side)){
+        return { type: "switch", head: "Switch — stake " + rpMoney(nextStake) + " on " + alt.coin + " " + alt.horizon + "m " + alt.side.toUpperCase() + ".",
+          sub: "Your " + L.coin + " " + L.horizon + "m " + L.side.toUpperCase() + " ladder is degrading (" +
+            (!sL ? "its record is unavailable" : sL.cooldown ? "it just printed its expected-worst streak" :
+             coinState && coinState.regime === "downtrend" ? "the coin is in a trailing-24h downtrend" : "its recent accuracy fell under the bar") +
+            "). The ladder amount carries over — same rung, better perpetual. Alt recent hit rate " + rpPct(alt.recent72.hitRate) + " over " + alt.recent72.n + " windows.",
+          stake: nextStake, coin: alt.coin, horizon: alt.horizon, side: alt.side };
+      }
+      const wmin = data.wait ? data.wait.approx_min : 60;
+      return { type: "wait", head: "Wait approx " + rpHM(wmin) + " — market currently not stable.",
+        sub: "Hold your position on " + L.coin + " " + L.horizon + "m — do not add to the ladder while it is degraded and nothing better qualifies." +
+          (data.wait && data.wait.reasons && data.wait.reasons.length ? " " + data.wait.reasons[0] : ""),
+        stake: 0 };
+    }
+    if (L.rung >= 1){
+      const funded = rpFundedRungs(avail, L.base);
+      return { type: "ride", head: "Let it ride — stake " + rpMoney(nextStake) + " on " + L.coin + " " + L.horizon + "m " + L.side.toUpperCase() + ".",
+        sub: "Highest expected loss streak is " + E + ". You are on loss " + L.rung + " of an expected worst " + E +
+          "; your bankroll covers " + Math.max(0, funded - L.rung) + " more stakes on this ladder.",
+        stake: nextStake, coin: L.coin, horizon: L.horizon, side: L.side };
+    }
+    return { type: "stake", head: "Stake " + rpMoney(nextStake) + " on " + L.coin + " " + L.horizon + "m " + L.side.toUpperCase() + ".",
+      sub: "Ladder opened on this perpetual. Recent hit rate " + rpPct(sL.recent72.hitRate) + " over " + sL.recent72.n + " windows (72h).",
+      stake: nextStake, coin: L.coin, horizon: L.horizon, side: L.side };
+  }
+  if (st.pending && st.pending.type === "takewin" && now - st.pending.at < 30 * 60000){
+    return { type: "takewin", head: st.pending.head, sub: st.pending.sub };
+  }
+  if (!(st.bankroll > 0)){
+    return { type: "setup", head: "Set your bankroll above to get a call.",
+      sub: "The assistant sizes every stake against your bankroll and stops the ladder before a stake you cannot fund. Nothing is staked for you — it only advises." };
+  }
+  if (st.goal > 0 && st.pl >= st.goal){
+    return { type: "goal", head: "Goal reached — consider banking the session.",
+      sub: "Session profit " + rpMoney(st.pl) + " against your " + rpMoney(st.goal) + " goal over " + st.trades + " reported trades." };
+  }
+  const rec = data.recommendation;
+  if (rec){
+    return { type: "stake", head: "Stake " + rpMoney(base) + " on " + rec.coin + " " + rec.horizon + "m — " + rec.side.toUpperCase() + ".",
+      sub: "Best current perpetual: recent hit rate " + rpPct(rec.recent72.hitRate) + " over " + rec.recent72.n + " windows (72h), expected worst loss streak " + rec.expectedMaxStreak +
+        ". Suggested bankroll at this base: " + rpMoney(rpLadderBankroll(base, rec.expectedMaxStreak)) + ".",
+      stake: base, coin: rec.coin, horizon: rec.horizon, side: rec.side };
+  }
+  const marg = data.marginal_best;
+  if (marg){
+    const half = Math.round(base / 2 * 100) / 100;
+    return { type: "reduce", head: "Stake " + rpMoney(half) + " on " + marg.coin + " " + marg.horizon + "m — " + marg.side.toUpperCase() + " (half stake).",
+      sub: "Conditions are marginal: this is the best available perpetual but its adjusted rate " + rpPct(marg.adjustedRate) + " sits under the full-stake bar (" + rpPct(data.bars ? data.bars.qualify : 0.60) + "). Half stake only. Recent hit rate " + rpPct(marg.recent72.hitRate) + " over " + marg.recent72.n + " windows.",
+      stake: half, coin: marg.coin, horizon: marg.horizon, side: marg.side };
+  }
+  if (data.wait){
+    return { type: "wait", head: "Wait approx " + rpHM(data.wait.approx_min) + " — market currently not stable.",
+      sub: data.wait.reasons && data.wait.reasons.length ? data.wait.reasons[0] : "Conditions are unsettled across the board.",
+      stake: 0 };
+  }
+  return { type: "noedge", head: "No call right now — no perpetual clears the accuracy bar.",
+    sub: "Nothing currently qualifies on its trailing-72h record. Waiting is the call." };
+}
+/* The user reports the outcome of the call on screen. Wins close
+   the ladder at +base (even-money recovery math); losses cost the
+   stake and advance (or open) the ladder on that perpetual. */
+function rpReport(st, call, won, now){
+  if (!call || !call.stake) return st;
+  now = now || Date.now();
+  const stake = call.stake;
+  st.trades = (st.trades || 0) + 1;
+  if (won){
+    if (st.ladder){
+      st.pl = (st.pl || 0) + st.ladder.base;
+      if (st.ladder.rung >= 1){
+        st.pending = { type: "takewin", at: now,
+          head: "Take the win — ladder recovered at +" + rpMoney(st.ladder.base) + ".",
+          sub: "The " + st.ladder.coin + " " + st.ladder.horizon + "m ladder closed green after " + st.ladder.rung + " loss" + (st.ladder.rung === 1 ? "" : "es") + ". Fresh evaluation next round — tap Fresh evaluation when you are ready." };
+      }
+      st.ladder = null;
+    } else {
+      st.pl = (st.pl || 0) + stake;
+      st.pending = null;
+    }
+  } else {
+    st.pl = (st.pl || 0) - stake;
+    st.pending = null;
+    if (st.ladder){
+      if (call.type === "switch" && call.coin){
+        st.ladder = { coin: call.coin, horizon: call.horizon, side: call.side, base: st.ladder.base, rung: st.ladder.rung + 1 };
+      } else {
+        st.ladder.rung += 1;
+      }
+    } else if (call.coin){
+      st.ladder = { coin: call.coin, horizon: call.horizon, side: call.side, base: stake, rung: 1 };
+    }
+  }
+  return st;
+}
+async function loadRiskAssistant(){
+  const j = await fetchJSON(AUTH + "/api/perp/risk-assistant");
+  if (!j || !j.ok) return;
+  RISK = j;
+  rpRender();
+}
+function rpRenderUtf(j){
+  const out = $("#rpUtfOut");
+  if (!out) return;
+  if (!j){
+    out.innerHTML = '<div class="riskutfref">Evaluation unavailable — the engine did not answer. Nothing was sized or recommended; try the press again in a moment.</div>';
+    return;
+  }
+  const disc = $("#rpUtfDisc");
+  if (disc && j.disclaimer) disc.textContent = j.disclaimer;
+  if (j.verdict === "call" && j.call){
+    const c = j.call;
+    out.innerHTML =
+      '<div class="riskutfout">Start with ' + escHtml(rpMoney(c.bankroll)) + ", trade " + escHtml(c.coin) + " " + c.horizon + "m " + escHtml(c.side.toUpperCase()) + "</div>" +
+      '<div class="riskutfsub">Covers a loss streak of ' + c.covers_streak + ". Chance a longer streak beats this bankroll: ≈" + c.exceed_pct + "%.</div>" +
+      '<div class="note" style="margin-top:6px">Sized on a $10 base stake doubling after each loss. This perpetual\'s recent record: ' + rpPct(c.recent72.hitRate) + " over " + c.recent72.n + " settled windows (72h). Judged at press time — conditions move.</div>";
+  } else {
+    const b = j.best_available;
+    out.innerHTML = '<div class="riskutfref">No \'unlikely to fail\' setup right now' +
+      (b ? " — the best available is " + escHtml(b.coin) + " " + b.horizon + "m " + escHtml(b.side.toUpperCase()) + " at " + rpPct(b.recent72.hitRate) + ", which doesn't clear the bar." : " — no perpetual currently has the record to even name a best available.") +
+      " Check back in " + escHtml(rpDurWords(j.check_back_min)) + ".</div>";
+  }
+}
+async function rpUtfPress(){
+  const btn = $("#rpUtfBtn");
+  if (btn) btn.disabled = true;
+  const j = await fetchJSON(AUTH + "/api/perp/risk-assistant/unlikely");
+  if (btn) btn.disabled = false;
+  // Only a payload carrying an actual verdict may render as one —
+  // anything else (engine silence, a stray route answer) is an
+  // honest unavailable, never a dressed-up refusal or call.
+  rpRenderUtf(j && j.ok && (j.verdict === "call" || j.verdict === "refusal") ? j : null);
+}
+function rpRender(){
+  const disc = $("#rpDisc");
+  if (disc && RISK && RISK.disclaimer) disc.textContent = RISK.disclaimer;
+  const bIn = $("#rpBankroll"), baseIn = $("#rpBase"), gIn = $("#rpGoal");
+  if (bIn && document.activeElement !== bIn) bIn.value = RP.bankroll || "";
+  if (baseIn && document.activeElement !== baseIn) baseIn.value = RP.base || 10;
+  if (gIn && document.activeElement !== gIn) gIn.value = RP.goal || "";
+  const call = rpDecide(RP, RISK);
+  RP_CALL = call;
+  const box = $("#rpCall");
+  if (box){
+    box.className = "riskcall " + call.type;
+    box.innerHTML = '<div class="rc-head">' + escHtml(call.head) + '</div><div class="rc-sub">' + escHtml(call.sub || "") + "</div>";
+  }
+  const actionable = !!(call.stake && (call.type === "stake" || call.type === "ride" || call.type === "switch" || call.type === "reduce"));
+  const wb = $("#rpWonBtn"), lb = $("#rpLostBtn"), fb = $("#rpFreshBtn");
+  if (wb) wb.disabled = !actionable;
+  if (lb) lb.disabled = !actionable;
+  if (fb) fb.hidden = call.type !== "takewin";
+  const sug = $("#rpSuggest");
+  if (sug){
+    if (RISK && RISK.recommendation){
+      const r = RISK.recommendation, b = rpBaseOf(RP, RISK);
+      sug.textContent = "Suggested starting bankroll for the current best perpetual (" + r.coin + " " + r.horizon + "m " + r.side.toUpperCase() + "): " +
+        rpMoney(rpLadderBankroll(b, r.expectedMaxStreak)) + " at a " + rpMoney(b) + " base stake — funds its expected worst streak of " + r.expectedMaxStreak + " plus the recovery bet.";
+    } else if (RISK){
+      sug.textContent = "No suggested bankroll right now — no perpetual currently qualifies, so there is nothing to size.";
+    }
+  }
+  const stats = $("#rpStats");
+  if (stats){
+    const focus = RP.ladder ? rpSeriesOf(RISK, RP.ladder.coin, RP.ladder.horizon, RP.ladder.side)
+      : (RISK && (RISK.recommendation || RISK.marginal_best));
+    if (focus){
+      stats.innerHTML = "<b>" + escHtml(focus.coin) + " " + focus.horizon + "m " + escHtml(focus.side.toUpperCase()) + "</b> — recent hit rate <b>" + rpPct(focus.recent72.hitRate) + "</b> over " + focus.recent72.n + " windows (72h)" +
+        " · all-time " + rpPct(focus.allTime.hitRate) + " over " + focus.allTime.n +
+        " · longest observed loss streak <b>" + focus.longestLossStreak + "</b> · expected max streak <b>" + focus.expectedMaxStreak + "</b>" +
+        (focus.currentLossStreak ? " · currently on a " + focus.currentLossStreak + "-loss run" : "") +
+        (focus.bandedRecord ? " · scoreboard banded record " + rpPct(focus.bandedRecord.hitRate) + " over " + focus.bandedRecord.calls + " calls" : "");
+    } else {
+      stats.textContent = RISK ? "No focus perpetual right now." : "";
+    }
+  }
+  const prof = $("#rpProfile");
+  if (prof){
+    const avail = rpAvail(RP), b = rpBaseOf(RP, RISK);
+    let line = "Bankroll <b>" + rpMoney(RP.bankroll || 0) + "</b> · available <b>" + rpMoney(avail) + "</b> · base stake <b>" + rpMoney(b) + "</b> · funds <b>" + rpFundedRungs(avail, b) + " stakes</b> on a fresh ladder" +
+      " · session P/L <b>" + (RP.pl > 0 ? "+" : "") + rpMoney(RP.pl || 0) + "</b> over " + (RP.trades || 0) + " reported trades";
+    if (RP.ladder) line += " · ladder open on <b>" + RP.ladder.coin + " " + RP.ladder.horizon + "m " + RP.ladder.side.toUpperCase() + "</b> at loss " + RP.ladder.rung;
+    if (RP.goal > 0){
+      const pct = Math.max(0, Math.min(999, Math.round((RP.pl || 0) / RP.goal * 100)));
+      line += "<br>" + pct + "% to your " + rpMoney(RP.goal) + " goal";
+    }
+    prof.innerHTML = line;
+  }
+}
+function rpWire(){
+  const wb = $("#rpWonBtn"), lb = $("#rpLostBtn"), fb = $("#rpFreshBtn"), rb = $("#rpResetBtn"), ub = $("#rpUtfBtn"), rf = $("#rpRefreshBtn");
+  if (wb) wb.addEventListener("click", () => { rpReport(RP, RP_CALL, true); rpSave(); rpRender(); });
+  if (lb) lb.addEventListener("click", () => { rpReport(RP, RP_CALL, false); rpSave(); rpRender(); });
+  if (fb) fb.addEventListener("click", () => { RP.pending = null; rpSave(); rpRender(); });
+  if (rb) rb.addEventListener("click", () => {
+    RP = { bankroll: RP.bankroll, base: RP.base, goal: RP.goal, pl: 0, trades: 0, ladder: null, pending: null };
+    rpSave(); rpRender();
+  });
+  if (ub) ub.addEventListener("click", rpUtfPress);
+  if (rf) rf.addEventListener("click", loadRiskAssistant);
+  const onNum = (id, key) => {
+    const el = $(id);
+    if (el) el.addEventListener("change", () => {
+      const v = parseFloat(el.value);
+      RP[key] = isFinite(v) && v > 0 ? v : 0;
+      rpSave(); rpRender();
+    });
+  };
+  onNum("#rpBankroll", "bankroll");
+  onNum("#rpBase", "base");
+  onNum("#rpGoal", "goal");
+}
+if (typeof document !== "undefined" && document.querySelector && document.querySelector("#riskCard")) rpWire();
+whenIdle(() => { loadRiskAssistant(); }, 1800);
+setInterval(() => { if (document.visibilityState !== "hidden") loadRiskAssistant(); }, 90000);
+
 function renderAdvisory(){
   const strip = $("#advStrip");
   if (strip){
