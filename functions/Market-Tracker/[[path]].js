@@ -414,10 +414,33 @@ async function acctApi(context, request, action, spec) {
 
 /* ---------------- pages ------------------------------------------ */
 
-function shell(title, bodyHtml, scriptText) {
+// Discord/social embed for the canonical tracker URL (Shane's order
+// 2026-11-05): the sign-in page is what an unauthenticated fetcher —
+// including Discord's crawler — receives at /Market-Tracker/, so it
+// carries the Open Graph block. og:image is the animated ad GIF:
+// Discord autoplays GIF embeds inline as the chat scrolls; og:video
+// is deliberately omitted (it renders click-to-play and can displace
+// the GIF). Public figures only.
+const PROMO_HEAD =
+  '<meta property="og:title" content="Rival Eclipse — Perpetual Helper">\n' +
+  '<meta property="og:description" content="67.7% across 93,385 graded calls. Every call locked at the open, graded against the market\'s own posted close — the scoreboard is public. 1-hour free trial · $0.99 first week · $14.99/mo.">\n' +
+  '<meta property="og:type" content="website">\n' +
+  '<meta property="og:url" content="https://app.rivaleclipse.dev/Market-Tracker/">\n' +
+  '<meta property="og:image" content="https://app.rivaleclipse.dev/Market-Tracker/promo.gif">\n' +
+  '<meta property="og:image:type" content="image/gif">\n' +
+  '<meta property="og:image:width" content="720">\n' +
+  '<meta property="og:image:height" content="720">\n' +
+  '<meta name="theme-color" content="#c9a227">\n' +
+  '<meta name="twitter:card" content="summary_large_image">\n' +
+  '<meta name="twitter:title" content="Rival Eclipse — Perpetual Helper">\n' +
+  '<meta name="twitter:description" content="67.7% across 93,385 graded calls. Every call locked at the open, graded against the market\'s own posted close — the scoreboard is public. 1-hour free trial · $0.99 first week · $14.99/mo.">\n' +
+  '<meta name="twitter:image" content="https://app.rivaleclipse.dev/Market-Tracker/promo.gif">\n';
+
+function shell(title, bodyHtml, scriptText, headExtra) {
   return '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">\n' +
-    '<title>' + title + ' — Perpetual Helper</title>\n<style>\n' +
+    '<title>' + title + ' — Perpetual Helper</title>\n' + (headExtra || '') +
+    '<style>\n' +
     ':root{--bg:#050510;--panel:#0a0a12;--panel2:#10101c;--line:#23233a;--txt:#eceaf4;' +
     '--mut:#9a97ad;--gold:#c9a227;--gold2:#e8c95a;--violet:#7c5cff;--err:#ff6b81;--ok:#3ddc97}\n' +
     '*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);' +
@@ -542,7 +565,7 @@ function signInPage() {
     '    if (!navigated) { btn.disabled = false; btn.textContent = oldLabel; }\n' +
     '  }\n' +
     '});\n';
-  return shell('Sign in', body, script);
+  return shell('Sign in', body, script, PROMO_HEAD);
 }
 
 function signUpPage() {
