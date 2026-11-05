@@ -87,6 +87,7 @@ input[type=number]{background:#0c0c18;border:1px solid var(--line);color:var(--t
 .riskcall{margin-top:14px;border:1px solid var(--line);border-radius:14px;padding:16px;background:#0c0c18}
 .riskcall .rc-head{font-size:19px;font-weight:700;line-height:1.35}
 .riskcall .rc-sub{margin-top:7px;font-size:13.5px;color:var(--mut);line-height:1.5}
+.riskwhy summary{cursor:pointer;margin-top:8px;font-size:12.5px;font-weight:600;color:var(--mut);letter-spacing:.02em}
 .riskcall.stake,.riskcall.ride{border-color:var(--gold)}
 .riskcall.stake .rc-head,.riskcall.ride .rc-head{color:var(--gold2)}
 .riskcall.wait{border-color:var(--violet)}
@@ -629,7 +630,9 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
     <label class="casctoggle"><input type="checkbox" id="cascadeToggle"> Cascade 5m calls</label>
     <span class="note" id="cascadeStat"></span>
   </div>
-  <div class="note" style="margin-top:2px">Experimental: on covered closes the 5m row leads with the dedicated long-horizon call ending at that close — the native 5m call stays right under it.</div>
+  <!-- WEB59 text reduction: the cascade explainer moved into the
+       "How it works" context text (CTX_TEXT.how) — the header keeps
+       only the toggle + its record line at rest. -->
   </div>
 </header>
 <div id="drawerBackdrop" hidden></div>
@@ -722,12 +725,10 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
   <!-- WEB40: NORMAL mode panel (hidden unless NORMAL is active) -->
   <section class="card" id="normalPanel" hidden>
     <div class="secthead"><h2 style="margin:0">📈 Normal mode — next-shift forecasts</h2><button type="button" class="ctxbtn" id="nmRefreshAllBtn" title="Reload every coin's Normal data">↻ Refresh all</button></div>
-    <p class="note" style="margin-top:6px">Rolling wave forecasts for day-traders: what the system expects each coin to do next, when, and what it advises for <i>your</i> position. Forecasts freeze when issued — a re-forecast is a new line, never an edit; the old line stays on the chart and in the record.</p>
-    <div class="row" style="margin-top:8px;gap:8px;align-items:center">
-      <span class="note">Zoom is set per coin panel below — each panel's zoom drives only its own charts.</span>
-    </div>
+    <p class="note" style="margin-top:6px">Rolling wave forecasts: what each coin is expected to do next, when, and what it advises for <i>your</i> position.</p>
     <details id="nmAdvPanel" style="margin-top:10px">
       <summary style="cursor:pointer;color:var(--mut);font-weight:600;font-size:12px;letter-spacing:.08em">ADVANCED — FORECAST CONTROLS (THIS DEVICE ONLY)</summary>
+      <div class="note" style="margin-top:8px">Forecasts freeze when issued — a re-forecast is a new line, never an edit; the old line stays on the chart and in the record. Zoom is set per coin panel — each panel's zoom drives only its own charts.</div>
       <div class="nctl" style="margin-top:8px">
         <label>Sensitivity
           <select id="nmPresetSel">
@@ -753,11 +754,10 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
           <button id="snipeMinBtn" type="button" aria-expanded="true" aria-controls="snipeCard" title="Minimize the Snipe Spotter">—</button>
         </div>
       </div>
-      <div id="cycleStatus">Pick up to 6 cryptos, set each line, then press Start. Prices go live as soon as a coin is picked.</div>
+      <div id="cycleStatus">Pick up to 6 cryptos, set each line, then press Start.</div>
       <div class="row" style="margin-top:8px;gap:8px;align-items:center">
         <span class="note">Price updates</span>
         <div class="zoomseg" id="tickSeg"><button type="button" data-tick="3000" class="on">3s · Standard</button><button type="button" data-tick="1000">1s</button><button type="button" data-tick="500">0.5s · Live</button></div>
-        <span class="note">Live refreshes near-instantly and uses more data.</span>
       </div>
       <div id="advStrip" class="advstrip" hidden></div>
       <div class="simplrow" id="advSimplRow" hidden><button type="button" class="simplbtn" data-simpl="banner">Simplified</button></div>
@@ -808,10 +808,14 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
          the call it produces: strongest claim, closest disclaimer. -->
     <div class="riskutf">
       <button type="button" class="btn primary riskutfbtn" id="rpUtfBtn">★ UNLIKELY TO FAIL — evaluate now</button>
-      <div id="rpUtfOut"><div class="note">The strictest check in this panel — deep record, best side, favorable regime, every stability check passing, small expected worst streak. It never fires on its own; press when you want it judged.</div></div>
+      <div id="rpUtfOut"><div class="note">The strictest check in this panel — it never fires on its own; press when you want it judged.</div></div>
       <div class="riskdisc" id="rpUtfDisc">Experimental — this assistant only advises; it never places trades. Every number is historical statistics from the system's own graded record. Accuracy can never be guaranteed, losing streaks can exceed anything in the record, and a doubling ladder risks your whole bankroll. Never stake money you cannot afford to lose.</div>
     </div>
-    <div class="riskdisc" id="rpDisc">Experimental — this assistant only advises; it never places trades. Every number is historical statistics from the system's own graded record. Accuracy can never be guaranteed, losing streaks can exceed anything in the record, and a doubling ladder risks your whole bankroll. Never stake money you cannot afford to lose.</div>
+    <!-- WEB59 text reduction: the panel carried this same disclaimer
+         twice at rest (#rpDisc duplicated #rpUtfDisc verbatim). One
+         instance stays — attached directly beneath the UTF call, the
+         strongest claim in the panel. rpRender's #rpDisc write now
+         no-ops on the missing element (guarded). -->
     <div class="riskgrid">
       <label>Your bankroll $<input id="rpBankroll" type="number" min="0" step="1" placeholder="e.g. 2550"></label>
       <label>Base stake $<input id="rpBase" type="number" min="0" step="1" value="10"></label>
@@ -838,7 +842,7 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
       <button class="linkbtn" type="button" id="smsUnsub">Unsubscribe</button>
     </form>
     <div class="note" id="smsMsg" style="margin-top:7px"></div>
-    <div class="note" id="smsState" style="margin-top:4px">SMS sending activates when the alert provider is connected; alerts already appear here live.</div>
+    <div class="note" id="smsState" style="margin-top:4px">SMS not connected yet — alerts appear here live.</div>
   </section>
 </main>
 <footer>
@@ -2034,7 +2038,7 @@ function openWaveReason(sym, btn){
 function cycleReasonText(sym){
   const cs = coinState(sym);
   const snap = cs.snap;
-  if (!snap) return "No cycle call has locked for this card yet. The call locks at the cycle open; its reason is written from the locked snapshot and appears here once it exists.";
+  if (!snap) return "No cycle call has locked for this card yet. The call locks at the cycle open; its reason is written from the locked snapshot and appears here once it exists. Every call is for the close vs your line, never for right now.";
   const L = [];
   const ml = !snap.call ? (snap.ml || mlRead(sym, null, snap.pred ? snap.pred.driftTotal : null, true)) : null;
   L.push("Cycle call: " + (snap.call || (ml ? "most likely " + ml.side : "no readable call")) + " vs the line " + fmtPrice(snap.line) +
@@ -2087,7 +2091,7 @@ document.addEventListener("keydown", ev => { if (ev.key === "Escape") closeSimpl
    opened from slim launcher buttons. ---------- */
 const CTX_TEXT = {
   how: { h: "How Perpetual Helper works",
-    t: "Live prices for the cryptos you pick, a cycle timer synced to the market clock, and an over/under call for the close from 6 months of pattern stats per coin. Each cycle's call locks at the open — that locked call is the only one graded — while the live call keeps tracking every 10 seconds until the close. It scores itself at every close, in the open.\n\n📚 Learn — the perpetuals tutorial & lessons (the Learn link at the top of the page): what to look for in the data, real past charts with the signs drawn on, wave and snipe patterns, and how positions are managed." },
+    t: "Live prices for the cryptos you pick, a cycle timer synced to the market clock, and an over/under call for the close from 6 months of pattern stats per coin. Each cycle's call locks at the open — that locked call is the only one graded — while the live call keeps tracking every 10 seconds until the close. It scores itself at every close, in the open.\n\n📚 Learn — the perpetuals tutorial & lessons (the Learn link at the top of the page): what to look for in the data, real past charts with the signs drawn on, wave and snipe patterns, and how positions are managed.\n\nCascade 5m calls (the toggle at the top of the page) — experimental: on covered closes the 5m row leads with the dedicated long-horizon call ending at that close; the native 5m call stays right under it." },
   snipe: { h: "Snipe Spotter — how it works",
     t: "This spotter flags one event only: a perpetual window where one side is priced cheap — 28% odds or lower — while the wave signs say it can still cross the line and close in profit. A spot wins only if it closes in profit; the record counts exactly that. The panel loads once and never refreshes itself — tap ↻ Refresh spotter for the latest spots. Nothing else gets flagged." },
   alerts: { h: "Wave alerts — how they work",
@@ -3587,7 +3591,7 @@ function addCard(sym){
     '<div class="snipe" hidden></div>' +
     '<div class="bspot" hidden></div>' +
     '<div class="bestopt" hidden></div>' +
-    '<div class="pred"><div class="call noedge">NO CYCLE RUNNING</div><div class="conf">Set your line, then press Start — every call is for the close vs your line, never for right now.</div><div class="pbar"><div style="width:0%"></div></div><div><button type="button" class="whybtn predwhy">Why this call?</button></div></div>' +
+    '<div class="pred"><div class="call noedge">NO CYCLE RUNNING</div><div class="conf">Set your line, then press Start.</div><div class="pbar"><div style="width:0%"></div></div><div><button type="button" class="whybtn predwhy">Why this call?</button></div></div>' +
     '<div class="posbtns"><button type="button" class="posbtn up">(+) Up — I hold OVER</button><button type="button" class="posbtn down">(-) Down — I hold UNDER</button></div>' +
     '<div class="lockedline" hidden></div>' +
     '<div class="cardpop" hidden>' +
@@ -6158,9 +6162,12 @@ function startCycle(){
   // WEB12: replace the Coinbase-open placeholder with the chosen
   // market's actual target for this window, as soon as it answers.
   if (marketActive()) S.selected.forEach(sym => applyMarketStrike(sym));
+  /* WEB59: the running status keeps the facts (preset, window,
+     line source) — the lock-discipline tail moved to the expanders
+     (CTX "how" + outlookExplainText already state it verbatim). */
   $("#cycleStatus").textContent = S.preset !== "custom"
-    ? "Cycle running — live-mirroring " + PRESETS[S.preset].name + ": " + cycleWinLabel() + "s. Each coin's line is " + PRESETS[S.preset].name + "'s actual target for the window, pulled from its feed at the open — the source is named on each card. Each coin's call locks at the open and is the only call its card shows for the cycle — it never updates mid-cycle, and only it is graded."
-    : "Cycle running — " + S.lenMin + "m perpetuals, aligned to the wall clock. Each coin's line starts at the previous close's price (line roll on). Each coin's call locks at the open and is the only call its card shows for the cycle — it never updates mid-cycle, and only it is graded.";
+    ? "Cycle running — live-mirroring " + PRESETS[S.preset].name + ": " + cycleWinLabel() + "s. Each coin's line is " + PRESETS[S.preset].name + "'s actual target for the window."
+    : "Cycle running — " + S.lenMin + "m perpetuals, aligned to the wall clock. Lines start at the previous close's price (line roll on).";
 }
 function stopCycle(){
   S.cycle.active = false;
@@ -6170,7 +6177,7 @@ function stopCycle(){
   S.selected.forEach(sym => {
     const cs = coinState(sym);
     cs.els.call.textContent = "NO CYCLE RUNNING"; cs.els.call.className = "call noedge";
-    cs.els.conf.textContent = "Set your line, then press Start — every call is for the close vs your line, never for right now.";
+    cs.els.conf.textContent = "Set your line, then press Start.";
     cs.els.pbar.style.width = "0%";
     cs.dispSide = null; cs.dispP = null; cs.dwellSide = null; cs.dwellCount = 0;
     cs.flips = 0; cs.lineMoved = false; cs.snap = null;
@@ -6872,7 +6879,17 @@ function rpRender(){
   const box = $("#rpCall");
   if (box){
     box.className = "riskcall " + call.type;
-    box.innerHTML = '<div class="rc-head">' + escHtml(call.head) + '</div><div class="rc-sub">' + escHtml(call.sub || "") + "</div>";
+    /* WEB59: the call HEAD is the decision and stays at rest; its
+       justification paragraph (rc-sub) now sits behind a native
+       "Why this call?" expander inside the call box. EXCEPT the
+       stop / take-win subs: those carry the amounts (next stake,
+       remaining risk, ladder outcome) — decision numbers, kept at
+       rest exactly as before. */
+    box.innerHTML = '<div class="rc-head">' + escHtml(call.head) + '</div>' +
+      (!call.sub ? ""
+        : (call.type === "stop" || call.type === "takewin")
+          ? '<div class="rc-sub">' + escHtml(call.sub) + "</div>"
+          : '<details class="riskwhy"><summary>Why this call?</summary><div class="rc-sub">' + escHtml(call.sub) + "</div></details>");
   }
   const actionable = !!(call.stake && (call.type === "stake" || call.type === "ride" || call.type === "switch" || call.type === "reduce"));
   const wb = $("#rpWonBtn"), lb = $("#rpLostBtn"), fb = $("#rpFreshBtn");
@@ -6883,8 +6900,8 @@ function rpRender(){
   if (sug){
     if (RISK && RISK.recommendation){
       const r = RISK.recommendation, b = rpBaseOf(RP, RISK);
-      sug.textContent = "Suggested starting bankroll for the current best perpetual (" + r.coin + " " + r.horizon + "m " + r.side.toUpperCase() + "): " +
-        rpMoney(rpLadderBankroll(b, r.expectedMaxStreak)) + " at a " + rpMoney(b) + " base stake — funds its expected worst streak of " + r.expectedMaxStreak + " plus the recovery bet.";
+      sug.textContent = "Suggested bankroll (" + r.coin + " " + r.horizon + "m " + r.side.toUpperCase() + "): " +
+        rpMoney(rpLadderBankroll(b, r.expectedMaxStreak)) + " at a " + rpMoney(b) + " base — covers its expected worst streak of " + r.expectedMaxStreak + " plus the recovery bet.";
     } else if (RISK){
       sug.textContent = "No suggested bankroll right now — no perpetual currently qualifies, so there is nothing to size.";
     }
@@ -6963,8 +6980,10 @@ function renderAdvisory(){
     if (best){
       const a = ADVISORY.coins[best];
       strip.hidden = false;
+      /* WEB59: the strip is a headline — the advisory reason no
+         longer rides it at rest (the card shows the summary; the
+         full reasons live in the Simplified window). */
       strip.textContent = "Right now: " + best + " looks most predictable" +
-        (a.reasons && a.reasons.length ? " — " + a.reasons[0] : "") +
         (a.side ? " · suggested side " + a.side + " (" + (a.side_horizon_min || 30) + "m" +
                   /* WEB35 sanity: no % without a finite stored probability */
                   (a.side_p != null && isFinite(+a.side_p) ? ", " + pctCap(a.side_p) : "") + ")"
@@ -7022,13 +7041,24 @@ function renderAdvCard(sym){
   /* WEB18: the card shows only the FIRST advisory reason as its
      one-line summary — the full reason list rides in the card's
      advisory Simplified window (openSimpl appends it there). */
-  if (cs.els.advWhy) cs.els.advWhy.textContent = (a.reasons && a.reasons.length) ? a.reasons[0] : "";
+  /* WEB59: first-line summary at rest — the full reason list rides
+     the card's advisory Simplified window (openSimpl appends it). */
+  if (cs.els.advWhy) cs.els.advWhy.textContent = (a.reasons && a.reasons.length) ? restSummary(a.reasons[0], 90) : "";
 }
 /* WEB25 declutter: long alert text (the server's snipe-spot
    paragraphs) no longer displays in full by default — the row
    shows a headline preview and the full text sits in a collapsed
    .xfull block behind a "Full text" tap. Short alerts render
    whole, exactly as before. */
+/* WEB59: at-rest summary cap for reason strings — the first line
+   only; the full text always lives behind the section's expander
+   (Simplified / Why / How-it-works), never only here. */
+function restSummary(t, cap){
+  t = String(t || "");
+  if (t.length <= cap) return t;
+  const cut = t.slice(0, cap), sp = cut.lastIndexOf(" ");
+  return (sp > 40 ? cut.slice(0, sp) : cut) + "…";
+}
 function alertTextHTML(text){
   const t = String(text || "");
   if (t.length <= 160) return "<div>" + escHtml(t) + "</div>";
@@ -7058,12 +7088,12 @@ function renderAlerts(){
       const when = isFinite(d.getTime()) ? d.toLocaleString() : "";
       return '<div class="alertrow"><span class="acoin">' + escHtml(al.coin || "") + '</span>' +
         '<span class="atime">' + escHtml(when) + '</span>' + alertTextHTML(al.text || "") + "</div>";
-    }).join("") : '<div class="note">No wave alerts yet — when a pattern family strings together 4 value-accurate predictions and a fresh instance opens, the alert lands here.</div>';
+    }).join("") : '<div class="note">No wave alerts yet — alerts land here when a proven pattern family opens a fresh instance.</div>';
   }
   const st = $("#smsState");
   if (st && ADVISORY) st.textContent = ADVISORY.sms_active
-    ? "SMS alerts are LIVE — subscribers get a text the moment a proven wave pattern lines up again."
-    : "SMS sending activates when the alert provider is connected; alerts already appear here live.";
+    ? "SMS alerts are LIVE — subscribers get a text when a wave pattern lines up."
+    : "SMS not connected yet — alerts appear here live.";
 }
 /* ---------- SNIPE SPOTTER (Shane 2026-10-28) ---------------------
    A VIEW of the server spotter (GET /api/perp/snipe). The spotter
@@ -7160,7 +7190,7 @@ function renderSnipe(){
         recent = (SNIPE.recent || []).filter(r => !isPacked(r && r.coin));
   let html = spots.length
     ? spots.map(snipeSpotRow).join("")
-    : '<div class="note">No snipe setups live right now — this spotter only fires when a side is priced at 28% or lower with a real path to close in profit, so quiet is normal.</div>';
+    : '<div class="note">No snipe setups live right now — the spotter only fires on a side priced at 28% or lower with a real path to close in profit.</div>';
   html += '<div class="spotrec">' + escHtml(snipeRecordLine(SNIPE.record)) + '</div>';
   if (recent.length)
     html += '<div class="lbl" style="margin:10px 0 2px">Recently closed spots (last 24h)</div>' + recent.map(snipeRecentRow).join("");
@@ -7279,10 +7309,13 @@ function renderDayForecast(){
      config) — both the market-wide best windows and the per-coin
      rows; the payload stays all-coin server-side. */
   const mb = (DAYFC.market_best || []).filter(w => !isPacked(w.coin));
+  /* WEB59: the best-window rows at rest are coin + window only —
+     the "why" sentence moved behind the Full forecast expander,
+     whose per-coin rows carry it (fcwin, below). */
   best.innerHTML = mb.length
     ? '<div class="lbl" style="margin-top:2px">Best windows market-wide</div>' + mb.map(w =>
         '<div class="fcbest"><b>' + escHtml(w.coin || "") + "</b> · " + winLabel(w.from_h, w.to_h) +
-        '<div class="note">' + escHtml(w.why || "") + "</div></div>").join("")
+        "</div>").join("")
     : '<div class="note">No standout windows in the hourly history the server tracks.</div>';
   wrap.innerHTML = keptCoins().filter(s => DAYFC.coins[s]).map(sym => {
     const c = DAYFC.coins[sym];
@@ -7606,7 +7639,7 @@ function padRender(sym){
   const line = parseFloat(cp.text);
   if (cs.els.padInfo) cs.els.padInfo.textContent = isFinite(line) && line > 0 && price
     ? "Line for " + cp.target + " · " + fmtPct(line / price - 1, true) + " vs the live price"
-    : "No line typed — ENTER will pin " + cp.target + "'s line at the live price.";
+    : "No line typed — ENTER pins at the live price.";
   /* WEB47: the check button's label follows the active market,
      and its result re-renders (or retires) with the pad's scope. */
   renderPmCheck(sym);
@@ -8260,20 +8293,12 @@ function renderPadCalls(sym){
     : (cs.lineSet && cs.line > 0)
     ? "vs line " + fmtPrice(cs.line) + (cs.lineSrc ? " (" + cs.lineSrc + ")" : "")
     : "vs live price — no line set";
-  /* WEB21: the footnote states the lock discipline outright — the
-     old live-recompute wording is removed entirely. */
-  const lockNote = "Calls lock at each window's open and never update mid-window — the same opening call the system grades itself on. The countdown is the only live part of each row.";
-  /* WEB29: when any row carries a recent-form strip, the footnote
-     gains its legend (settled windows only). */
-  const anyForm = rows.some(r => { const a = cs.form && cs.form[r.h]; return a && a.length; });
-  /* WEB35 (Shane 2026-10-30): the visible footnote is now just the
-     one-line lock discipline + the form legend. The full
-     explanation that used to sit here (mode/targets text, the
-     est-end-value definition, the WEB28 refresh sentence, the
-     check description) moved into the "How the outlook works"
-     pop-out below (outlookExplainText) — same words, opened on
-     demand instead of always on screen. */
-  const footShown = lockNote + (anyForm ? " Recent-form triangles under each row: the last settled windows — ▲ closed over, ▼ closed under; ⭕ the opening lean was right, ❌ it was wrong, plain = no lean (reference only)." : "");
+  /* WEB59 (Shane 2026-11-05): the at-rest footnote is GONE. Both of
+     its sentences — the WEB21 lock discipline and the WEB29
+     recent-form legend — already live verbatim in the "How the
+     outlook works" pop-out (outlookExplainText) behind the button
+     that sat right under the footnote; the footnote was pure
+     duplication on every card. The button alone remains. */
   const busyAttr = cs.padCallsBusy ? " disabled" : "";
   const html =
     '<div class="lbl" style="margin:12px 0 4px">Perpetual outlook — ' + lineRef + '</div>' +
@@ -8370,8 +8395,7 @@ function renderPadCalls(sym){
       "</td><td>" + fmtPrice(r.est) + "</td></tr>";
     }).join("") +
     "</tbody></table>" +
-    '<div class="note" style="margin-top:4px">' + footShown +
-    ' <button type="button" class="whybtn" data-padexplain="1">How the outlook works ▸</button></div>';
+    '<div style="margin-top:4px"><button type="button" class="whybtn" data-padexplain="1">How the outlook works ▸</button></div>';
   /* WEB56 A3: countdown text alone never rebuilds the table — the
      1s housekeeping loop owns the .cdft text nodes between renders.
      The render signature is the built HTML with countdown text
@@ -8396,6 +8420,7 @@ function outlookExplainText(){
     : "Est. end value = the model's projected close for that perpetual, from the lock-time price and the same math as the call.";
   return head +
     "\n\nCalls lock at each window's open and never update mid-window — the same opening call the system grades itself on. The countdown is the only live part of each row." +
+    "\n\nRecent-form triangles under each row: the last settled windows — ▲ closed over, ▼ closed under; ⭕ the opening lean was right, ❌ it was wrong, plain = no lean (reference only)." +
     "\n\n↻ Refresh prediction adds a separate live estimate under a row, only when you tap it — the locked call itself never moves." +
     "\n\nCheck before render (WEB35): a row displays only after its stored call passes a check — it must be the lock for the current window, its probability finite and in range, its call consistent with the probability and the no-edge band recorded when it locked, and in market mode its line must equal the market's own target for the window. While a call is still being generated or checked, the row shows “checking…” — never an unchecked number." +
     "\n\nEach row's “Why this call?” button explains that exact call from its own locked numbers." +
