@@ -184,6 +184,9 @@ canvas.spark{width:100%;height:150px;display:block}
    strips + manual-target numpad, most-likely picks, account box. */
 .oddsbest4h{margin-top:10px;padding:8px 10px;border:1px solid rgba(201,162,39,.55);border-radius:10px;background:rgba(201,162,39,.10);color:var(--gold2);font-size:13px;line-height:1.5}
 .oddsbest4h.none{border-color:var(--line);background:#0c0c18;color:var(--mut)}
+.fc7line{font-size:13px;line-height:1.55;padding:3px 0;border-top:1px solid var(--line)}
+.fc7line:first-child{border-top:none}
+.fc7overall{font-weight:700;color:var(--gold2)}
 .oddstgt{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
 .otgtdisp{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:6px;min-height:28px}
 .onumpad{display:grid;grid-template-columns:repeat(3,64px);gap:6px;margin-top:6px}
@@ -723,6 +726,27 @@ footer{max-width:none;margin:0 auto;padding:0 18px 34px;color:var(--mut);font-si
     <div id="oddsGrid"></div>
     <div class="note" id="oddsMeta" style="margin-top:10px"></div>
     <div class="note" id="oddsSnipe"></div>
+    <!-- WEB60 (Shane 2026-11-05): the 7-Day Outlook lives HERE, in
+         the odds pop-out — no new main-page panel (his placement
+         ruling). At rest: the overall line + one line per coin,
+         nothing more. Reasoning, the basis numbers and the
+         forecast's own graded record sit behind the expander. The
+         force-recheck button renders ONLY when the engine says this
+         account has admin standing (can_force) — and the engine
+         re-checks standing server-side on the POST regardless. -->
+    <div class="oddstgt" id="fc7Box" style="margin-top:12px">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:8px">
+        <span style="font-weight:700">🗓️ 7-Day Outlook — for day traders</span>
+        <span class="riskexp">FORECAST · EXPERIMENTAL</span>
+      </div>
+      <div id="fc7Lines" style="margin-top:6px"><div class="note">Loading the 7-day outlook…</div></div>
+      <div class="row" style="margin-top:8px;gap:8px;align-items:center">
+        <button type="button" class="ctxbtn" id="fc7ForceBtn" hidden>↻ Force recheck now (admin)</button>
+        <span class="note" id="fc7ForceNote"></span>
+      </div>
+      <div class="row" style="margin-top:8px"><button class="boardbtn ctxkeep" id="fc7Btn" type="button">Why these calls + the forecast's record ▸</button></div>
+      <div id="fc7Detail" hidden></div>
+    </div>
     <div class="oddsacct">
       <h3 style="margin:0 0 6px;font-size:15px">Your account</h3>
       <div class="row" style="gap:8px;flex-wrap:wrap">
@@ -6640,6 +6664,90 @@ async function loadDayForecast(){
   renderMultBoard();
 }
 
+/* ---------- WEB60 (Shane 2026-11-05): 7-Day Outlook -------------
+   Lives in the odds pop-out (his placement ruling — no new
+   main-page panel). The engine's deep check runs every ~4h and
+   freezes an edition server-side; this block only fetches the one
+   edition payload (GET /api/perp/forecast7) and renders it: the
+   overall line + one line per coin at rest, reasoning + basis +
+   the forecast's own graded record inside the expander. The force
+   button appears ONLY when the payload says this account has
+   admin standing (can_force); the engine re-checks on the POST. */
+let FC7 = null;
+function fc7s(x){ return (x > 0 ? "+" : "") + x + "%"; }
+async function loadForecast7(){
+  const j = await fetchJSON(AUTH + "/api/perp/forecast7", 45000);
+  if (!j || !j.ok) return;
+  FC7 = j;
+  renderForecast7();
+}
+function renderForecast7(){
+  const box = $("#fc7Lines"); if (!box) return;
+  const fb = $("#fc7ForceBtn");
+  if (fb) fb.hidden = !(FC7 && FC7.can_force);
+  const ed = FC7 && FC7.edition;
+  if (!ed){
+    box.innerHTML = '<div class="note">No edition yet — the first deep check lands on the engine\'s next cycle (deep checks run every ~4 hours). Check back shortly.</div>';
+    const d0 = $("#fc7Detail"); if (d0) d0.innerHTML = "";
+    return;
+  }
+  const lines = [];
+  if (ed.overall) lines.push('<div class="fc7line fc7overall">' + escHtml(ed.overall.line) + '</div>');
+  for (const coin of Object.keys(ed.coins || {}).sort())
+    lines.push('<div class="fc7line">' + escHtml(ed.coins[coin].line) + '</div>');
+  lines.push('<div class="note" style="margin-top:4px">Deep check ' + escHtml(new Date(ed.generated_at).toLocaleString())
+    + (ed.forced ? ' · admin-forced recheck' : '')
+    + ' · editions freeze when written and are graded after their 7 days pass — the record is in the expander.</div>');
+  box.innerHTML = lines.join("");
+  renderForecast7Detail();
+}
+function renderForecast7Detail(){
+  const det = $("#fc7Detail"); if (!det || !FC7 || !FC7.edition) return;
+  const ed = FC7.edition, out = [];
+  const one = (c) => {
+    if (!c) return;
+    out.push('<div style="margin-top:10px"><b>' + escHtml(c.coin === "MARKET" ? "Overall market" : c.coin)
+      + '</b> — expected 7 days: ' + fc7s(c.chg7.lo) + ' to ' + fc7s(c.chg7.hi)
+      + ' · best buy ' + escHtml(c.buy_day.date) + ' · best sell ' + escHtml(c.sell_day.date)
+      + (c.sell_first ? ' (the sell day comes first — a sell-high, buy-back-low read)' : '') + '</div>');
+    for (const r of (c.reasons || [])) out.push('<div class="note">' + escHtml(r) + '</div>');
+  };
+  one(ed.overall);
+  for (const coin of Object.keys(ed.coins || {}).sort()) one(ed.coins[coin]);
+  const rec = FC7.record;
+  out.push('<div style="margin-top:12px"><b>The forecast\'s own record</b></div>');
+  if (rec && rec.all && rec.all.n > 0){
+    out.push('<div class="note">Across ' + rec.all.n + ' graded coin forecasts from ' + rec.editions
+      + ' editions: move windows hit ' + rec.all.window_hit_rate + '%, 7-day direction hit '
+      + rec.all.dir7_hit_rate + '%, buy→sell day pairs paid ' + rec.all.pair_hit_rate
+      + '%, average 7-day miss ' + rec.all.mean_abs_pct_error + ' points.'
+      + (rec.market && rec.market.n ? ' The overall-market line alone: ' + rec.market.dir7_hit_rate + '% direction over ' + rec.market.n + ' graded editions.' : '')
+      + '</div>');
+  } else {
+    out.push('<div class="note">No grades yet — every edition is graded once its 7 days have passed, so the first grades land about a week after the first edition. The record appears here when it exists, good or bad.</div>');
+  }
+  out.push('<div class="note" style="margin-top:8px">How it is built: every ~4 hours the engine reads each coin\'s daily and 4-hour candles (Coinbase), measures trend, momentum, volatility regime and swing rhythm, and freezes a 7-day outlook. Editions are never edited — a new check is a new edition.</div>');
+  det.innerHTML = out.join("");
+}
+async function fc7Force(){
+  const btn = $("#fc7ForceBtn"), note = $("#fc7ForceNote");
+  if (btn) btn.disabled = true;
+  if (note) note.textContent = "Running the deep check…";
+  const j = await nmPost(AUTH + "/api/perp/forecast7/refresh", {});
+  if (btn) btn.disabled = false;
+  if (j && j.ok){
+    FC7 = j; renderForecast7();
+    if (note) note.textContent = j.note === "just_refreshed" ? "A fresh edition was just written — showing it." : "Fresh edition written just now.";
+  } else if (note) note.textContent = "Recheck refused — admin standing required.";
+}
+{ const b = $("#fc7Btn"); if (b) b.addEventListener("click", () => {
+  const d = $("#fc7Detail"); if (!d) return;
+  d.hidden = !d.hidden;
+  b.textContent = d.hidden ? "Why these calls + the forecast's record ▸" : "Hide the reasoning + record ▾";
+}); }
+{ const b = $("#fc7ForceBtn"); if (b) b.addEventListener("click", fc7Force); }
+whenIdle(() => { loadForecast7(); }, 3200);
+
 /* ---------- WEB57 (Shane 2026-11-05 01:21): Risk Profile + Trade
    Goal Assistant — the panel's half of the feature. The engine
    serves MEASUREMENTS ONLY (GET /api/perp/risk-assistant: per-
@@ -8585,6 +8693,7 @@ function oddsSetLive(on){
     loadWinRecAll();
     refreshMktLines(ODDS.coin);
     renderOddsBest4h();
+    loadForecast7();   // WEB60: the 7-Day Outlook lives in this drawer
   }
 }
 function oddsLine(){
