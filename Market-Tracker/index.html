@@ -1967,11 +1967,18 @@ function outlookReasonText(sym, h){
   if (lock.call){
     L.push("Call: " + lock.call + " — the system put the chance of closing over the line at " +
       pctCap(lock.p) + "%, and " + lock.call + " is the called side at " + pctCap(lock.winP) + "%.");
-  } else {
-    L.push("Call: NO EDGE — the chance of closing over the line was " + pctCap(lock.p) +
+  } else if (lock.ml){
+    const ml = lock.ml;
+    L.push("Most likely outcome: " + ml.side + " — the chance of closing over the line was " + pctCap(lock.p) +
       "%, inside the no-edge band around 50/50" +
-      (typeof lock.band === "number" ? " (a call needs at least " + Math.round(lock.band * 100) + " points of separation)" : "") +
-      ", so the system honestly made no call rather than guessing.");
+      (typeof lock.band === "number" ? " (a strong call needs at least " + Math.round(lock.band * 100) + " points of separation)" : "") +
+      ", so the banded model made no strong call. The most likely outcome is read from the buy/sell candles combined with the overall market trend at the open instead: trend-read score " + mlScoreTxt(ml) +
+      ", expressed as " + pctCap(ml.conf) + " confidence on the read-strength scale (50% + 2 points per trend-read point, capped at 60%) — a strength-of-read figure, not the model's probability.");
+    if (ml.badge)
+      L.push("📛 This call carries the 📛 badge: confidence is under 55%, but trend, candles and buy/sell flow all point the same way — every voting signal in the read agrees with " + ml.side + ", and none shows a shift against it.");
+  } else {
+    L.push("No call could be read at the open — the chance of closing over the line was " + pctCap(lock.p) +
+      "%, inside the no-edge band around 50/50, and the candle history had not loaded, so there was nothing honest to lean on.");
   }
   L.push("Estimated close: " + fmtPrice(lock.est) + ".");
   const w = lock.why;
@@ -2029,8 +2036,17 @@ function cycleReasonText(sym){
   const snap = cs.snap;
   if (!snap) return "No cycle call has locked for this card yet. The call locks at the cycle open; its reason is written from the locked snapshot and appears here once it exists.";
   const L = [];
-  L.push("Cycle call: " + (snap.call || "NO EDGE") + " vs the line " + fmtPrice(snap.line) +
+  const ml = !snap.call ? (snap.ml || mlRead(sym, null, snap.pred ? snap.pred.driftTotal : null, true)) : null;
+  L.push("Cycle call: " + (snap.call || (ml ? "most likely " + ml.side : "no readable call")) + " vs the line " + fmtPrice(snap.line) +
     ", closing " + new Date(snap.closeAt).toLocaleTimeString() + ".");
+  if (!snap.call && ml){
+    L.push("The banded probability made no call this cycle" +
+      (typeof snap.p === "number" ? " (it sat at " + pctCap(snap.p) + " for closing over the line — inside the no-call band)" : "") +
+      ". The most likely outcome is read from the candle/trend signals frozen at the open: trend-read score " + mlScoreTxt(ml) +
+      ", expressed as " + pctCap(ml.conf) + " confidence on the read-strength scale (50% + 2 points per trend-read point, capped at 60%) — a strength-of-read figure, not the model's probability.");
+    if (ml.badge)
+      L.push("📛 This call carries the 📛 badge: confidence is under 55%, but trend, candles and buy/sell flow all point the same way — every voting signal in the read agrees with " + ml.side + ", and none shows a shift against it.");
+  }
   if (typeof snap.p === "number")
     L.push("The system's chance of closing over the line: " + pctCap(snap.p) + "%.");
   if (snap.trendText) L.push("The read frozen with the call: " + snap.trendText);
@@ -5184,12 +5200,18 @@ function trendVerdict(sym, horizonMin){
   const t = cs.trend ? cs.trend[wk] : null;
   let score = 0;
   const up = [], dn = [], flat = [], notes = [];
+  /* WEB58: each signal's vote is also recorded as a leg
+     (+1 up / −1 down / 0 no vote) — the 📛 alignment test reads
+     the legs, so a badge can require that NO signal in the read
+     points against the called side (the swing-age leg is the
+     shift warning: it votes for the turn, against the leg). */
+  const legs = {trend: 0, swings: 0, aging: 0, mom: 0, fc: 0, hod: 0};
   if (t){
-    if (t.state === "JUMPING"){ score += 2; up.push("the " + WIN_LABEL[wk] + " trend is jumping (" + fmtPct(t.logret, true) + " across the window)"); }
-    else if (t.state === "DROPPING"){ score -= 2; dn.push("the " + WIN_LABEL[wk] + " trend is dropping (" + fmtPct(t.logret, true) + " across the window)"); }
+    if (t.state === "JUMPING"){ score += 2; legs.trend = 1; up.push("the " + WIN_LABEL[wk] + " trend is jumping (" + fmtPct(t.logret, true) + " across the window)"); }
+    else if (t.state === "DROPPING"){ score -= 2; legs.trend = -1; dn.push("the " + WIN_LABEL[wk] + " trend is dropping (" + fmtPct(t.logret, true) + " across the window)"); }
     else if (t.state.indexOf("RIDING") === 0){
-      if (t.stdSlope >= 0.1){ score += 0.5; up.push("price is riding the line with an upward tilt"); }
-      else if (t.stdSlope <= -0.1){ score -= 0.5; dn.push("price is riding the line with a downward tilt"); }
+      if (t.stdSlope >= 0.1){ score += 0.5; legs.trend = 1; up.push("price is riding the line with an upward tilt"); }
+      else if (t.stdSlope <= -0.1){ score -= 0.5; legs.trend = -1; dn.push("price is riding the line with a downward tilt"); }
       else flat.push("price is riding the line, flat");
     } else flat.push("the " + WIN_LABEL[wk] + " trend is leveling out");
     if (t.decel && Math.abs(score) >= 2) notes.push("the move is easing, though");
@@ -5197,8 +5219,8 @@ function trendVerdict(sym, horizonMin){
   const sw = cs.swings && (cs.swings.h24 || cs.swings.d7);
   if (sw && sw.ratio != null){
     const lbl = cs.swings.h24 ? "24h" : "7d";
-    if (sw.ratio >= 1.25){ score += 1; up.push("rises are running " + sw.ratio.toFixed(1) + "x falls (" + lbl + ")"); }
-    else if (sw.ratio <= 0.8){ score -= 1; dn.push("falls are running " + (1 / sw.ratio).toFixed(1) + "x rises (" + lbl + ")"); }
+    if (sw.ratio >= 1.25){ score += 1; legs.swings = 1; up.push("rises are running " + sw.ratio.toFixed(1) + "x falls (" + lbl + ")"); }
+    else if (sw.ratio <= 0.8){ score -= 1; legs.swings = -1; dn.push("falls are running " + (1 / sw.ratio).toFixed(1) + "x rises (" + lbl + ")"); }
     else flat.push("rises and falls are balanced (ratio " + sw.ratio.toFixed(2) + ", " + lbl + ")");
   }
   const swg = cs.swings;
@@ -5206,6 +5228,7 @@ function trendVerdict(sym, horizonMin){
     const med = swg.medDurMin, ago = swg.lastPivotMinAgo;
     if (ago >= 0.9 * med && swg.lastLegDir){
       score += swg.lastLegDir > 0 ? -0.5 : 0.5;   // an aging leg: a turn is due against it
+      legs.aging = swg.lastLegDir > 0 ? -1 : 1;
       notes.push("the current swing leg is ~" + fmtDur(ago) + " old vs a typical ~" + fmtDur(med) + " — turns have been landing about then");
     } else if (ago <= 0.35 * med){
       notes.push("a swing just turned ~" + fmtDur(ago) + " ago — the new leg is young (typical leg ~" + fmtDur(med) + ")");
@@ -5213,19 +5236,19 @@ function trendVerdict(sym, horizonMin){
   }
   if (cs.feat.ret24 != null && dailyVol > 0){
     const z = cs.feat.ret24 / dailyVol;
-    if (z >= 0.5){ score += 1; up.push("24h momentum is " + fmtPct(cs.feat.ret24, true)); }
-    else if (z <= -0.5){ score -= 1; dn.push("24h momentum is " + fmtPct(cs.feat.ret24, true)); }
+    if (z >= 0.5){ score += 1; legs.mom = 1; up.push("24h momentum is " + fmtPct(cs.feat.ret24, true)); }
+    else if (z <= -0.5){ score -= 1; legs.mom = -1; dn.push("24h momentum is " + fmtPct(cs.feat.ret24, true)); }
   }
   const muDay = (cs.fcMu || 0) * 24;
   if (dailyVol > 0 && Math.abs(muDay) >= 0.3 * dailyVol){
-    if (muDay > 0){ score += 1; up.push("the forecast path slopes up ~" + fmtPct(muDay, true) + "/day"); }
-    else { score -= 1; dn.push("the forecast path slopes down ~" + fmtPct(muDay, true) + "/day"); }
+    if (muDay > 0){ score += 1; legs.fc = 1; up.push("the forecast path slopes up ~" + fmtPct(muDay, true) + "/day"); }
+    else { score -= 1; legs.fc = -1; dn.push("the forecast path slopes down ~" + fmtPct(muDay, true) + "/day"); }
   }
   if (M.hod){
     const hr = new Date().getUTCHours(), rate = M.hod[hr];
     if (rate != null){
-      if (rate >= 0.56){ score += 1; up.push("hours starting " + hr + ":00 UTC closed up " + Math.round(rate * 100) + "% of the time over 6 months"); }
-      else if (rate <= 0.44){ score -= 1; dn.push("hours starting " + hr + ":00 UTC closed down " + Math.round((1 - rate) * 100) + "% of the time over 6 months"); }
+      if (rate >= 0.56){ score += 1; legs.hod = 1; up.push("hours starting " + hr + ":00 UTC closed up " + Math.round(rate * 100) + "% of the time over 6 months"); }
+      else if (rate <= 0.44){ score -= 1; legs.hod = -1; dn.push("hours starting " + hr + ":00 UTC closed down " + Math.round((1 - rate) * 100) + "% of the time over 6 months"); }
     }
   }
   const sigR = M.vol ? liveSigma(sym) / M.vol : 1;
@@ -5245,7 +5268,7 @@ function trendVerdict(sym, horizonMin){
   else if (score <= -0.5) reasons = dn.slice(0, 2);
   else reasons = flat.slice(0, 2).concat(up.slice(0, 1), dn.slice(0, 1)).slice(0, 2);
   const all = reasons.concat(notes).slice(0, 3);
-  return {word: word, score: score, reasons: reasons,
+  return {word: word, score: score, reasons: reasons, legs: legs,
           text: "Trend read: " + word + (all.length ? " — " + all.join(" · ") : "")};
 }
 function renderTrendRead(sym){
@@ -5285,7 +5308,13 @@ async function loadOddsHistory(){
   if (coinState(coin).closesH.length || ODDS._hist === coin) return;
   ODDS._hist = coin;
   await loadCoin(coin);
-  if (ODDS.coin === coin) renderOddsTrend();
+  if (ODDS.coin === coin){
+    renderOddsTrend();
+    /* WEB58: the odds cards' most-likely reads need this history
+       — re-render the grid now that it has landed instead of
+       leaving "reading the candles…" up until the next poll. */
+    refreshOdds();
+  }
 }
 
 /* ---------- global tuning accessors (WEB8 one-database model) ----
@@ -6022,6 +6051,10 @@ function predict(sym){
     const tv = trendVerdict(sym, null);
     cs.snap = {closeAt: S.cycle.closeAt, call: cs.lastCall ? cs.lastCall.side : null,
                p: cs.lastPred.p, line: cs.line, pred: cs.lastPred,
+               /* WEB58: the most-likely read, frozen with the snap
+                  from this same trend verdict — displayed whenever
+                  the banded call is null (never a bare NO EDGE). */
+               ml: mlFromRead(tv, cs.lastPred.driftTotal, cs.feat.ret24),
                trendText: tv ? tv.text : null};
   }
   /* WEB22 (Shane's immutable-prediction law, 2026-10-29): the
@@ -6036,13 +6069,31 @@ function predict(sym){
   const dsn = (cs.snap && cs.snap.closeAt === S.cycle.closeAt) ? cs.snap : null;
   if (dsn){
     if (!dsn.call){
-      cs.els.call.textContent = "NO EDGE"; cs.els.call.className = "call noedge";
-      cs.els.conf.textContent = "Locked at open: NO EDGE — the probability sat at " + (dsn.p * 100).toFixed(0) +
-        "% at the open, inside this coin's ±" + Math.round(band * 100) +
-        "pt no-call band around 50" + (band > BAND_BASE + 0.001 ? " (widened in the global tuning: the system's recent calls kept flip-flopping)" : "") +
-        ". The model won't dress up a coin flip." +
-        (S.preset !== "custom" ? " " + cycleWinLabel() + " closes in " + fmtClock(S.cycle.closeAt - Date.now()) + "." : "");
-      cs.els.pbar.style.width = "0%";
+      /* WEB58: no bare NO EDGE — the most-likely read frozen with
+         the snap is the displayed call. ml can only be null when
+         literally nothing was readable at the open (no trend
+         read, no drift, no candle history): that no-data state
+         says so instead of inventing a side. */
+      const ml = dsn.ml || mlRead(sym, null, dsn.pred ? dsn.pred.driftTotal : null, true);
+      if (ml){
+        const over = ml.side === "OVER";
+        cs.els.call.textContent = ml.side + " " + (ml.conf * 100).toFixed(0) + "%" + mlBadgeMark(ml);
+        cs.els.call.className = "call " + (over ? "over" : "under");
+        /* At rest this line carries no extra bulk (Shane
+           2026-11-05): call + confidence live in the call element;
+           the basis and the 📛 explanation sit behind the card's
+           "Why this call?" expander (cycleReasonText). */
+        cs.els.conf.textContent = "Locked at open: most likely " + ml.side + " — the probability sat at " + (dsn.p * 100).toFixed(0) +
+          "% at the open, inside this coin's ±" + Math.round(band * 100) +
+          "pt no-call band around 50" + (band > BAND_BASE + 0.001 ? " (widened in the global tuning: the system's recent calls kept flip-flopping)" : "") +
+          ", so the call is read from the candles and the trend." +
+          (S.preset !== "custom" ? " " + cycleWinLabel() + " closes in " + fmtClock(S.cycle.closeAt - Date.now()) + "." : "");
+        cs.els.pbar.style.width = (ml.conf * 100).toFixed(0) + "%";
+      } else {
+        cs.els.call.textContent = "—"; cs.els.call.className = "call noedge";
+        cs.els.conf.textContent = "Locked at open: no call could be read — the candle history had not loaded at the open, so there was nothing honest to lean on.";
+        cs.els.pbar.style.width = "0%";
+      }
     } else {
       const over = dsn.call === "over", conf = over ? dsn.p : 1 - dsn.p;
       cs.els.call.textContent = (over ? "OVER " : "UNDER ") + (conf * 100).toFixed(0) + "%";
@@ -6064,11 +6115,22 @@ function renderLocked(sym){
   if (!cs.els.locked) return;
   const sn = cs.snap;
   if (!S.cycle.active || !sn || sn.closeAt !== S.cycle.closeAt){ cs.els.locked.hidden = true; return; }
-  let txt = sn.call
-    ? "Locked at open: " + sn.call.toUpperCase() + " " + Math.round((sn.call === "over" ? sn.p : 1 - sn.p) * 100) +
-      "% · line " + fmtPrice(sn.line) + " — only this call is graded, and it is the only call this card shows for the cycle."
-    : "Locked at open: NO EDGE · line " + fmtPrice(sn.line) +
-      " — this cycle grades as a no-call, and it is the only call this card shows for the cycle.";
+  let txt;
+  if (sn.call){
+    txt = "Locked at open: " + sn.call.toUpperCase() + " " + Math.round((sn.call === "over" ? sn.p : 1 - sn.p) * 100) +
+      "% · line " + fmtPrice(sn.line) + " — only this call is graded, and it is the only call this card shows for the cycle.";
+  } else {
+    /* WEB58: the locked line names the most-likely read; the
+       grading fact (this cycle grades as a no-call) stays stated
+       plainly beside it. */
+    const ml = sn.ml || mlRead(sym, null, sn.pred ? sn.pred.driftTotal : null, true);
+    txt = ml
+      ? "Locked at open: most likely " + ml.side + " " + Math.round(ml.conf * 100) + "%" + mlBadgeMark(ml) +
+        " · line " + fmtPrice(sn.line) +
+        " — this cycle grades as a no-call, and it is the only call this card shows for the cycle."
+      : "Locked at open: no readable call · line " + fmtPrice(sn.line) +
+        " — this cycle grades as a no-call, and it is the only call this card shows for the cycle.";
+  }
   if (sn.trendText) txt += " At the open — " + sn.trendText.replace(/^Trend read: /, "trend read: ");
   if (cs.els.locked.textContent !== txt) cs.els.locked.textContent = txt;
   cs.els.locked.hidden = false;
@@ -6936,9 +6998,26 @@ function renderAdvCard(sym){
        probability shows the side only — never a fabricated %. */
     chip.textContent = "Suggested: " + a.side + " (" + (a.side_horizon_min || 30) + "m" +
       (a.side_p != null && isFinite(+a.side_p) ? ", " + pctCap(a.side_p) : "") + ")";
-  } else {
+  } else if (a.stale){
+    /* WEB58: the stale state is a no-data state — the advisory
+       suppressed its suggestion because the market read is
+       stale; the chip says exactly that. */
     chip.hidden = false; chip.className = "sidechip none";
-    chip.textContent = "No suggested side — NO EDGE";
+    chip.textContent = "No suggested side — market data is stale";
+  } else {
+    /* WEB58: no bare NO EDGE — the chip shows the most-likely
+       read (candles + trend, the card's own loaded history) at
+       the advisory's horizon. mlRead can only return null when
+       the card has no candle history at all yet. */
+    const ml = mlRead(sym, a.side_horizon_min || 30, null);
+    if (ml){
+      chip.hidden = false; chip.className = "sidechip";
+      chip.textContent = "Most likely: " + ml.side + " (" + (a.side_horizon_min || 30) + "m, " +
+        pctCap(ml.conf) + ")" + mlBadgeMark(ml);
+    } else {
+      chip.hidden = false; chip.className = "sidechip none";
+      chip.textContent = "No suggested side yet";
+    }
   }
   /* WEB18: the card shows only the FIRST advisory reason as its
      one-line summary — the full reason list rides in the card's
@@ -7379,6 +7458,81 @@ function failOddsSpan(p){
      are part of the §7 string. */
   return s ? '<br><span class="failodds">' + s + "</span>" : "";
 }
+/* ---------- WEB58 (Shane 2026-11-05): most-likely calls + the 📛
+   badge ------------------------------------------------------------
+   Shane's ruling: a prediction NEVER renders as a bare "NO EDGE".
+   Where the banded probability makes no call, the displayed
+   most-likely outcome is read from the CANDLES + TREND instead —
+   the same signals trendVerdict votes on (trend-window state,
+   rise/fall candle balance, 24h momentum, forecast slope,
+   hour-of-day habit, swing-leg age). It is NOT read off the
+   banded probability: the 2026-11-05 audit measured the at-open
+   probability pinned at ~0.5000 for effectively every window
+   since 2026-10-29 (F1), and forced side-of-p calls on those
+   rows grade at 48.84% (n=19,124) — a side read from p would be
+   a coin flip dressed in decimals.
+   The confidence shown for a most-likely call is a READ-STRENGTH
+   figure on a fixed scale — 50% + 2 points per trend-read point,
+   capped at 60% (|score| 5) — never the banded probability, and
+   the "Why this call?" texts say so. Locks, stored calls and
+   grading are untouched: a banded no-call still locks and grades
+   as a no-call; this is a display derivation, computed at lock
+   time from the same frozen inputs and stored on the lock.
+   📛 BADGE (Shane's exact condition): a most-likely call with
+   confidence < 55% carries 📛 when the market is moving the
+   called way AND the candle / buy-sell data shows little to no
+   sign of a shift against it — operationally: every voting leg
+   of the trend read agrees with the called side (no leg votes
+   the other way; the swing-age leg is the shift warning and
+   vetoes the badge when it fires against) and at least two legs
+   vote for the side. Most-likely calls carry NO §7 failure-odds
+   label — that label is defined on model probabilities, and the
+   read-strength figure is not one. */
+function mlFromRead(v, driftTotal, ret24){
+  if (v && v.score){
+    const s = v.score > 0 ? 1 : -1;
+    const conf = 0.5 + 0.02 * Math.min(Math.abs(v.score), 5);
+    const legs = v.legs || {};
+    const vals = Object.keys(legs).map(k => legs[k]);
+    const badge = conf < 0.55 && vals.every(x => x === 0 || x === s) &&
+                  vals.filter(x => x === s).length >= 2;
+    return {side: s > 0 ? "OVER" : "UNDER", conf: conf, score: v.score,
+            badge: badge, src: "trend", legs: legs};
+  }
+  /* No trend read (or a perfectly balanced one): fall back to the
+     prediction's own expected-drift sign, then the 24h return —
+     a 50% read-strength lean, never badged (nothing like
+     unanimity has been shown). */
+  let side = null;
+  if (typeof driftTotal === "number" && driftTotal) side = driftTotal > 0 ? "OVER" : "UNDER";
+  if (!side && typeof ret24 === "number" && ret24) side = ret24 > 0 ? "OVER" : "UNDER";
+  if (!side) return null;
+  return {side: side, conf: 0.5, score: 0, badge: false, src: "drift", legs: null};
+}
+/* mlRead(sym, h, driftTotal, frozen) — the most-likely read for a
+   coin/horizon. frozen=true skips the live trendVerdict (used for
+   already-locked rows whose own ml was never stored: only the
+   lock's frozen drift may speak for them, never a fresh read). */
+function mlRead(sym, h, driftTotal, frozen){
+  const cs = coinState(sym);
+  let v = null;
+  if (!frozen){ try { v = trendVerdict(sym, h == null ? null : h); } catch (e) { v = null; } }
+  const ml = mlFromRead(v, driftTotal, cs.feat ? cs.feat.ret24 : null);
+  if (ml) return ml;
+  const c1 = cs.closes1 || [];
+  if (c1.length >= 2){
+    const d = c1[c1.length - 1] - c1[c1.length - 2];
+    return {side: d < 0 ? "UNDER" : "OVER", conf: 0.5, score: 0, badge: false, src: "candle", legs: null};
+  }
+  return null;
+}
+function mlBadgeMark(ml){ return ml && ml.badge ? " 📛" : ""; }
+function mlCallHTML(ml){
+  if (!ml) return '<span class="note">reading the candles…</span>';
+  return '<span class="' + (ml.side === "OVER" ? "up" : "down") + '">' + ml.side + " " + pctCap(ml.conf) + "</span>" +
+    (ml.badge ? ' <span class="cbadge">📛</span>' : "");
+}
+function mlScoreTxt(ml){ return (ml.score > 0 ? "+" : "") + ml.score; }
 function positionAdvice(side, price, line, p, band, closePhrase, intro){
   const pct = x => pctCap(x);   // WEB32: never print 100%/0% for a model probability
   const pOver = p, pUnder = 1 - p;
@@ -7545,6 +7699,10 @@ function padNowRows(tsym, price, line){
     const r = probOverAt(tsym, price, mlLine, remaining);
     const call = Math.abs(r.p - 0.5) >= band ? (r.p > 0.5 ? "OVER" : "UNDER") : null;
     return {h: h, p: r.p, call: call, winP: call ? (call === "OVER" ? r.p : 1 - r.p) : null,
+            /* WEB58: the live most-likely read for a banded
+               no-call (the local ml above is the market-line
+               entry; this field is the candle/trend read). */
+            ml: mlRead(tsym, h, r.driftTotal),
             remaining: remaining, line: mlLine, mkt: ml ? ml.src : null,
             /* WEB46: the now-view is a live estimate, so it may run
                against an unconfirmed read — but it must SAY so, and
@@ -7613,8 +7771,14 @@ function padNowRowInner(r, stampMs, sym){
     '<br><button class="padrefresh" type="button" data-padrefresh="' + r.h + '" aria-label="Refresh prediction for the ' + (r.h === 60 ? "1 hour" : r.h + " min") + ' perpetual">↻ Refresh prediction</button>' +
     (stampMs ? '<br><span class="note padstamp">↻ refreshed ' + padStampStr(stampMs) + " · live estimate</span>" : "") +
     "</td><td>" +
-    (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + "</span>" : '<span class="note">NO EDGE</span>') +
-    "</td><td>" + (r.call ? pctCap(r.winP) + failOddsSpan(r.winP) : "OVER " + pctCap(r.p) + " / UNDER " + pctCap(1 - r.p)) +
+    /* WEB58: a banded no-call row shows its most-likely read —
+       side in the call cell, read-strength confidence in the
+       probability cell — never a bare NO EDGE. */
+    (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + "</span>"
+            : (r.ml ? '<span class="' + (r.ml.side === "OVER" ? "up" : "down") + '">' + r.ml.side + "</span>" + (r.ml.badge ? ' <span class="cbadge">📛</span>' : "")
+                    : '<span class="note">reading the candles…</span>')) +
+    "</td><td>" + (r.call ? pctCap(r.winP) + failOddsSpan(r.winP)
+            : (r.ml ? pctCap(r.ml.conf) : "OVER " + pctCap(r.p) + " / UNDER " + pctCap(1 - r.p))) +
     /* WEB29: this horizon's recent-form strip (settled history
        only; empty string until the server has settled windows). */
     (sym ? formStripHTML(sym, r.h) : "") + "</td>";
@@ -7953,7 +8117,11 @@ function padCallsRows(sym){
       if (outlookLockCheck(sym, h, lock, closeAt))
         return {h: h, p: lock.p, call: lock.call, winP: lock.winP,
                 est: lock.est, remaining: remaining, line: lock.line,
-                mkt: lock.mkt, lockedAt: lock.lockedAt, checked: true};
+                mkt: lock.mkt, lockedAt: lock.lockedAt, checked: true,
+                /* WEB58: the lock's frozen most-likely read + its
+                   frozen why (the render's drift fallback for a
+                   lock whose ml was never stored). */
+                ml: lock.ml || null, why: lock.why || null};
       return {h: h, pending: true, remaining: remaining, line: lock.line,
               mkt: lock.mkt, lockedAt: null};
     }
@@ -8031,6 +8199,12 @@ function padCallsRows(sym){
     const call = Math.abs(r.p - 0.5) >= band ? (r.p > 0.5 ? "OVER" : "UNDER") : null;
     const fresh = {closeAt: closeAt, p: r.p, call: call,
       winP: call ? (call === "OVER" ? r.p : 1 - r.p) : null,
+      /* WEB58: the most-likely read, computed ONCE at lock time
+         from the candle/trend signals on hand at the open and
+         frozen with the lock — displayed whenever call is null.
+         (The local name ml above is the market-line entry; this
+         is lock.ml, a different object on a different basis.) */
+      ml: mlRead(sym, h, r.driftTotal),
       est: cs.price * Math.exp(r.driftTotal),
       line: line, mkt: ml ? ml.src : null, lockedAt: now,
       /* WEB35: the lock records its own basis — the band in force
@@ -8045,7 +8219,8 @@ function padCallsRows(sym){
     cs.padLock[h] = fresh;
     return {h: h, p: fresh.p, call: fresh.call, winP: fresh.winP,
             est: fresh.est, remaining: remaining, line: fresh.line,
-            mkt: fresh.mkt, lockedAt: fresh.lockedAt, checked: true};
+            mkt: fresh.mkt, lockedAt: fresh.lockedAt, checked: true,
+            ml: fresh.ml || null, why: fresh.why || null};
   });
 }
 /* WEB56 P2 (Shane 2026-11-04): is this coin's outlook panel in
@@ -8154,8 +8329,12 @@ function renderPadCalls(sym){
          server-side); the native 5m call stays visible right under
          it as the secondary line. Toggle OFF, a non-5m row, or no
          covering cascade row → the cell is exactly the native one. */
+      /* WEB58: a null (banded no-call) row displays its frozen
+         most-likely read — side + read-strength confidence + 📛
+         when the badge rule fires — never a bare NO EDGE. The
+         §7 failure-odds label stays on banded calls only. */
       const nativeCallHtml = (r.call ? '<span class="' + (r.call === "OVER" ? "up" : "down") + '">' + r.call + " " + pctCap(r.winP) + "</span>" + failOddsSpan(r.winP)
-              : '<span class="note">NO EDGE</span>');
+              : mlCallHTML(r.ml || mlRead(sym, r.h, r.why ? r.why.driftTotal : null, true)));
       let callCellHtml = nativeCallHtml;
       if (r.h === 5 && CASCADE_ON && lk){
         const cc = cascadeFor(sym);
@@ -8178,7 +8357,8 @@ function renderPadCalls(sym){
          an unlocked row (data not ready at the open) shows none. */
       (r.lockedAt ? '<br><span class="note">locked ' + multTimeStr(r.lockedAt) + "</span>" : "") +
       (le ? '<br><span class="note padliveest">↻ live estimate ' + multTimeStr(le.stampMs) + ": " +
-            (le.call ? le.call + " " + pctCap(le.winP) : "NO EDGE") +
+            (le.call ? le.call + " " + pctCap(le.winP)
+                     : (le.ml ? le.ml.side + " " + pctCap(le.ml.conf) + mlBadgeMark(le.ml) : "reading the candles…")) +
             " · est " + fmtPrice(le.est) + "</span>" : "") +
       /* WEB35: this call's reason — composed at open time from
          the lock's own stored inputs (outlookReasonText). */
@@ -8218,7 +8398,8 @@ function outlookExplainText(){
     "\n\nCalls lock at each window's open and never update mid-window — the same opening call the system grades itself on. The countdown is the only live part of each row." +
     "\n\n↻ Refresh prediction adds a separate live estimate under a row, only when you tap it — the locked call itself never moves." +
     "\n\nCheck before render (WEB35): a row displays only after its stored call passes a check — it must be the lock for the current window, its probability finite and in range, its call consistent with the probability and the no-edge band recorded when it locked, and in market mode its line must equal the market's own target for the window. While a call is still being generated or checked, the row shows “checking…” — never an unchecked number." +
-    "\n\nEach row's “Why this call?” button explains that exact call from its own locked numbers.";
+    "\n\nEach row's “Why this call?” button explains that exact call from its own locked numbers." +
+    "\n\nMost-likely outcomes + 📛 (WEB58): a row whose probability lands inside the no-call band never shows a bare NO EDGE — it shows the most likely outcome, read at the open from the buy/sell candles combined with the overall market trend (the trend read's signals: trend-window state, rise/fall candle balance, 24h momentum, forecast slope, hour-of-day habit, swing-leg age). Its confidence is a read-strength figure — 50% + 2 points per trend-read point, capped at 60% — not the model's probability, and the locked record is unchanged: a banded no-call still grades as a no-call. When that confidence is under 55% AND every voting signal in the read agrees with the called side — the market moving the called way, and no candle, flow or swing-age sign of a shift against it — the call carries a 📛 badge: a weak call where nothing in the data is arguing back.";
 }
 /* ---------- WEB28 (Shane 2026-10-30): "Refresh prediction" for
    the LOCKED Perpetual Outlook --------------------------------
@@ -8276,6 +8457,9 @@ async function padRefreshCalls(sym, hOnly){
       const call = Math.abs(r.p - 0.5) >= band ? (r.p > 0.5 ? "OVER" : "UNDER") : null;
       cs.padLiveEst[row.h] = {closeAt: lock.closeAt, p: r.p, call: call,
         winP: call ? (call === "OVER" ? r.p : 1 - r.p) : null,
+        /* WEB58: the live most-likely read for a banded no-call,
+           computed at the tap from the candle/trend signals. */
+        ml: mlRead(sym, row.h, r.driftTotal),
         est: price * Math.exp(r.driftTotal), stampMs: now};
       done.push(row.h);
     }
@@ -8395,16 +8579,30 @@ async function refreshOdds(){
   oddsRenderOff();
   const pct = (p) => (p * 100).toFixed(1) + "%";
   const HLBL = {5: "5 min", 15: "15 min", 30: "30 min", 45: "45 min", 60: "1 hour"};
+  /* WEB58: a banded NO EDGE from the engine renders as the
+     most-likely read (page-side candle/trend read for the odds
+     coin — its history loads for the trend reads anyway). The
+     held state (stale market or sources disagreeing — the
+     engine issued nothing) keeps the honest NO EDGE: there is
+     no trustworthy data to lean on. */
+  const oddsHeld = !!(j.stale || j.disagree);
   $("#oddsGrid").innerHTML = [5, 15, 30, 45, 60].map(h => {
     const hz = j.horizons[h];
     ODDS.closes[h] = Date.parse(hz.close_at);
-    const cls = hz.call === "OVER" ? "over" : hz.call === "UNDER" ? "under" : "noedge";
+    let cls, callTxt;
+    if (hz.call === "OVER" || hz.call === "UNDER"){ cls = hz.call === "OVER" ? "over" : "under"; callTxt = hz.call; }
+    else if (oddsHeld){ cls = "noedge"; callTxt = "NO EDGE"; }
+    else {
+      const ml = mlRead(ODDS.coin, h, null);
+      if (ml){ cls = ml.side === "OVER" ? "over" : "under"; callTxt = ml.side + " " + pctCap(ml.conf) + mlBadgeMark(ml); }
+      else { cls = "noedge"; callTxt = "reading the candles…"; }
+    }
     const st = hz.stats.global, sc = hz.stats.coin;
     const rec = st.calls ? st.calls + " calls · " + Math.round(st.hitRate * 100) + "% hit (" + st.scored + " scored, all coins)"
                          : "no scored calls on this horizon yet";
     const crec = sc.calls ? " · this coin " + Math.round(sc.hitRate * 100) + "% (" + sc.calls + ")" : "";
     return '<div class="ocard"><div class="oh"><span>' + HLBL[h] + '</span><span data-odds-close="' + h + '"></span></div>' +
-      '<div class="ocall ' + cls + '">' + hz.call + (hz.weak ? ' <span class="weak">· weak horizon</span>' : "") + '</div>' +
+      '<div class="ocall ' + cls + '">' + callTxt + (hz.weak ? ' <span class="weak">· weak horizon</span>' : "") + '</div>' +
       '<div class="opct">OVER ' + pct(hz.p_over) + ' · UNDER ' + pct(hz.p_under) + '</div>' +
       '<div class="ostat">Global record: ' + rec + crec + '</div>' +
       '<div class="otgt">' + targetStripHtml(ODDS.coin, h) + '</div>' +
