@@ -975,8 +975,8 @@ const FETCH_TIMEOUT_MS = 10000;
    would have gotten. GET reads only: the page's POSTs (nmPost,
    smsPost) never come through here. */
 const FETCH_INFLIGHT = {};
-function fetchJSON(url){
-  const key = String(url);
+function fetchJSON(url, timeoutMs){
+  const key = String(url) + "|" + (timeoutMs || 0);
   const hit = FETCH_INFLIGHT[key];
   if (hit) return hit;
   /* The entry deletes itself in the wrapper's finally — which
@@ -984,20 +984,20 @@ function fetchJSON(url){
      a caller resuming from an await can never be handed a
      just-settled entry as if it were still in flight. */
   const pr = (async () => {
-    try { return await fetchJSONOnce(url); }
+    try { return await fetchJSONOnce(url, timeoutMs); }
     finally { if (FETCH_INFLIGHT[key] === pr) delete FETCH_INFLIGHT[key]; }
   })();
   FETCH_INFLIGHT[key] = pr;
   return pr;
 }
-async function fetchJSONOnce(url){
+async function fetchJSONOnce(url, timeoutMs){
   let timer = null;
   try {
     const opts = {cache: "no-store"};
     if (typeof AbortController === "function"){
       const ctl = new AbortController();
       opts.signal = ctl.signal;
-      timer = setTimeout(() => { try { ctl.abort(); } catch (e) {} }, FETCH_TIMEOUT_MS);
+      timer = setTimeout(() => { try { ctl.abort(); } catch (e) {} }, timeoutMs > 0 ? timeoutMs : FETCH_TIMEOUT_MS);
     }
     const r = await fetch(url, opts);
     if (r && r.status === 401 && typeof url === "string" && url.indexOf(AUTH) === 0){
@@ -6741,9 +6741,25 @@ function rpReport(st, call, won, now){
   }
   return st;
 }
+/* WEB57 perf fix (2026-11-05): the risk routes get a longer
+   fetch patience than the page's 10s default (a cold engine build
+   used to outlast it and strand this panel on "Loading…"), and a
+   failed load says so honestly instead of loading forever — the
+   90s cadence below retries on its own, Refresh retries at once.
+   Once measurements HAVE loaded, a later failure keeps the last
+   good payload on screen rather than blanking the panel. */
+let RP_LOAD_FAILED = false;
 async function loadRiskAssistant(){
-  const j = await fetchJSON(AUTH + "/api/perp/risk-assistant");
-  if (!j || !j.ok) return;
+  const j = await fetchJSON(AUTH + "/api/perp/risk-assistant", 45000);
+  if (!j || !j.ok){
+    if (!RISK && !RP_LOAD_FAILED){
+      RP_LOAD_FAILED = true;
+      const sug = $("#rpSuggest");
+      if (sug) sug.textContent = "The assistant's measurements didn't load — the engine didn't answer in time. It retries on its own; the Refresh button tries again right away.";
+    }
+    return;
+  }
+  RP_LOAD_FAILED = false;
   RISK = j;
   rpRender();
 }
@@ -6761,7 +6777,8 @@ function rpRenderUtf(j){
     out.innerHTML =
       '<div class="riskutfout">Start with ' + escHtml(rpMoney(c.bankroll)) + ", trade " + escHtml(c.coin) + " " + c.horizon + "m " + escHtml(c.side.toUpperCase()) + "</div>" +
       '<div class="riskutfsub">Covers a loss streak of ' + c.covers_streak + ". Chance a longer streak beats this bankroll: ≈" + c.exceed_pct + "%.</div>" +
-      '<div class="note" style="margin-top:6px">Sized on a $10 base stake doubling after each loss. This perpetual\'s recent record: ' + rpPct(c.recent72.hitRate) + " over " + c.recent72.n + " settled windows (72h). Judged at press time — conditions move.</div>";
+      '<div class="note" style="margin-top:6px">Sized on a $10 base stake doubling after each loss. This perpetual\'s recent record: ' + rpPct(c.recent72.hitRate) + " over " + c.recent72.n + " settled windows (72h). Judged at press time — conditions move." +
+      (j.aggregates_at ? " Settled record as of " + escHtml(String(j.aggregates_at).slice(0, 10)) + " " + escHtml(String(j.aggregates_at).slice(11, 19)) + " UTC." : "") + "</div>";
   } else {
     const b = j.best_available;
     out.innerHTML = '<div class="riskutfref">No \'unlikely to fail\' setup right now' +
@@ -6771,9 +6788,11 @@ function rpRenderUtf(j){
 }
 async function rpUtfPress(){
   const btn = $("#rpUtfBtn");
-  if (btn) btn.disabled = true;
-  const j = await fetchJSON(AUTH + "/api/perp/risk-assistant/unlikely");
-  if (btn) btn.disabled = false;
+  const out = $("#rpUtfOut");
+  if (btn){ btn.disabled = true; btn.textContent = "Evaluating…"; }
+  if (out) out.innerHTML = '<div class="note">Evaluating — judging every perpetual against the strict bar right now…</div>';
+  const j = await fetchJSON(AUTH + "/api/perp/risk-assistant/unlikely", 60000);
+  if (btn){ btn.disabled = false; btn.textContent = "★ UNLIKELY TO FAIL — evaluate now"; }
   // Only a payload carrying an actual verdict may render as one —
   // anything else (engine silence, a stray route answer) is an
   // honest unavailable, never a dressed-up refusal or call.
