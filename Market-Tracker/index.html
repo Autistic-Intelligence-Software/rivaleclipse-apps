@@ -272,6 +272,13 @@ canvas.spark{width:100%;height:150px;display:block}
 .cascline{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;max-width:560px}
 .casctoggle{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:700;cursor:pointer}
 .cascbadge{display:inline-block;margin-left:7px;padding:1px 7px;border-radius:999px;background:linear-gradient(120deg,#7c5cff,#c9a227);color:#fff;font-size:10px;font-weight:800;letter-spacing:.06em;vertical-align:middle;white-space:nowrap}
+/* SNIPE BOUNCE (Shane 2026-11-06): one compact alert line inside a
+   perpetual outlook row — gold/violet on near-black, flashy but
+   readable; the record suffix stays muted. Rendered ONLY while an
+   active alert matches that (coin, horizon) — no placeholder. */
+.snipebounce{margin:2px 0;border:1px solid var(--gold);border-radius:8px;padding:5px 7px;background:linear-gradient(120deg,rgba(124,92,255,.30),rgba(201,162,39,.24));color:#ffe9a8;font-size:11.5px;font-weight:800;line-height:1.45;letter-spacing:.01em}
+.snipebounce .sbrec{color:#b9b4d6;font-weight:600;white-space:nowrap}
+.cpad-calls tr.snipebouncerow td{background:rgba(201,162,39,.05);padding:3px 4px}
 .ncard{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:12px;background:rgba(255,255,255,.02)}
 .ncard h3{margin:0;font-size:17px}
 .nstate{display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.05em;border-radius:999px;padding:3px 9px;margin-left:8px;vertical-align:2px}
@@ -1150,6 +1157,73 @@ function setCascade(on){
   }
   renderCascadeStat();
 })();
+/* ---------- SNIPE BOUNCE ALERT (Shane 2026-11-06) ---------------
+   User-facing bounce alert inside the perpetual outlook boxes.
+   The engine serves GET /api/perp/snipe-bounce-alerts (same AUTH
+   paywall proxy + fetchJSON pattern as cascade/advisory): a
+   global payload whose alerts[] holds ONLY still-open windows,
+   each naming the DROPPED side to buy. Display only — the page
+   computes nothing, grades nothing, posts nothing. Polls ride
+   the existing 1s housekeeping loop (60s slot, staggered) plus
+   the staged boot load; Polymarket only — any other preset, or a
+   failed read, clears the alert UI entirely (a stale buy signal
+   is worse than none). */
+let SNIPE_BOUNCE = null;   // last /api/perp/snipe-bounce-alerts payload
+function snipeBounceCents(v){
+  if (v == null || !isFinite(v)) return null;
+  /* odds prices arrive as 0–1 probabilities (0.21 -> 21¢); a
+     value already in cents (>1.5) passes through as-is. */
+  return Math.round(v <= 1.5 ? v * 100 : v);
+}
+function snipeBounceRead(p){
+  if (p == null || !isFinite(p)) return "";
+  return p >= 0.75 ? "strong" : p >= 0.6 ? "likely" : "possible";
+}
+function snipeBounceFor(sym, h){
+  if (S.preset !== "polymarket" || !SNIPE_BOUNCE || !Array.isArray(SNIPE_BOUNCE.alerts)) return null;
+  return SNIPE_BOUNCE.alerts.find(a => a && a.coin === sym && +a.horizon_min === +h) || null;
+}
+function snipeBounceText(a){
+  if (!a) return "";
+  const side = String(a.side || "").toUpperCase() === "UNDER" ? "UNDER" : "OVER";
+  const at = snipeBounceCents(a.price_at_alert);
+  const from = snipeBounceCents(a.drop_from);
+  const read = snipeBounceRead(a.model_p);
+  let t = "⚡ SNIPE BOUNCE — " + side + " dipped to " + (at == null ? "—" : at + "¢");
+  if (from != null) t += " (from " + from + "¢)";
+  if (read) t += " · bounce read: " + read +
+    (a.model_p != null && isFinite(a.model_p) ? " (" + Math.round(a.model_p * 100) + "%)" : "");
+  return t + " · dip buy multiplies if it reverses";
+}
+function snipeBounceRecordText(){
+  const r = SNIPE_BOUNCE && SNIPE_BOUNCE.record;
+  if (!r || !(r.graded > 0)) return "";
+  return "snipe record " + (r.hits || 0) + "/" + r.graded;
+}
+function snipeBounceHTML(sym, h){
+  const a = snipeBounceFor(sym, h);
+  if (!a) return "";
+  const rec = snipeBounceRecordText();
+  return '<div class="snipebounce">' + escHtml(snipeBounceText(a)) +
+    (rec ? ' <span class="sbrec">· ' + escHtml(rec) + "</span>" : "") + "</div>";
+}
+function snipeBounceRowHTML(sym, h){
+  const inner = snipeBounceHTML(sym, h);
+  return inner ? '<tr class="snipebouncerow"><td colspan="3">' + inner + "</td></tr>" : "";
+}
+async function loadSnipeBounce(){
+  if (S.preset !== "polymarket"){
+    if (SNIPE_BOUNCE){ SNIPE_BOUNCE = null; for (const sym of S.selected) renderPadCalls(sym); }
+    return;
+  }
+  const j = await fetchJSON(AUTH + "/api/perp/snipe-bounce-alerts");
+  if (!j || !j.ok){
+    if (SNIPE_BOUNCE){ SNIPE_BOUNCE = null; for (const sym of S.selected) renderPadCalls(sym); }
+    return;
+  }
+  SNIPE_BOUNCE = j;
+  for (const sym of S.selected) renderPadCalls(sym);
+}
 /* ---------- WEB56 A1: collapsible header -------------------------
    The whole header body (brand/title, SCOREBOARD + forecast +
    How-it-works nav, tutorial link, NORMAL/PERPETUALS switch,
@@ -2236,6 +2310,9 @@ function applyPreset(name, skipLen){
   // TDZ, and a throw here would abort the whole script — the boxes
   // render on first drawer open / record load instead.
   if (!skipLen && typeof renderOddsPicks === "function") renderOddsPicks();
+  /* SNIPE BOUNCE: switching TO Polymarket pulls alerts now (not at
+     the next poll); switching AWAY clears them via the same call. */
+  if (!skipLen && typeof loadSnipeBounce === "function") loadSnipeBounce();
 }
 function setLen(min, fromCustom){
   S.lenMin = clamp(Math.round(min) || 15, 1, 1440);
@@ -6613,6 +6690,12 @@ setInterval(() => {
     const tp = (S.coins[csx.pad.target] || {}).price || 0;
     if (tp > 0 && csx.pad._plShown !== tp){ csx.pad._plShown = tp; padRender(sym); }
   }
+  /* SNIPE BOUNCE: intra-window alerts are time-sensitive (a 5m
+     window is gone before the 900-slot payload ladder would land),
+     so this one rides the existing 60s decision cadence, staggered
+     30s off it — one small global request per minute, PM only
+     (loadSnipeBounce itself enforces the preset + clears). */
+  if (S.loopN % 60 === 30) loadSnipeBounce();
   if (S.loopN % 900 === 0) loadGlobal();
   if (S.loopN % 900 === 150) loadCascade();
   if (S.loopN % 900 === 300) loadRecentForm();
@@ -8467,7 +8550,7 @@ function renderPadCalls(sym){
         tgt +
         '</td><td><span class="note predcheck">' + (r.unconf ? "target unconfirmed" : "checking…") + '</span>' +
         formStripHTML(sym, r.h) +
-        "</td><td>—</td></tr>";
+        "</td><td>—</td></tr>" + snipeBounceRowHTML(sym, r.h);
       }
       /* WEB54: HARD CASCADE — with the opt-in ON, a covered 5m row
          leads with the headline cascade call (the dedicated
@@ -8513,7 +8596,7 @@ function renderPadCalls(sym){
          only, from the shared formStripHTML helper; empty until
          the server has settled windows for this (coin, horizon). */
       formStripHTML(sym, r.h) +
-      "</td><td>" + fmtPrice(r.est) + "</td></tr>";
+      "</td><td>" + fmtPrice(r.est) + "</td></tr>" + snipeBounceRowHTML(sym, r.h);
     }).join("") +
     "</tbody></table>" +
     '<div style="margin-top:4px"><button type="button" class="whybtn" data-padexplain="1">How the outlook works ▸</button></div>';
@@ -10610,6 +10693,7 @@ buildCoinGrid();
   whenIdle(() => loadSources(), 1200);
   whenIdle(() => loadRecentForm(), 1800);
   whenIdle(() => { loadAdvisory(); loadDayForecast(); }, 2500);
+  whenIdle(() => loadSnipeBounce(), 2500);
   /* WEB35 LOAD-ONCE: a MINIMIZED Snipe Spotter is a collapsed
      section — it does not load at boot; expanding it pulls it
      (setSnipeMin already loads on expand). An expanded spotter
