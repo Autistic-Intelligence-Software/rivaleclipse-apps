@@ -192,6 +192,10 @@ canvas.spark{width:100%;height:150px;display:block}
 .onumpad{display:grid;grid-template-columns:repeat(3,64px);gap:6px;margin-top:6px}
 .onumpad button{background:#14141f;border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:10px 0;font-size:16px;font-weight:700;cursor:pointer}
 .onumpad button:active{border-color:var(--gold)}
+.pmmanual{margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#0c0c18}
+.pmmanual .pmmdisp{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--gold2);min-height:26px}
+.pmmanual .onumpad{grid-template-columns:repeat(3,52px)}
+.pmmanual .onumpad button{padding:7px 0;font-size:14px}
 .tchip{background:#0c0c18;border:1px solid var(--line);color:var(--mut);border-radius:999px;padding:3px 9px;font-size:12px;font-weight:700;cursor:pointer;margin-right:4px}
 .tchip.on{color:#0a0a12;background:var(--gold);border-color:var(--gold)}
 .ocard .otgt{font-size:11.5px;color:var(--mut);margin-top:8px;border-top:1px dashed var(--line);padding-top:7px;line-height:1.6}
@@ -2802,6 +2806,100 @@ function pmEngineTargetFor(sym, h, startMs){
   if (!e || e.start !== startMs) return null;
   return e;
 }
+/* ---------- WEB61 (Shane 2026-11-11): manual target entry --------
+   Every perpetual row whose market target could not be confirmed
+   (the pull failed: no stamped stream tick, the gate cannot
+   confirm) gets an "Enter target manually" option — OWNER
+   accounts only: the engine's pm-targets payload carries
+   can_manual for owner sign-ins, and POST /api/perp/pm-target/
+   manual re-checks owner standing server-side regardless (manual
+   targets feed the shared record, so subscribers never see the
+   option and could not use it if they forged the call). The
+   engine accepts an entry only for the CURRENT window while its
+   resolution is unconfirmed and nothing is recorded yet — a
+   confirmed or recorded target can never be overwritten. On
+   success the engine serves the entered value as the window's
+   confirmed target (src "manual"); the row locks against it and
+   displays "(manual entry)", and the market's own value is
+   recorded alongside when it later arrives. The panel below is
+   the page's own numpad pattern (mirrors the odds target pad):
+   it opens prefilled with the row's last read when one exists. */
+let PMM = {open: false, coin: null, h: null, start: 0, text: "", note: "", busy: false};
+function pmManualOpen(sym, h, prefill){
+  PMM = {open: true, coin: sym, h: h, start: winStartMs(Date.now(), h),
+    text: prefill != null && isFinite(prefill) && prefill > 0 ? String(Number(prefill.toFixed(6))) : "",
+    note: "", busy: false};
+  renderPadCalls(sym);
+}
+function pmManualPress(k){
+  let t = PMM.text || "";
+  if (k === "C") t = "";
+  else if (k === "B") t = t.slice(0, -1);
+  else if (k === "."){ if (!t.includes(".")) t = t ? t + "." : "0."; }
+  else if (/^[0-9]$/.test(k)){ if (t.replace(".", "").length < 12) t += k; }
+  PMM.text = t;
+  if (PMM.coin) renderPadCalls(PMM.coin);
+}
+async function pmManualPost(body){
+  try {
+    const r = await fetch(AUTH + "/api/perp/pm-target/manual", {
+      method: "POST", cache: "no-store",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})});
+    const j = await r.json().catch(() => null);
+    return {status: r.status, j: j};
+  } catch (e) { return {status: 0, j: null}; }
+}
+async function pmManualSubmit(){
+  if (PMM.busy || !PMM.open) return;
+  const sym = PMM.coin, h = PMM.h;
+  const v = parseFloat(PMM.text);
+  if (!(v > 0)){
+    PMM.note = "Type the market's target value on the numpad first.";
+    renderPadCalls(sym);
+    return;
+  }
+  if (PMM.start !== winStartMs(Date.now(), h)){
+    PMM.note = "That window has rolled — this panel now belongs to the new window.";
+    PMM.start = winStartMs(Date.now(), h);
+    renderPadCalls(sym);
+    return;
+  }
+  PMM.busy = true;
+  PMM.note = "Saving…";
+  renderPadCalls(sym);
+  const res = await pmManualPost({coin: sym, horizon: h, windowStart: PMM.start, target: v});
+  PMM.busy = false;
+  if (res.j && res.j.ok){
+    PMM.open = false;
+    PMM.note = "";
+    await loadPmTargets(true);
+    await refreshMktLines(sym, h);
+    renderPadCalls(sym);
+    return;
+  }
+  const e = res.j && res.j.error;
+  PMM.note = e === "owner_required" ? "Owner accounts only — this sign-in can't set targets."
+    : e === "target_already_confirmed" ? "The market target confirmed on its own just now — no entry needed."
+    : e === "target_already_recorded" ? "A target is already recorded for this window."
+    : e === "window_not_current" ? "That window has rolled — reopen the panel for the new window."
+    : "Could not save the manual target — try again.";
+  renderPadCalls(sym);
+}
+function pmManualPanelHtml(sym, h){
+  const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "B"];
+  return '<div class="pmmanual">' +
+    '<div class="lbl">Manual target — ' + sym + " " + (h === 60 ? "1 hour" : h + " min") +
+      ' · the value Polymarket posted for this window</div>' +
+    '<div class="pmmdisp">$' + (PMM.text ? PMM.text : "—") + "</div>" +
+    '<div class="onumpad">' + keys.map(k =>
+      '<button type="button" data-pmmkey="' + k + '">' + (k === "B" ? "⌫" : k) + "</button>").join("") + "</div>" +
+    '<div style="margin-top:6px">' +
+      '<button class="padrefresh" type="button" data-pmmgo="1"' + (PMM.busy ? " disabled" : "") + '>Use this target</button> ' +
+      '<button class="padrefresh" type="button" data-pmmcancel="1">Cancel</button> ' +
+      '<button class="padrefresh" type="button" data-pmmkey="C">Clear</button></div>' +
+    (PMM.note ? '<div class="note" style="margin-top:6px">' + PMM.note + "</div>" : "") +
+    "</div>";
+}
 /* WEB56 A3: refreshMktLines is now a thin per-coin wrapper —
    an in-flight guard (one pass per coin at a time; overlapping
    passes used to interleave entry writes, audit §1.1-D) plus a
@@ -2873,6 +2971,33 @@ async function refreshMktLineH(sym, h, forceH, now){
      else keeps the 20s latch. Unconfirmed entries (confirmed
      === false) always refetch. */
   const latchMs = (variant && variant !== "hourly") ? 45000 : 20000;
+  /* WEB61 (Shane 2026-11-11): MANUAL TARGET — when pulling this
+     window's target failed and an owner entered the market's
+     target by hand, the engine serves it as a confirmed entry
+     with src "manual" (POST /api/perp/pm-target/manual, owner-
+     only, write-once). It takes precedence over every local read:
+     the window runs against the entered value, marked manual on
+     the entry so the lock and the row carry the flag. A lock
+     already frozen for this window is untouched (immutable law) —
+     this only decides what a not-yet-locked row confirms on. */
+  if (S.preset === "polymarket"){
+    const engMan = pmEngineTargetFor(sym, h, start);
+    if (engMan && engMan.src === "manual" && engMan.target != null && isFinite(engMan.target) && engMan.target > 0){
+      const prev = (cur && cur.start === start) ? cur : null;
+      cs.mktLines[h] = {price: engMan.target, src: "Polymarket", start: start, at: Date.now(),
+        confirmed: true, lockPrice: engMan.target, lockSrc: "manual", engineSrc: "manual", manual: true,
+        reads: prev ? (prev.reads || 1) : 1,
+        firstAt: prev ? (prev.firstAt || prev.at || Date.now()) : Date.now(),
+        lastChgAt: prev ? (prev.lastChgAt || prev.at || Date.now()) : Date.now(),
+        firstPrice: prev && prev.firstPrice != null ? prev.firstPrice : engMan.target,
+        streamEst: prev ? (prev.streamEst != null ? prev.streamEst : null) : null, streamBlock: null,
+        gammaVal: prev ? (prev.gammaVal != null ? prev.gammaVal : null) : null,
+        gammaFirst: prev ? (prev.gammaFirst != null ? prev.gammaFirst : null) : null,
+        gammaAt: prev ? (prev.gammaAt || null) : null,
+        gammaReads: prev ? (prev.gammaReads || 0) : 0};
+      return;
+    }
+  }
   if (cur && cur.start === start && cur.confirmed !== false && !forced && now - cur.at < latchMs) return;
   let got = null;
   /* WEB51: Polymarket's published price to beat for this
@@ -3018,8 +3143,10 @@ async function refreshMktLineH(sym, h, forceH, now){
            confirmed === true — so nothing unconfirmed is ever
            dressed as confirmed. */
         got.confirmed = true; got.lockPrice = engE.target;
-        got.lockSrc = engE.src === "stream-gate" ? "stream-gate" : "twap-stream";
+        got.lockSrc = engE.src === "stream-gate" ? "stream-gate"
+          : (engE.src === "manual" ? "manual" : "twap-stream");
         got.engineSrc = engE.src || null;
+        if (engE.src === "manual") got.manual = true;
         got.streamBlock = null;
       } else if (gammaStable && got.streamState === "agree"){
         got.confirmed = true; got.lockPrice = got.gammaVal; got.lockSrc = "posted";
@@ -8443,7 +8570,7 @@ function padCallsRows(sym){
          is lock.ml, a different object on a different basis.) */
       ml: mlRead(sym, h, r.driftTotal),
       est: cs.price * Math.exp(r.driftTotal),
-      line: line, mkt: ml ? ml.src : null, lockedAt: now,
+      line: line, mkt: ml ? (ml.manual ? "manual entry" : ml.src) : null, lockedAt: now,
       /* WEB35: the lock records its own basis — the band in force
          and the inputs the call was computed from — written ONCE
          with the lock, never updated. The check gate verifies
@@ -8545,9 +8672,22 @@ function renderPadCalls(sym){
           : r.unconf
           ? '<br><span class="note">' + (r.mkt ? "target " + fmtPrice(r.line) + " (" + r.mkt + " — UNCONFIRMED)" : "target unconfirmed") + "</span>"
           : (r.mkt ? '<br><span class="note">target ' + fmtPrice(r.line) + " (" + r.mkt + (r.unconfRead ? " — confirming…" : "") + ")</span>" : "");
+        /* WEB61: the pull failed for this row's window — an
+           owner gets the manual entry option right on the row
+           (can_manual comes from the engine's payload; the POST
+           re-checks owner standing server-side regardless). The
+           panel state lives in PMM so tick re-renders keep it. */
+        let manualHtml = "";
+        if (S.preset === "polymarket" && PM_TWAP_COINS.includes(sym) &&
+            PM_TARGETS && PM_TARGETS.can_manual === true && (r.unconf || r.streamBlock)){
+          manualHtml = '<br><button class="padrefresh" type="button" data-pmmanual="' + r.h +
+            '" data-pmmread="' + (r.unconfRead && r.line > 0 ? r.line : "") + '">Enter target manually</button>';
+          if (PMM.open && PMM.coin === sym && PMM.h === r.h && PMM.start === winStartMs(Date.now(), r.h))
+            manualHtml += pmManualPanelHtml(sym, r.h);
+        }
         return "<tr" + (r.h === bestH ? ' class="bestrow"' : "") + "><td>" + (r.h === 60 ? "1 hour" : r.h + " min") +
         ' · <span class="cdft" data-cdh="' + r.h + '">' + fmtClock(r.remaining * 1000) + " left</span>" +
-        tgt +
+        tgt + manualHtml +
         '</td><td><span class="note predcheck">' + (r.unconf ? "target unconfirmed" : "checking…") + '</span>' +
         formStripHTML(sym, r.h) +
         "</td><td>—</td></tr>" + snipeBounceRowHTML(sym, r.h);
@@ -8737,6 +8877,21 @@ function initCardPad(sym){
       }
       const xb = t.closest("[data-padexplain]");
       if (xb){ openDynText(xb, "How the outlook works", outlookExplainText()); return; }
+      /* WEB61: manual target entry — open / numpad / confirm /
+         cancel, same delegation (the panel re-renders per tick). */
+      const mm = t.closest("[data-pmmanual]");
+      if (mm && typeof mm.getAttribute === "function"){
+        const read = parseFloat(mm.getAttribute("data-pmmread"));
+        pmManualOpen(sym, +mm.getAttribute("data-pmmanual"), isFinite(read) && read > 0 ? read : null);
+        return;
+      }
+      const mk = t.closest("[data-pmmkey]");
+      if (mk && typeof mk.getAttribute === "function"){
+        pmManualPress(mk.getAttribute("data-pmmkey"));
+        return;
+      }
+      if (t.closest("[data-pmmgo]")){ pmManualSubmit(); return; }
+      if (t.closest("[data-pmmcancel]")){ PMM.open = false; PMM.note = ""; renderPadCalls(sym); return; }
       const b = t.closest("[data-padcallrefresh]");
       if (!b || typeof b.getAttribute !== "function") return;
       const v = b.getAttribute("data-padcallrefresh");
